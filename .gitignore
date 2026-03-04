@@ -22,7 +22,11 @@ Thumbs.db
 
 # Conductor runtime
 .conductor-session.json
+.conductor-observability.jsonl
+.conductor-observability-metrics.json
 sessions/
 generated/
 exports/
+.ci-corpus/
+.codex/
 .pytest_cache/
