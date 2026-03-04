@@ -6,17 +6,16 @@ import json
 import shutil
 import subprocess
 from collections import Counter, defaultdict
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 
 import yaml
 
 from .constants import (
     GENERATED_DIR,
     GOVERNANCE_PATH,
-    MAX_CANDIDATE_PER_ORGAN,
-    MAX_PUBLIC_PROCESS_PER_ORGAN,
     ORGANS,
     PROMOTION_STATES,
     PROMOTION_TRANSITIONS,
@@ -26,6 +25,123 @@ from .constants import (
     organ_short,
     resolve_organ_key,
 )
+from .observability import log_event
+from .policy import Policy, load_policy
+from .schemas import validate_document
+
+
+@dataclass(frozen=True)
+class RepoRecord:
+    """Typed boundary model for repo entries in registry JSON."""
+
+    name: str
+    promotion_status: str | None
+    raw: dict[str, Any]
+
+    @classmethod
+    def from_payload(cls, payload: Any, *, organ_key: str, index: int) -> RepoRecord:
+        if not isinstance(payload, dict):
+            raise GovernanceError(
+                f"Registry schema error: organs.{organ_key}.repositories[{index}] must be an object"
+            )
+        name = payload.get("name")
+        if not isinstance(name, str) or not name.strip():
+            raise GovernanceError(
+                f"Registry schema error: organs.{organ_key}.repositories[{index}].name must be a non-empty string"
+            )
+        promotion_status = payload.get("promotion_status")
+        if promotion_status is not None and not isinstance(promotion_status, str):
+            raise GovernanceError(
+                f"Registry schema error: organs.{organ_key}.repositories[{index}].promotion_status must be a string"
+            )
+        if "dependencies" in payload and payload["dependencies"] is not None and not isinstance(payload["dependencies"], list):
+            raise GovernanceError(
+                f"Registry schema error: organs.{organ_key}.repositories[{index}].dependencies must be a list"
+            )
+        if "ci_workflow" in payload and payload["ci_workflow"] is not None and not isinstance(payload["ci_workflow"], str):
+            raise GovernanceError(
+                f"Registry schema error: organs.{organ_key}.repositories[{index}].ci_workflow must be a string"
+            )
+        if "last_validated" in payload and payload["last_validated"] is not None and not isinstance(payload["last_validated"], str):
+            raise GovernanceError(
+                f"Registry schema error: organs.{organ_key}.repositories[{index}].last_validated must be a string"
+            )
+        normalized = dict(payload)
+        if normalized.get("dependencies") is None:
+            normalized["dependencies"] = []
+        if normalized.get("ci_workflow") is None:
+            normalized["ci_workflow"] = ""
+        if normalized.get("last_validated") is None:
+            normalized["last_validated"] = ""
+        return cls(name=name.strip(), promotion_status=promotion_status, raw=normalized)
+
+
+def _parse_registry_payload(payload: Any) -> dict:
+    """Validate and normalize registry JSON payload."""
+    if not isinstance(payload, dict):
+        raise GovernanceError("Registry schema error: top-level payload must be an object")
+
+    organs_raw = payload.get("organs", {})
+    if organs_raw is None:
+        organs_raw = {}
+    if not isinstance(organs_raw, dict):
+        raise GovernanceError("Registry schema error: top-level 'organs' must be an object")
+
+    normalized_organs: dict[str, dict[str, Any]] = {}
+    for organ_key, organ_data in organs_raw.items():
+        if not isinstance(organ_key, str) or not organ_key.strip():
+            raise GovernanceError("Registry schema error: organ keys must be non-empty strings")
+        if not isinstance(organ_data, dict):
+            raise GovernanceError(f"Registry schema error: organs.{organ_key} must be an object")
+
+        repos_raw = organ_data.get("repositories", [])
+        if repos_raw is None:
+            repos_raw = []
+        if not isinstance(repos_raw, list):
+            raise GovernanceError(f"Registry schema error: organs.{organ_key}.repositories must be a list")
+
+        normalized_repos: list[dict[str, Any]] = []
+        for idx, repo_payload in enumerate(repos_raw):
+            repo = RepoRecord.from_payload(repo_payload, organ_key=organ_key, index=idx)
+            normalized_repos.append(repo.raw)
+
+        normalized_organ = dict(organ_data)
+        normalized_organ["repositories"] = normalized_repos
+        normalized_organs[organ_key] = normalized_organ
+
+    normalized = dict(payload)
+    normalized["organs"] = normalized_organs
+    return normalized
+
+
+def _parse_governance_payload(payload: Any) -> dict:
+    """Validate and normalize governance rules JSON payload."""
+    if not isinstance(payload, dict):
+        raise GovernanceError("Governance schema error: top-level payload must be an object")
+
+    organ_requirements = payload.get("organ_requirements", {})
+    if organ_requirements is None:
+        organ_requirements = {}
+    if not isinstance(organ_requirements, dict):
+        raise GovernanceError("Governance schema error: 'organ_requirements' must be an object")
+
+    for organ_key, requirements in organ_requirements.items():
+        if not isinstance(requirements, dict):
+            raise GovernanceError(f"Governance schema error: organ_requirements.{organ_key} must be an object")
+        for key in ("requires_tests", "requires_revenue_fields"):
+            if key in requirements and not isinstance(requirements[key], bool):
+                raise GovernanceError(
+                    f"Governance schema error: organ_requirements.{organ_key}.{key} must be boolean"
+                )
+
+    for optional_dict_key in ("dependency_rules", "promotion_rules"):
+        value = payload.get(optional_dict_key)
+        if value is not None and not isinstance(value, dict):
+            raise GovernanceError(f"Governance schema error: '{optional_dict_key}' must be an object")
+
+    normalized = dict(payload)
+    normalized["organ_requirements"] = organ_requirements
+    return normalized
 
 
 class GovernanceRuntime:
@@ -34,6 +150,9 @@ class GovernanceRuntime:
     def __init__(self, confirm_fn: Optional[Callable[[str], bool]] = None) -> None:
         self.registry: dict = {}
         self.governance: dict = {}
+        self.policy: Policy = load_policy()
+        self.max_candidate_per_organ = self.policy.max_candidate_per_organ
+        self.max_public_process_per_organ = self.policy.max_public_process_per_organ
         self.confirm_fn: Callable[[str], bool] = confirm_fn or self._default_confirm
         self._load()
 
@@ -44,10 +163,40 @@ class GovernanceRuntime:
 
     def _load(self) -> None:
         if REGISTRY_PATH.exists():
-            self.registry = json.loads(REGISTRY_PATH.read_text())
+            try:
+                raw_registry = json.loads(REGISTRY_PATH.read_text())
+                schema_issues = validate_document("registry", raw_registry)
+                if schema_issues:
+                    summary = "; ".join(
+                        f"{issue.code} {issue.path}: {issue.message}"
+                        for issue in schema_issues[:3]
+                    )
+                    raise GovernanceError(f"Registry schema validation failed: {summary}")
+                self.registry = _parse_registry_payload(raw_registry)
+            except json.JSONDecodeError as e:
+                raise GovernanceError(f"Invalid JSON in registry file {REGISTRY_PATH}: {e}") from e
 
         if GOVERNANCE_PATH.exists():
-            self.governance = json.loads(GOVERNANCE_PATH.read_text())
+            try:
+                raw_governance = json.loads(GOVERNANCE_PATH.read_text())
+                schema_issues = validate_document("governance", raw_governance)
+                if schema_issues:
+                    summary = "; ".join(
+                        f"{issue.code} {issue.path}: {issue.message}"
+                        for issue in schema_issues[:3]
+                    )
+                    raise GovernanceError(f"Governance schema validation failed: {summary}")
+                self.governance = _parse_governance_payload(raw_governance)
+            except json.JSONDecodeError as e:
+                raise GovernanceError(f"Invalid JSON in governance file {GOVERNANCE_PATH}: {e}") from e
+        log_event(
+            "governance.load",
+            {
+                "registry_loaded": REGISTRY_PATH.exists(),
+                "governance_loaded": GOVERNANCE_PATH.exists(),
+                "policy_bundle": self.policy.name,
+            },
+        )
 
     def _all_repos(self) -> list[tuple[str, dict]]:
         """Return (organ_key, repo_dict) for every repo in registry."""
@@ -186,12 +335,12 @@ class GovernanceRuntime:
             total_candidate += cand
 
             flags = []
-            if cand > MAX_CANDIDATE_PER_ORGAN:
-                flags.append(f"CAND>{MAX_CANDIDATE_PER_ORGAN}")
-                violations.append(f"{organ_key}: {cand} CANDIDATE (limit {MAX_CANDIDATE_PER_ORGAN})")
-            if pub > MAX_PUBLIC_PROCESS_PER_ORGAN:
-                flags.append(f"PUB>{MAX_PUBLIC_PROCESS_PER_ORGAN}")
-                violations.append(f"{organ_key}: {pub} PUBLIC_PROCESS (limit {MAX_PUBLIC_PROCESS_PER_ORGAN})")
+            if cand > self.max_candidate_per_organ:
+                flags.append(f"CAND>{self.max_candidate_per_organ}")
+                violations.append(f"{organ_key}: {cand} CANDIDATE (limit {self.max_candidate_per_organ})")
+            if pub > self.max_public_process_per_organ:
+                flags.append(f"PUB>{self.max_public_process_per_organ}")
+                violations.append(f"{organ_key}: {pub} PUBLIC_PROCESS (limit {self.max_public_process_per_organ})")
 
             flag_str = ", ".join(flags) if flags else ""
             short = organ_short(organ_key)
@@ -205,6 +354,16 @@ class GovernanceRuntime:
                 print(f"    ! {v}")
         else:
             print(f"  No WIP violations.")
+        log_event(
+            "governance.wip_check",
+            {
+                "violations": len(violations),
+                "total_candidate": total_candidate,
+                "policy_bundle": self.policy.name,
+            },
+            failed=bool(violations),
+            failure_bucket="wip_violation" if violations else None,
+        )
         print()
 
     # ----- WIP Promote -----
@@ -244,10 +403,11 @@ class GovernanceRuntime:
                 1 for ok, r in all_repos
                 if ok == organ_key and r.get("promotion_status") == "CANDIDATE"
             )
-            if cand_count >= MAX_CANDIDATE_PER_ORGAN:
+            if cand_count >= self.max_candidate_per_organ:
                 raise GovernanceError(
                     f"{organ_key} already has {cand_count} CANDIDATE repos "
-                    f"(limit {MAX_CANDIDATE_PER_ORGAN}). Promote or archive existing CANDIDATE repos first."
+                    f"(limit {self.max_candidate_per_organ}). Promote or archive existing CANDIDATE repos first. "
+                    f"Hint: run `conductor wip check` to identify candidates to archive."
                 )
 
         if target_state == "PUBLIC_PROCESS":
@@ -255,14 +415,19 @@ class GovernanceRuntime:
                 1 for ok, r in all_repos
                 if ok == organ_key and r.get("promotion_status") == "PUBLIC_PROCESS"
             )
-            if pub_count >= MAX_PUBLIC_PROCESS_PER_ORGAN:
+            if pub_count >= self.max_public_process_per_organ:
                 raise GovernanceError(
                     f"{organ_key} already has {pub_count} PUBLIC_PROCESS repos "
-                    f"(limit {MAX_PUBLIC_PROCESS_PER_ORGAN}). Graduate or archive existing PUBLIC_PROCESS repos first."
+                    f"(limit {self.max_public_process_per_organ}). Graduate or archive existing PUBLIC_PROCESS repos first. "
+                    f"Hint: run `conductor audit --organ {organ_short(organ_key)}` for recommendations."
                 )
 
         if not self.confirm_fn(f"Promote {repo_name}: {current} -> {target_state}?"):
             print("  Aborted.")
+            log_event(
+                "governance.wip_promote",
+                {"repo": repo_name, "current": current, "target": target_state, "aborted": True},
+            )
             return
 
         repo["promotion_status"] = target_state
@@ -275,6 +440,10 @@ class GovernanceRuntime:
         print(f"\n  Promoted: {repo_name}")
         print(f"  {current} -> {target_state}")
         print(f"  Registry updated: {REGISTRY_PATH}")
+        log_event(
+            "governance.wip_promote",
+            {"repo": repo_name, "current": current, "target": target_state, "aborted": False},
+        )
         print()
 
     # ----- Staleness (batched via GraphQL) -----
@@ -499,12 +668,9 @@ class GovernanceRuntime:
 
     # ----- Audit -----
 
-    def audit(self, organ: Optional[str] = None, create_issues: bool = False) -> None:
-        """Full organ or system health report. With create_issues, file GitHub issues for findings."""
-        print(f"\n  Audit Report: {organ or 'FULL SYSTEM'}")
-        print("  " + "=" * 50)
-
-        organs_to_check = {}
+    def audit_report(self, organ: Optional[str] = None) -> dict[str, Any]:
+        """Structured organ/system health report for machine use."""
+        organs_to_check: dict[str, dict[str, Any]] = {}
         if organ:
             key = resolve_organ_key(organ)
             organ_data = self.registry.get("organs", {}).get(key, {})
@@ -515,47 +681,81 @@ class GovernanceRuntime:
         else:
             organs_to_check = self.registry.get("organs", {})
 
+        report_organs: dict[str, Any] = {}
         for organ_key, organ_data in organs_to_check.items():
             repos = organ_data.get("repositories", [])
-            total = len(repos)
-
             statuses = Counter(r.get("promotion_status", "UNKNOWN") for r in repos)
             tiers = Counter(r.get("tier", "unknown") for r in repos)
             impl = Counter(r.get("implementation_status", "UNKNOWN") for r in repos)
-
             missing_readme = [r["name"] for r in repos if r.get("documentation_status", "").upper() == "EMPTY"]
             missing_ci = [r["name"] for r in repos if not r.get("ci_workflow")]
+            cand = statuses.get("CANDIDATE", 0)
 
-            print(f"\n  [{organ_short(organ_key)}] {organ_data.get('name', organ_key)} -- {total} repos")
+            recommendations: list[str] = []
+            if cand > self.max_candidate_per_organ:
+                recommendations.append(
+                    f"Triage CANDIDATE repos: promote {cand - self.max_candidate_per_organ}+ to PUBLIC_PROCESS or archive"
+                )
+            if missing_ci:
+                recommendations.append(f"Add CI workflows to {len(missing_ci)} repos")
+            if statuses.get("LOCAL", 0) > 0:
+                recommendations.append(f"Evaluate {statuses['LOCAL']} LOCAL repos for CANDIDATE promotion")
+            if not recommendations:
+                recommendations.append("Organ is healthy -- no immediate action needed")
+
+            report_organs[organ_key] = {
+                "organ_name": organ_data.get("name", organ_key),
+                "organ_short": organ_short(organ_key),
+                "total_repos": len(repos),
+                "promotion": dict(sorted(statuses.items())),
+                "tiers": dict(sorted(tiers.items())),
+                "implementation": dict(sorted(impl.items())),
+                "missing_readme": missing_readme,
+                "missing_ci": missing_ci,
+                "wip_violation_candidate": cand > self.max_candidate_per_organ,
+                "recommendations": recommendations,
+            }
+
+        report = {
+            "scope": organ or "FULL SYSTEM",
+            "policy_bundle": self.policy.name,
+            "limits": {
+                "max_candidate_per_organ": self.max_candidate_per_organ,
+                "max_public_process_per_organ": self.max_public_process_per_organ,
+            },
+            "organs": report_organs,
+        }
+        return report
+
+    def audit(self, organ: Optional[str] = None, create_issues: bool = False) -> None:
+        """Full organ or system health report. With create_issues, file GitHub issues for findings."""
+        print(f"\n  Audit Report: {organ or 'FULL SYSTEM'}")
+        print("  " + "=" * 50)
+
+        report = self.audit_report(organ=organ)
+        for organ_key, organ_report in report.get("organs", {}).items():
+            print(f"\n  [{organ_report['organ_short']}] {organ_report['organ_name']} -- {organ_report['total_repos']} repos")
             print(f"  {'---' * 17}")
 
-            print(f"  Promotion: " + ", ".join(f"{s}={c}" for s, c in sorted(statuses.items())))
-            print(f"  Tiers:     " + ", ".join(f"{t}={c}" for t, c in sorted(tiers.items())))
-            print(f"  Impl:      " + ", ".join(f"{i}={c}" for i, c in sorted(impl.items())))
+            print(f"  Promotion: " + ", ".join(f"{s}={c}" for s, c in organ_report["promotion"].items()))
+            print(f"  Tiers:     " + ", ".join(f"{t}={c}" for t, c in organ_report["tiers"].items()))
+            print(f"  Impl:      " + ", ".join(f"{i}={c}" for i, c in organ_report["implementation"].items()))
 
-            if missing_readme:
-                print(f"\n  CRITICAL: {len(missing_readme)} repos missing README:")
-                for name in missing_readme[:5]:
+            if organ_report["missing_readme"]:
+                print(f"\n  CRITICAL: {len(organ_report['missing_readme'])} repos missing README:")
+                for name in organ_report["missing_readme"][:5]:
                     print(f"    - {name}")
 
-            if missing_ci:
-                print(f"\n  WARNING: {len(missing_ci)} repos without CI:")
-                for name in missing_ci[:5]:
+            if organ_report["missing_ci"]:
+                print(f"\n  WARNING: {len(organ_report['missing_ci'])} repos without CI:")
+                for name in organ_report["missing_ci"][:5]:
                     print(f"    - {name}")
 
-            cand = statuses.get("CANDIDATE", 0)
-            if cand > MAX_CANDIDATE_PER_ORGAN:
-                print(f"\n  WIP VIOLATION: {cand} CANDIDATE (limit {MAX_CANDIDATE_PER_ORGAN})")
+            if organ_report["wip_violation_candidate"]:
+                cand = organ_report["promotion"].get("CANDIDATE", 0)
+                print(f"\n  WIP VIOLATION: {cand} CANDIDATE (limit {self.max_candidate_per_organ})")
 
-            recs = []
-            if cand > MAX_CANDIDATE_PER_ORGAN:
-                recs.append(f"Triage CANDIDATE repos: promote {cand - MAX_CANDIDATE_PER_ORGAN}+ to PUBLIC_PROCESS or archive")
-            if missing_ci:
-                recs.append(f"Add CI workflows to {len(missing_ci)} repos")
-            if statuses.get("LOCAL", 0) > 0:
-                recs.append(f"Evaluate {statuses['LOCAL']} LOCAL repos for CANDIDATE promotion")
-            if not recs:
-                recs.append("Organ is healthy -- no immediate action needed")
+            recs = organ_report["recommendations"]
 
             print(f"\n  Recommendations:")
             for r in recs:
@@ -564,6 +764,14 @@ class GovernanceRuntime:
             if create_issues and recs and recs[0] != "Organ is healthy -- no immediate action needed":
                 self._create_audit_issues(organ_key, recs)
 
+        log_event(
+            "governance.audit",
+            {
+                "scope": report["scope"],
+                "organs_checked": len(report["organs"]),
+                "policy_bundle": self.policy.name,
+            },
+        )
         print()
 
     def _create_audit_issues(self, organ_key: str, recommendations: list[str]) -> None:

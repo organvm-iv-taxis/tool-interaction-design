@@ -6,9 +6,6 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from .constants import (
-    MAX_CANDIDATE_PER_ORGAN,
-    MAX_PUBLIC_PROCESS_PER_ORGAN,
-    ORGANS,
     organ_short,
 )
 from .governance import GovernanceRuntime
@@ -47,6 +44,8 @@ class WorkQueue:
         """Score 100: organs exceeding CANDIDATE or PUBLIC_PROCESS limits."""
         items: list[WorkItem] = []
         organs = self.gov.registry.get("organs", {})
+        max_candidate = self.gov.max_candidate_per_organ
+        max_public = self.gov.max_public_process_per_organ
 
         for organ_key, organ_data in organs.items():
             if organ_filter and organ_key != organ_filter:
@@ -57,24 +56,24 @@ class WorkQueue:
             pub_count = sum(1 for r in repos if r.get("promotion_status") == "PUBLIC_PROCESS")
             short = organ_short(organ_key)
 
-            if cand_count > MAX_CANDIDATE_PER_ORGAN:
+            if cand_count > max_candidate:
                 items.append(WorkItem(
                     priority="CRITICAL",
                     category="wip_violation",
                     organ=organ_key,
                     repo=None,
-                    description=f"{cand_count} CANDIDATE (limit {MAX_CANDIDATE_PER_ORGAN}) — triage required",
+                    description=f"{cand_count} CANDIDATE (limit {max_candidate}) — triage required",
                     suggested_command=f"conductor audit --organ {short}",
                     score=100 + cand_count,
                 ))
 
-            if pub_count > MAX_PUBLIC_PROCESS_PER_ORGAN:
+            if pub_count > max_public:
                 items.append(WorkItem(
                     priority="CRITICAL",
                     category="wip_violation",
                     organ=organ_key,
                     repo=None,
-                    description=f"{pub_count} PUBLIC_PROCESS (limit {MAX_PUBLIC_PROCESS_PER_ORGAN}) — graduate or archive",
+                    description=f"{pub_count} PUBLIC_PROCESS (limit {max_public}) — graduate or archive",
                     suggested_command=f"conductor audit --organ {short}",
                     score=100 + pub_count,
                 ))

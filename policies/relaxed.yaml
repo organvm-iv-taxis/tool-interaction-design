@@ -1,0 +1,13 @@
+name: relaxed
+wip:
+  max_candidate_per_organ: 5
+  max_public_process_per_organ: 2
+validation:
+  strict_default: false
+  fail_on_warnings: false
+routing:
+  max_path_depth: 6
+  max_paths_returned: 8
+observability:
+  enabled: true
+  top_failure_buckets: 10

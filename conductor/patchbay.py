@@ -13,16 +13,12 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from .constants import (
-    MAX_CANDIDATE_PER_ORGAN,
-    MAX_PUBLIC_PROCESS_PER_ORGAN,
-    ORGANS,
     PHASE_ROLES,
-    SESSION_STATE_FILE,
-    STATS_FILE,
     organ_short,
     get_phase_clusters,
 )
 from .governance import GovernanceRuntime
+from .observability import get_metrics, log_event
 from .session import Session, SessionEngine, _load_stats
 from .workqueue import WorkItem, WorkQueue
 
@@ -129,11 +125,11 @@ class Patchbay:
             total_candidate += cand
 
             flags = []
-            if cand > MAX_CANDIDATE_PER_ORGAN:
-                flags.append(f"CAND>{MAX_CANDIDATE_PER_ORGAN}")
+            if cand > self.gov.max_candidate_per_organ:
+                flags.append(f"CAND>{self.gov.max_candidate_per_organ}")
                 violations.append(organ_key)
-            if pub > MAX_PUBLIC_PROCESS_PER_ORGAN:
-                flags.append(f"PUB>{MAX_PUBLIC_PROCESS_PER_ORGAN}")
+            if pub > self.gov.max_public_process_per_organ:
+                flags.append(f"PUB>{self.gov.max_public_process_per_organ}")
                 if organ_key not in violations:
                     violations.append(organ_key)
 
@@ -178,6 +174,7 @@ class Patchbay:
     def _stats_section(self) -> dict:
         """Lifetime stats from cumulative stats file."""
         stats = _load_stats()
+        obs_metrics = get_metrics()
         total = stats.get("total_sessions", 0)
         shipped = stats.get("shipped", 0)
         total_minutes = stats.get("total_minutes", 0)
@@ -191,6 +188,7 @@ class Patchbay:
             "ship_rate": round(shipped / total * 100) if total else 0,
             "streak": streak,
             "recent_sessions": stats.get("recent_sessions", [])[-5:],
+            "top_failure_reasons": obs_metrics.get("failure_buckets", {}),
         }
 
     def _suggest_next(self, organ_filter: str | None = None) -> str:
@@ -217,6 +215,14 @@ class Patchbay:
             return "System is clean. Start a new session."
 
         top = items[0]
+        log_event(
+            "patchbay.suggest_next",
+            {
+                "category": top.category,
+                "organ": top.organ,
+                "repo": top.repo,
+            },
+        )
         if top.category == "wip_violation":
             short = organ_short(top.organ)
             return (

@@ -1,0 +1,13 @@
+name: default
+wip:
+  max_candidate_per_organ: 3
+  max_public_process_per_organ: 1
+validation:
+  strict_default: false
+  fail_on_warnings: false
+routing:
+  max_path_depth: 5
+  max_paths_returned: 5
+observability:
+  enabled: true
+  top_failure_buckets: 10
