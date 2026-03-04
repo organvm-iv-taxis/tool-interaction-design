@@ -17,6 +17,7 @@ from .constants import (
     organ_short,
     get_phase_clusters,
 )
+from .contracts import assert_contract
 from .governance import GovernanceRuntime
 from .observability import get_metrics, log_event
 from .session import Session, SessionEngine, _load_stats
@@ -56,6 +57,7 @@ class Patchbay:
         except Exception:
             result["suggested_action"] = ""
 
+        assert_contract("patchbay_briefing", result)
         return result
 
     # ----- Sections -----
@@ -166,6 +168,7 @@ class Patchbay:
                     "description": item.description,
                     "suggested_command": item.suggested_command,
                     "score": item.score,
+                    "rationale": item.rationale,
                 }
                 for item in items[:10]
             ],

@@ -11,3 +11,6 @@ routing:
 observability:
   enabled: true
   top_failure_buckets: 20
+  trend_warn_rate: 0.10
+  trend_critical_rate: 0.25
+  trend_min_events: 20

@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PatchbayBriefing",
+  "type": "object",
+  "required": ["timestamp", "session", "pulse", "queue", "stats", "suggested_action"],
+  "properties": {
+    "timestamp": { "type": "string", "minLength": 1 },
+    "session": { "type": "object" },
+    "pulse": { "type": "object" },
+    "queue": { "type": "object" },
+    "stats": { "type": "object" },
+    "suggested_action": { "type": "string" }
+  },
+  "additionalProperties": true
+}

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -11,7 +12,10 @@ from .constants import ONTOLOGY_PATH, ROUTING_PATH, ConductorError, resolve_orga
 from .doctor import assert_doctor_ok, render_doctor_text, run_doctor
 from .governance import GovernanceRuntime
 from .migrate import migrate_governance, migrate_registry, write_migration_output
+from .observability import export_metrics_report
 from .patchbay import Patchbay
+from .plugins import plugin_doctor_report, render_plugin_doctor_text
+from .policy import render_policy_simulation_text, simulate_policy
 from .product import ProductExtractor
 from .session import SessionEngine
 
@@ -110,6 +114,27 @@ def build_parser() -> argparse.ArgumentParser:
     p_doctor.add_argument("--workflow", type=Path, default=Path("workflow-dsl.yaml"), help="Workflow file to validate")
     p_doctor.add_argument("--format", choices=["text", "json"], default="text", help="Output format")
     p_doctor.add_argument("--strict", action="store_true", help="Exit non-zero on any failing check")
+    p_doctor.add_argument("--apply", action="store_true", help="Apply available schema autofixes before reporting")
+
+    p_plugins = sub.add_parser("plugins", help="Plugin diagnostics")
+    plugin_sub = p_plugins.add_subparsers(dest="plugins_command", required=True)
+    p_plugins_doctor = plugin_sub.add_parser("doctor", help="Validate plugin manifests and provider loading")
+    p_plugins_doctor.add_argument("--format", choices=["text", "json"], default="text", help="Output format")
+    p_plugins_doctor.add_argument("--strict", action="store_true", help="Fail on warnings in addition to errors")
+
+    p_policy = sub.add_parser("policy", help="Policy analysis commands")
+    policy_sub = p_policy.add_subparsers(dest="policy_command", required=True)
+    p_policy_simulate = policy_sub.add_parser("simulate", help="Simulate policy limits against registry state")
+    p_policy_simulate.add_argument("--bundle", help="Policy bundle name to simulate (default resolves from env/config)")
+    p_policy_simulate.add_argument("--organ", help="Optional organ filter (e.g., III, META)")
+    p_policy_simulate.add_argument("--format", choices=["text", "json"], default="text", help="Output format")
+
+    p_obs = sub.add_parser("observability", help="Observability exports and trend checks")
+    obs_sub = p_obs.add_subparsers(dest="observability_command", required=True)
+    p_obs_report = obs_sub.add_parser("report", help="Export observability metrics with trend checks")
+    p_obs_report.add_argument("--output", type=Path, help="Optional output path for JSON report")
+    p_obs_report.add_argument("--format", choices=["text", "json"], default="text", help="Output format")
+    p_obs_report.add_argument("--check", action="store_true", help="Exit non-zero when trend status is warn/critical")
 
     p_migrate = sub.add_parser("migrate", help="Migrate registry/governance to current schema")
     migrate_sub = p_migrate.add_subparsers(dest="migrate_command", required=True)
@@ -144,6 +169,11 @@ def main():
     try:
         _dispatch(args)
     except ConductorError as e:
+        print(f"  ERROR: {e}", file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:  # pragma: no cover - safety net for user-facing CLI
+        if os.environ.get("CONDUCTOR_DEBUG_TRACEBACK", "").strip() == "1":
+            raise
         print(f"  ERROR: {e}", file=sys.stderr)
         sys.exit(1)
 
@@ -259,13 +289,65 @@ def _dispatch(args):
         cmd_validate(args, ontology, engine)
 
     elif args.command == "doctor":
-        report = run_doctor(workflow_path=args.workflow, format_name=args.format)
+        report = run_doctor(workflow_path=args.workflow, format_name=args.format, apply=args.apply)
         if args.format == "json":
             print(json.dumps(report, indent=2))
         else:
             print(render_doctor_text(report))
         if args.strict:
             assert_doctor_ok(report)
+
+    elif args.command == "plugins":
+        if args.plugins_command == "doctor":
+            report = plugin_doctor_report()
+            if args.format == "json":
+                print(json.dumps(report, indent=2))
+            else:
+                print(render_plugin_doctor_text(report))
+            summary = report.get("summary", {})
+            errors = int(summary.get("errors", 0))
+            warnings = int(summary.get("warnings", 0))
+            if errors > 0 or (args.strict and warnings > 0):
+                raise ConductorError("Plugin doctor found issues.")
+
+    elif args.command == "policy":
+        if args.policy_command == "simulate":
+            gov = GovernanceRuntime()
+            report = simulate_policy(args.bundle, gov.registry)
+            if args.organ:
+                key = resolve_organ_key(args.organ)
+                organs = report.get("organs", {})
+                filtered = {key: organs[key]} if key in organs else {}
+                report["organs"] = filtered
+                report["summary"] = {
+                    "organs_checked": len(filtered),
+                    "organs_with_violations": sum(1 for row in filtered.values() if row.get("violations", 0) > 0),
+                    "violations_total": sum(int(row.get("violations", 0)) for row in filtered.values()),
+                }
+            if args.format == "json":
+                print(json.dumps(report, indent=2))
+            else:
+                print(render_policy_simulation_text(report))
+
+    elif args.command == "observability":
+        if args.observability_command == "report":
+            report = export_metrics_report(output_path=args.output)
+            if args.format == "json":
+                print(json.dumps(report, indent=2))
+            else:
+                trend = report.get("trends", {})
+                overall = trend.get("overall", {})
+                recent = trend.get("recent", {})
+                print("Observability report")
+                print(
+                    f"  status={trend.get('status')} "
+                    f"overall_failure_rate={overall.get('failure_rate')} "
+                    f"recent_failure_rate={recent.get('failure_rate')}"
+                )
+                output_path = args.output or Path(".conductor-observability-report.json")
+                print(f"  report_path={output_path}")
+            if args.check and report.get("trends", {}).get("status") in {"warn", "critical"}:
+                raise ConductorError("Observability trend check failed threshold.")
 
     elif args.command == "migrate":
         if args.migrate_command == "registry":

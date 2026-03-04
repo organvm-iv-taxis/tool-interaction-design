@@ -10,7 +10,9 @@ from typing import Any
 import yaml
 
 from .constants import GOVERNANCE_PATH, ONTOLOGY_PATH, REGISTRY_PATH, ROUTING_PATH, ConductorError, get_phase_clusters
+from .contracts import assert_contract
 from .integrity import run_integrity_checks
+from .migrate import migrate_governance, migrate_registry, write_migration_output
 from .schemas import validate_document
 
 
@@ -102,8 +104,8 @@ def _phase_config_check(ontology_path: Path) -> DoctorCheck:
     return DoctorCheck(name="phase-config", ok=not errors, errors=errors, hints=hints)
 
 
-def run_doctor(workflow_path: Path, format_name: str = "text") -> dict[str, Any]:
-    checks = [
+def _collect_checks(workflow_path: Path) -> list[DoctorCheck]:
+    checks: list[DoctorCheck] = [
         _schema_check(REGISTRY_PATH, "registry"),
         _schema_check(GOVERNANCE_PATH, "governance"),
         _workflow_schema_check(workflow_path),
@@ -120,6 +122,31 @@ def run_doctor(workflow_path: Path, format_name: str = "text") -> dict[str, Any]
             hints=[issue.hint for issue in integrity.issues if issue.hint],
         )
     )
+    return checks
+
+
+def _apply_autofixes() -> list[str]:
+    fixes: list[str] = []
+    for name, path, migrator in [
+        ("registry", REGISTRY_PATH, migrate_registry),
+        ("governance", GOVERNANCE_PATH, migrate_governance),
+    ]:
+        if not path.exists():
+            continue
+        try:
+            before = json.loads(path.read_text())
+            migrated = migrator(path)
+        except Exception:
+            continue
+        if migrated != before:
+            write_migration_output(migrated, path)
+            fixes.append(f"migrated {name} schema in-place ({path})")
+    return fixes
+
+
+def run_doctor(workflow_path: Path, format_name: str = "text", apply: bool = False) -> dict[str, Any]:
+    applied_fixes = _apply_autofixes() if apply else []
+    checks = _collect_checks(workflow_path)
 
     ok = all(check.ok for check in checks)
     report = {
@@ -137,8 +164,10 @@ def run_doctor(workflow_path: Path, format_name: str = "text") -> dict[str, Any]
             for hint in check.hints
             if hint
         ],
+        "applied_fixes": applied_fixes,
     }
 
+    assert_contract("doctor_report", report)
     if format_name == "json":
         return report
     return report
@@ -148,6 +177,11 @@ def render_doctor_text(report: dict[str, Any]) -> str:
     lines = []
     status = "OK" if report.get("ok") else "FAIL"
     lines.append(f"Doctor status: {status}")
+    applied_fixes = report.get("applied_fixes", [])
+    if applied_fixes:
+        lines.append("Applied fixes:")
+        for fix in applied_fixes:
+            lines.append(f"  - {fix}")
     lines.append("")
     for check in report.get("checks", []):
         marker = "OK" if check.get("ok") else "FAIL"

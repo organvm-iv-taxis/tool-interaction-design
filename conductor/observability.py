@@ -13,6 +13,7 @@ from .policy import load_policy
 
 OBS_LOG_FILE = BASE / ".conductor-observability.jsonl"
 OBS_METRICS_FILE = BASE / ".conductor-observability-metrics.json"
+OBS_REPORT_FILE = BASE / ".conductor-observability-report.json"
 
 
 def _safe_write_json(path: Path, payload: dict[str, Any]) -> None:
@@ -36,6 +37,89 @@ def _load_metrics() -> dict[str, Any]:
 def get_metrics() -> dict[str, Any]:
     """Return current observability aggregate metrics."""
     return _load_metrics()
+
+
+def _load_log_events() -> list[dict[str, Any]]:
+    events: list[dict[str, Any]] = []
+    if not OBS_LOG_FILE.exists():
+        return events
+    try:
+        for raw_line in OBS_LOG_FILE.read_text().splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+            payload = json.loads(line)
+            if isinstance(payload, dict):
+                events.append(payload)
+    except (OSError, json.JSONDecodeError):
+        return []
+    return events
+
+
+def compute_trend_report(events: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    """Compute failure-rate trends from observability events."""
+    policy = load_policy()
+    sample = events if events is not None else _load_log_events()
+    total = len(sample)
+    failures = sum(1 for event in sample if bool(event.get("failed")))
+    overall_rate = (failures / total) if total else 0.0
+
+    window = max(1, policy.trend_min_events)
+    recent = sample[-window:]
+    previous = sample[-2 * window:-window] if len(sample) >= window * 2 else []
+    recent_total = len(recent)
+    recent_failures = sum(1 for event in recent if bool(event.get("failed")))
+    previous_total = len(previous)
+    previous_failures = sum(1 for event in previous if bool(event.get("failed")))
+    recent_rate = (recent_failures / recent_total) if recent_total else 0.0
+    previous_rate = (previous_failures / previous_total) if previous_total else 0.0
+
+    status = "ok"
+    if recent_total < window:
+        status = "insufficient_data"
+    elif recent_rate >= policy.trend_critical_rate:
+        status = "critical"
+    elif recent_rate >= policy.trend_warn_rate:
+        status = "warn"
+
+    return {
+        "status": status,
+        "window": window,
+        "overall": {
+            "events": total,
+            "failures": failures,
+            "failure_rate": round(overall_rate, 4),
+        },
+        "recent": {
+            "events": recent_total,
+            "failures": recent_failures,
+            "failure_rate": round(recent_rate, 4),
+        },
+        "previous": {
+            "events": previous_total,
+            "failures": previous_failures,
+            "failure_rate": round(previous_rate, 4),
+        },
+        "delta_failure_rate": round(recent_rate - previous_rate, 4),
+        "thresholds": {
+            "warn_rate": policy.trend_warn_rate,
+            "critical_rate": policy.trend_critical_rate,
+        },
+    }
+
+
+def export_metrics_report(output_path: Path | None = None) -> dict[str, Any]:
+    """Export merged observability metrics + trend checks."""
+    metrics = _load_metrics()
+    trends = compute_trend_report()
+    payload = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "metrics": metrics,
+        "trends": trends,
+    }
+    path = output_path or OBS_REPORT_FILE
+    _safe_write_json(path, payload)
+    return payload
 
 
 def _record_failure_bucket(metrics: dict[str, Any], bucket: str) -> None:

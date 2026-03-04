@@ -56,6 +56,7 @@ from conductor.constants import (
     SESSION_STATE_FILE,
     get_phase_clusters,
 )
+from conductor.contracts import assert_contract
 from conductor.governance import GovernanceRuntime
 from conductor.patchbay import Patchbay
 from conductor.session import Session, SessionEngine
@@ -96,6 +97,12 @@ def get_session() -> dict | None:
     return None
 
 
+def _encode_mcp_payload(payload: dict[str, Any]) -> str:
+    """Validate and encode standard MCP JSON responses."""
+    assert_contract("mcp_tool_response", payload)
+    return json.dumps(payload, indent=2)
+
+
 # ---------------------------------------------------------------------------
 # Tool implementations
 # ---------------------------------------------------------------------------
@@ -110,7 +117,7 @@ def route_to(from_cluster: str, to_cluster: str) -> str:
         result = [{"id": r.id, "data_flow": r.data_flow, "protocol": r.protocol,
                     "automatable": r.automatable, "description": r.description}
                    for r in routes]
-        return json.dumps({"direct_routes": result}, indent=2)
+        return _encode_mcp_payload({"direct_routes": result})
 
     # Try multi-hop
     src = ontology.clusters.get(from_cluster)
@@ -118,9 +125,9 @@ def route_to(from_cluster: str, to_cluster: str) -> str:
     if src and tgt:
         paths = engine.find_path(src.domain, tgt.domain)
         if paths:
-            return json.dumps({"multi_hop_paths": paths}, indent=2)
+            return _encode_mcp_payload({"multi_hop_paths": paths})
 
-    return json.dumps({"error": f"No route found: {from_cluster} → {to_cluster}"})
+    return _encode_mcp_payload({"error": f"No route found: {from_cluster} -> {to_cluster}"})
 
 
 def capability(cap: str) -> str:
@@ -129,7 +136,7 @@ def capability(cap: str) -> str:
 
     clusters = ontology.by_capability(cap.upper())
     if not clusters:
-        return json.dumps({"error": f"No clusters with capability: {cap}"})
+        return _encode_mcp_payload({"error": f"No clusters with capability: {cap}"})
 
     result = [{"id": c.id, "label": c.label, "domain": c.domain,
                "tools_count": len(c.tools), "protocols": c.protocols}
@@ -137,7 +144,7 @@ def capability(cap: str) -> str:
 
     preferred = engine.capability_tools(cap.upper())
 
-    return json.dumps({"clusters": result, "routing_priority": preferred}, indent=2)
+    return _encode_mcp_payload({"clusters": result, "routing_priority": preferred})
 
 
 def wip_status() -> str:
@@ -151,19 +158,19 @@ def wip_status() -> str:
                 s = r.get("promotion_status", "UNKNOWN")
                 status_counts[s] = status_counts.get(s, 0) + 1
             counts[organ_key] = status_counts
-        return json.dumps({"wip_by_organ": counts}, indent=2)
+        return _encode_mcp_payload({"wip_by_organ": counts})
     except Exception as e:
-        return json.dumps({"error": str(e)})
+        return _encode_mcp_payload({"error": str(e)})
 
 
 def session_phase() -> str:
     try:
         session = get_session()
         if not session:
-            return json.dumps({"active": False, "message": "No active session"})
+            return _encode_mcp_payload({"active": False, "message": "No active session"})
 
         phase = session.get("current_phase", "UNKNOWN")
-        return json.dumps({
+        return _encode_mcp_payload({
             "active": True,
             "session_id": session.get("session_id"),
             "organ": session.get("organ"),
@@ -173,9 +180,9 @@ def session_phase() -> str:
             "ai_role": PHASE_ROLES.get(phase, "Unknown"),
             "active_clusters": get_phase_clusters().get(phase, []),
             "warnings": session.get("warnings", []),
-        }, indent=2)
+        })
     except Exception as e:
-        return json.dumps({"error": str(e)})
+        return _encode_mcp_payload({"error": str(e)})
 
 
 def patch(organ: str | None = None) -> str:
@@ -189,9 +196,9 @@ def patch(organ: str | None = None) -> str:
             from conductor.constants import resolve_organ_key
             organ_filter = resolve_organ_key(organ)
         data = pb.briefing(organ_filter=organ_filter)
-        return json.dumps(data, indent=2)
+        return _encode_mcp_payload(data)
     except Exception as e:
-        return json.dumps({"error": str(e)})
+        return _encode_mcp_payload({"error": str(e)})
 
 
 def suggest(task_description: str) -> str:
@@ -248,11 +255,11 @@ def suggest(task_description: str) -> str:
             s["in_current_phase"] = s["cluster"] in phase_clusters
         phase_note = f"Current phase: {phase}. Prefer tools from active clusters."
 
-    return json.dumps({
+    return _encode_mcp_payload({
         "task": task_description,
         "suggestions": suggestions,
         "phase_context": phase_note,
-    }, indent=2)
+    })
 
 
 # ---------------------------------------------------------------------------
@@ -340,13 +347,13 @@ async def run_server():
     async def call_tool(name: str, arguments: dict | None):
         handler = DISPATCH.get(name)
         if not handler:
-            return [TextContent(type="text", text=json.dumps({"error": f"Unknown tool: {name}"}))]
+            return [TextContent(type="text", text=_encode_mcp_payload({"error": f"Unknown tool: {name}"}))]
 
         try:
             result = handler(arguments)
             return [TextContent(type="text", text=result)]
         except Exception as e:
-            return [TextContent(type="text", text=json.dumps({"error": str(e)}))]
+            return [TextContent(type="text", text=_encode_mcp_payload({"error": str(e)}))]
 
     async with stdio_server() as (read_stream, write_stream):
         await server.run(read_stream, write_stream, server.create_initialization_options())

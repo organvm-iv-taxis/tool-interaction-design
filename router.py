@@ -38,10 +38,12 @@ except ImportError:
     sys.exit(1)
 
 try:
+    from conductor.contracts import assert_contract
     from conductor.plugins import load_plugin_clusters
     from conductor.policy import load_policy
     from conductor.schemas import validate_document
 except Exception:  # pragma: no cover - router can run standalone
+    assert_contract = lambda *_args, **_kwargs: None  # type: ignore[assignment]
     load_plugin_clusters = lambda: []  # type: ignore[assignment]
     load_policy = lambda: None  # type: ignore[assignment]
     validate_document = lambda *_args, **_kwargs: []  # type: ignore[assignment]
@@ -690,12 +692,14 @@ def cmd_validate(args, ontology: Ontology, engine: RoutingEngine):
     should_fail = bool(report.errors or (strict_mode and report.warnings))
 
     if args.format == "json":
-        print(json.dumps({
+        payload = {
             "file": str(path),
             "strict": strict_mode,
             "ok": not should_fail,
             **report.to_dict(),
-        }, indent=2))
+        }
+        assert_contract("router_validate_output", payload)
+        print(json.dumps(payload, indent=2))
         if should_fail:
             sys.exit(1)
         return

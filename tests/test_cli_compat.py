@@ -24,7 +24,7 @@ def run_cmd(*args: str) -> subprocess.CompletedProcess[str]:
 def test_conductor_help_contains_stable_commands() -> None:
     result = run_cmd("-m", "conductor", "--help")
     assert result.returncode == 0
-    for token in ("session", "audit", "validate", "doctor", "migrate", "patch"):
+    for token in ("session", "audit", "validate", "doctor", "migrate", "patch", "plugins", "policy", "observability"):
         assert token in result.stdout
 
 
