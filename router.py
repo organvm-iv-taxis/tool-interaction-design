@@ -1,0 +1,588 @@
+#!/usr/bin/env python3
+"""
+Tool Interaction Router v1.0
+=============================
+Executable router that loads the ontology and routing matrix,
+then provides:
+  1. Route discovery: given source → find compatible targets
+  2. Workflow validation: validate DSL workflow files
+  3. Capability lookup: find tools by capability
+  4. Path finding: shortest tool chain between two domains
+  5. Redundancy analysis: find alternative tool paths
+
+Usage:
+  python router.py route --from web_search --to knowledge_graph
+  python router.py capability SEARCH
+  python router.py path RESEARCH CODE
+  python router.py validate workflow.yaml
+  python router.py alternatives web_search
+  python router.py clusters
+  python router.py domains
+  python router.py graph
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from collections import defaultdict, deque
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Optional
+
+try:
+    import yaml
+except ImportError:
+    print("PyYAML required: pip install pyyaml", file=sys.stderr)
+    sys.exit(1)
+
+
+# =============================================================================
+# DATA MODELS
+# =============================================================================
+
+
+@dataclass
+class Cluster:
+    id: str
+    domain: str
+    label: str
+    tools: list
+    capabilities: list[str]
+    protocols: list[str]
+    input_types: list[str]
+    output_types: list[str]
+
+
+@dataclass
+class Route:
+    id: str
+    from_cluster: str
+    to_cluster: str
+    data_flow: str
+    protocol: str
+    automatable: bool
+    description: str = ""
+    exemplars: list = field(default_factory=list)
+
+
+@dataclass
+class Alternative:
+    cluster: str
+    tools_ranked: list[str]
+
+
+# =============================================================================
+# ONTOLOGY LOADER
+# =============================================================================
+
+
+class Ontology:
+    """Loads and indexes the tool ontology."""
+
+    def __init__(self, ontology_path: Path):
+        with open(ontology_path) as f:
+            data = yaml.safe_load(f)
+
+        self.taxonomy = data.get("taxonomy", {})
+        self.clusters: dict[str, Cluster] = {}
+        self.relationship_types = data.get("relationship_types", [])
+
+        for c in data.get("clusters", []):
+            cluster = Cluster(
+                id=c["id"],
+                domain=c["domain"],
+                label=c["label"],
+                tools=c.get("tools", []),
+                capabilities=c.get("capabilities", []),
+                protocols=c.get("protocols", []),
+                input_types=c.get("input_types", []),
+                output_types=c.get("output_types", []),
+            )
+            self.clusters[cluster.id] = cluster
+
+        # Build indices
+        self._cap_index: dict[str, list[str]] = defaultdict(list)
+        self._domain_index: dict[str, list[str]] = defaultdict(list)
+        self._protocol_index: dict[str, list[str]] = defaultdict(list)
+
+        for cid, cluster in self.clusters.items():
+            for cap in cluster.capabilities:
+                self._cap_index[cap].append(cid)
+            self._domain_index[cluster.domain].append(cid)
+            for proto in cluster.protocols:
+                self._protocol_index[proto].append(cid)
+
+    def by_capability(self, cap: str) -> list[Cluster]:
+        return [self.clusters[cid] for cid in self._cap_index.get(cap.upper(), [])]
+
+    def by_domain(self, domain: str) -> list[Cluster]:
+        return [self.clusters[cid] for cid in self._domain_index.get(domain.upper(), [])]
+
+    def by_protocol(self, protocol: str) -> list[Cluster]:
+        return [self.clusters[cid] for cid in self._protocol_index.get(protocol.upper(), [])]
+
+    def compatible_targets(self, source_id: str) -> list[tuple[str, str]]:
+        """Find all clusters that can receive data from source.
+
+        Returns list of (target_id, matching_data_type) tuples.
+        """
+        source = self.clusters.get(source_id)
+        if not source:
+            return []
+
+        results = []
+        for tid, target in self.clusters.items():
+            if tid == source_id:
+                continue
+            # Check data type compatibility
+            overlap = set(source.output_types) & set(target.input_types)
+            if overlap:
+                # Check protocol compatibility
+                proto_overlap = set(source.protocols) & set(target.protocols)
+                # MCP and CLI can always bridge via Claude Code
+                bridgeable = {"MCP", "CLI", "FILESYSTEM", "STDIO"}
+                if proto_overlap or (set(source.protocols) & bridgeable and set(target.protocols) & bridgeable):
+                    for dtype in overlap:
+                        results.append((tid, dtype))
+
+        return results
+
+    def domains(self) -> list[dict]:
+        return self.taxonomy.get("domains", [])
+
+    def capabilities(self) -> list[str]:
+        return self.taxonomy.get("capabilities", [])
+
+
+# =============================================================================
+# ROUTING ENGINE
+# =============================================================================
+
+
+class RoutingEngine:
+    """Loads routes and provides path-finding between clusters."""
+
+    def __init__(self, routing_path: Path, ontology: Ontology):
+        with open(routing_path) as f:
+            data = yaml.safe_load(f)
+
+        self.ontology = ontology
+        self.routes: dict[str, Route] = {}
+        self.alternatives: list[Alternative] = []
+
+        for r in data.get("routes", []):
+            route = Route(
+                id=r["id"],
+                from_cluster=r["from"],
+                to_cluster=r["to"],
+                data_flow=r.get("data_flow", ""),
+                protocol=r.get("protocol", ""),
+                automatable=r.get("automatable", True),
+                description=r.get("description", ""),
+                exemplars=r.get("exemplars", []),
+            )
+            self.routes[route.id] = route
+
+        for a in data.get("alternatives", []):
+            self.alternatives.append(
+                Alternative(
+                    cluster=a["cluster"],
+                    tools_ranked=a["tools_ranked"],
+                )
+            )
+
+        self.capability_routing = data.get("capability_routing", {})
+
+        # Build adjacency graph
+        self._adj: dict[str, list[str]] = defaultdict(list)
+        for route in self.routes.values():
+            self._adj[route.from_cluster].append(route.to_cluster)
+
+    def find_routes(self, from_cluster: str, to_cluster: str) -> list[Route]:
+        """Find direct routes between two clusters."""
+        return [
+            r for r in self.routes.values()
+            if r.from_cluster == from_cluster and r.to_cluster == to_cluster
+        ]
+
+    def find_path(self, from_domain: str, to_domain: str) -> list[list[str]]:
+        """BFS to find shortest paths between domains via cluster graph."""
+        from_clusters = [c.id for c in self.ontology.by_domain(from_domain)]
+        to_clusters = set(c.id for c in self.ontology.by_domain(to_domain))
+
+        if not from_clusters or not to_clusters:
+            return []
+
+        paths = []
+        for start in from_clusters:
+            # BFS
+            queue: deque[list[str]] = deque([[start]])
+            visited: set[str] = {start}
+
+            while queue:
+                path = queue.popleft()
+                current = path[-1]
+
+                if current in to_clusters:
+                    paths.append(path)
+                    continue
+
+                if len(path) > 5:  # Max depth
+                    continue
+
+                for neighbor in self._adj.get(current, []):
+                    if neighbor not in visited:
+                        visited.add(neighbor)
+                        queue.append(path + [neighbor])
+
+        # Sort by length
+        paths.sort(key=len)
+        return paths[:5]  # Top 5 shortest
+
+    def get_alternatives(self, cluster_id: str) -> Optional[Alternative]:
+        for alt in self.alternatives:
+            if alt.cluster == cluster_id:
+                return alt
+        return None
+
+    def capability_tools(self, capability: str) -> list[str]:
+        return self.capability_routing.get(capability.upper(), [])
+
+
+# =============================================================================
+# WORKFLOW VALIDATOR
+# =============================================================================
+
+
+class WorkflowValidator:
+    """Validates workflow DSL files against the ontology."""
+
+    def __init__(self, ontology: Ontology, engine: RoutingEngine):
+        self.ontology = ontology
+        self.engine = engine
+
+    def validate(self, workflow_path: Path) -> list[str]:
+        """Validate a workflow file, return list of issues."""
+        with open(workflow_path) as f:
+            data = yaml.safe_load(f)
+
+        issues = []
+
+        # Handle file with examples section
+        workflows = data.get("examples", [data]) if "examples" in data else [data]
+
+        for wf in workflows:
+            name = wf.get("name", "<unnamed>")
+            steps = wf.get("steps", [])
+
+            if not steps:
+                issues.append(f"[{name}] No steps defined")
+                continue
+
+            step_names = set()
+            for step in steps:
+                sname = step.get("name", "<unnamed>")
+
+                # Check uniqueness
+                if sname in step_names:
+                    issues.append(f"[{name}] Duplicate step name: {sname}")
+                step_names.add(sname)
+
+                # Check cluster reference
+                cluster = step.get("cluster")
+                if cluster and cluster not in self.ontology.clusters and cluster != "*":
+                    issues.append(f"[{name}/{sname}] Unknown cluster: {cluster}")
+
+                # Check dependencies
+                deps = step.get("depends_on", [])
+                for dep in deps:
+                    if dep not in step_names:
+                        # Could be forward reference — just warn
+                        pass
+
+                # Check parallel sub-steps
+                parallel = step.get("parallel", [])
+                for psub in parallel:
+                    pname = psub.get("name", "<unnamed>")
+                    pcluster = psub.get("cluster")
+                    if pcluster and pcluster not in self.ontology.clusters:
+                        issues.append(f"[{name}/{sname}/{pname}] Unknown cluster: {pcluster}")
+
+        return issues
+
+
+# =============================================================================
+# CLI
+# =============================================================================
+
+
+def cmd_route(args, ontology: Ontology, engine: RoutingEngine):
+    """Find routes between clusters."""
+    routes = engine.find_routes(args.from_cluster, args.to_cluster)
+
+    if routes:
+        print(f"\n  Direct routes: {args.from_cluster} → {args.to_cluster}\n")
+        for r in routes:
+            print(f"  [{r.id}]")
+            print(f"    Data flow : {r.data_flow}")
+            print(f"    Protocol  : {r.protocol}")
+            print(f"    Auto      : {'yes' if r.automatable else 'NO — human required'}")
+            if r.description:
+                print(f"    Desc      : {r.description}")
+            if r.exemplars:
+                print(f"    Exemplars :")
+                for ex in r.exemplars:
+                    src = ex.get("source", "?")
+                    tgt = ex.get("target", "?")
+                    mid = ex.get("intermediate", "")
+                    chain = f"{src} → {mid} → {tgt}" if mid else f"{src} → {tgt}"
+                    print(f"      {chain}")
+            print()
+    else:
+        print(f"\n  No direct route: {args.from_cluster} → {args.to_cluster}")
+
+        # Check data compatibility
+        compatible = ontology.compatible_targets(args.from_cluster)
+        matching = [(t, d) for t, d in compatible if t == args.to_cluster]
+        if matching:
+            print(f"  But data-type compatible via: {', '.join(d for _, d in matching)}")
+            print(f"  Route could be created.\n")
+        else:
+            print(f"  Not directly data-compatible either.\n")
+
+            # Try to find multi-hop path
+            src_cluster = ontology.clusters.get(args.from_cluster)
+            tgt_cluster = ontology.clusters.get(args.to_cluster)
+            if src_cluster and tgt_cluster:
+                paths = engine.find_path(src_cluster.domain, tgt_cluster.domain)
+                if paths:
+                    print(f"  Multi-hop paths via domain graph:")
+                    for p in paths:
+                        print(f"    {'  →  '.join(p)}")
+                    print()
+
+
+def cmd_capability(args, ontology: Ontology, engine: RoutingEngine):
+    """Find tools by capability."""
+    cap = args.capability.upper()
+    clusters = ontology.by_capability(cap)
+
+    if not clusters:
+        print(f"\n  No clusters with capability: {cap}\n")
+        return
+
+    print(f"\n  Clusters with capability [{cap}]:\n")
+    for c in clusters:
+        tool_count = len(c.tools)
+        print(f"  [{c.id}] {c.label}")
+        print(f"    Domain    : {c.domain}")
+        print(f"    Protocols : {', '.join(c.protocols)}")
+        print(f"    Tools     : {tool_count}")
+        print(f"    I/O       : {', '.join(c.input_types)} → {', '.join(c.output_types)}")
+        print()
+
+    # Show routing-matrix preferred order
+    preferred = engine.capability_tools(cap)
+    if preferred:
+        print(f"  Routing priority for [{cap}]:")
+        for i, cluster_id in enumerate(preferred, 1):
+            label = ontology.clusters[cluster_id].label if cluster_id in ontology.clusters else cluster_id
+            print(f"    {i}. {cluster_id} ({label})")
+        print()
+
+
+def cmd_path(args, ontology: Ontology, engine: RoutingEngine):
+    """Find paths between domains."""
+    paths = engine.find_path(args.from_domain.upper(), args.to_domain.upper())
+
+    if not paths:
+        print(f"\n  No paths found: {args.from_domain} → {args.to_domain}\n")
+        return
+
+    print(f"\n  Paths: {args.from_domain} → {args.to_domain}\n")
+    for i, path in enumerate(paths, 1):
+        labels = []
+        for cid in path:
+            c = ontology.clusters.get(cid)
+            labels.append(f"{cid} ({c.label})" if c else cid)
+        print(f"  Path {i} ({len(path)} hops):")
+        print(f"    {'  →  '.join(labels)}")
+        print()
+
+
+def cmd_validate(args, ontology: Ontology, engine: RoutingEngine):
+    """Validate workflow DSL file."""
+    validator = WorkflowValidator(ontology, engine)
+    path = Path(args.file)
+
+    if not path.exists():
+        print(f"  File not found: {path}", file=sys.stderr)
+        sys.exit(1)
+
+    issues = validator.validate(path)
+
+    if issues:
+        print(f"\n  Validation issues in {path}:\n")
+        for issue in issues:
+            print(f"    ⚠  {issue}")
+        print(f"\n  {len(issues)} issue(s) found.\n")
+        sys.exit(1)
+    else:
+        print(f"\n  ✓ {path} is valid.\n")
+
+
+def cmd_alternatives(args, ontology: Ontology, engine: RoutingEngine):
+    """Show alternative tools for a cluster."""
+    alt = engine.get_alternatives(args.cluster)
+
+    if alt:
+        print(f"\n  Alternatives for [{args.cluster}]:\n")
+        for i, tool in enumerate(alt.tools_ranked, 1):
+            print(f"    {i}. {tool}")
+        print()
+    else:
+        print(f"\n  No defined alternatives for [{args.cluster}]")
+
+        # Show compatible clusters
+        cluster = ontology.clusters.get(args.cluster)
+        if cluster:
+            same_cap = set()
+            for cap in cluster.capabilities:
+                for c in ontology.by_capability(cap):
+                    if c.id != args.cluster:
+                        same_cap.add(c.id)
+            if same_cap:
+                print(f"  Clusters with overlapping capabilities:")
+                for cid in sorted(same_cap):
+                    c = ontology.clusters[cid]
+                    print(f"    - {cid} ({c.label})")
+        print()
+
+
+def cmd_clusters(args, ontology: Ontology, engine: RoutingEngine):
+    """List all clusters."""
+    print(f"\n  {'ID':<30} {'DOMAIN':<20} {'LABEL':<35} {'TOOLS':>5}")
+    print(f"  {'─'*30} {'─'*20} {'─'*35} {'─'*5}")
+    for cid, c in sorted(ontology.clusters.items()):
+        print(f"  {cid:<30} {c.domain:<20} {c.label:<35} {len(c.tools):>5}")
+    print(f"\n  Total: {len(ontology.clusters)} clusters\n")
+
+
+def cmd_domains(args, ontology: Ontology, engine: RoutingEngine):
+    """List all domains with cluster counts."""
+    print(f"\n  {'DOMAIN':<20} {'CLUSTERS':>8}  DESCRIPTION")
+    print(f"  {'─'*20} {'─'*8}  {'─'*40}")
+    for d in ontology.domains():
+        count = len(ontology.by_domain(d["id"]))
+        print(f"  {d['id']:<20} {count:>8}  {d['description']}")
+    print()
+
+
+def cmd_graph(args, ontology: Ontology, engine: RoutingEngine):
+    """Output adjacency list as JSON for external visualization."""
+    graph = {
+        "nodes": [],
+        "edges": [],
+    }
+
+    for cid, c in ontology.clusters.items():
+        graph["nodes"].append({
+            "id": cid,
+            "domain": c.domain,
+            "label": c.label,
+            "capabilities": c.capabilities,
+            "protocols": c.protocols,
+            "tool_count": len(c.tools),
+        })
+
+    for route in engine.routes.values():
+        graph["edges"].append({
+            "id": route.id,
+            "source": route.from_cluster,
+            "target": route.to_cluster,
+            "data_flow": route.data_flow,
+            "automatable": route.automatable,
+        })
+
+    print(json.dumps(graph, indent=2))
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Tool Interaction Router",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=__doc__,
+    )
+
+    base = Path(__file__).parent
+    parser.add_argument(
+        "--ontology",
+        type=Path,
+        default=base / "ontology.yaml",
+        help="Path to ontology.yaml",
+    )
+    parser.add_argument(
+        "--routing",
+        type=Path,
+        default=base / "routing-matrix.yaml",
+        help="Path to routing-matrix.yaml",
+    )
+
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    # route
+    p_route = sub.add_parser("route", help="Find routes between clusters")
+    p_route.add_argument("--from", dest="from_cluster", required=True)
+    p_route.add_argument("--to", dest="to_cluster", required=True)
+
+    # capability
+    p_cap = sub.add_parser("capability", help="Find clusters by capability")
+    p_cap.add_argument("capability", type=str)
+
+    # path
+    p_path = sub.add_parser("path", help="Find paths between domains")
+    p_path.add_argument("from_domain", type=str)
+    p_path.add_argument("to_domain", type=str)
+
+    # validate
+    p_val = sub.add_parser("validate", help="Validate a workflow DSL file")
+    p_val.add_argument("file", type=str)
+
+    # alternatives
+    p_alt = sub.add_parser("alternatives", help="Show alternative tools")
+    p_alt.add_argument("cluster", type=str)
+
+    # clusters
+    sub.add_parser("clusters", help="List all clusters")
+
+    # domains
+    sub.add_parser("domains", help="List all domains")
+
+    # graph
+    sub.add_parser("graph", help="Output graph as JSON")
+
+    args = parser.parse_args()
+
+    # Load data
+    ontology = Ontology(args.ontology)
+    engine = RoutingEngine(args.routing, ontology)
+
+    # Dispatch
+    commands = {
+        "route": cmd_route,
+        "capability": cmd_capability,
+        "path": cmd_path,
+        "validate": cmd_validate,
+        "alternatives": cmd_alternatives,
+        "clusters": cmd_clusters,
+        "domains": cmd_domains,
+        "graph": cmd_graph,
+    }
+
+    commands[args.command](args, ontology, engine)
+
+
+if __name__ == "__main__":
+    main()

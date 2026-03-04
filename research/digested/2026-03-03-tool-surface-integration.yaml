@@ -1,0 +1,476 @@
+# =============================================================================
+# TOOL SURFACE INTEGRATION
+# =============================================================================
+# Maps the 5-document research findings onto the existing tool interaction
+# ontology. This is the bridge between "what the research recommends" and
+# "what tools already exist to do it."
+# =============================================================================
+
+version: "1.0"
+created: "2026-03-03"
+
+# =============================================================================
+# LIFECYCLE PHASE → TOOL CLUSTER MAPPING
+# =============================================================================
+# The synthesized FRAME/SHAPE/BUILD/PROVE lifecycle maps to specific
+# tool clusters from the ontology.
+# =============================================================================
+
+lifecycle_tool_mapping:
+
+  FRAME:
+    metaphor: "Score"
+    artifact: "spec.md + Issue"
+    primary_clusters:
+      - sequential_thinking   # sequentialthinking for reasoning
+      - web_search            # research the problem space
+      - academic_research     # find prior art
+      - documentation         # check library docs
+      - knowledge_graph       # check existing knowledge
+      - knowledge_apps        # check Notion for existing specs
+    ai_role: "Librarian + Architect"
+    ai_models:
+      primary: "Claude (reasoning)"
+      secondary: "Perplexity (research)"
+      tertiary: "Gemini (large context analysis)"
+    tools_sequence:
+      1: "WebSearch / perplexity_research → understand problem domain"
+      2: "Grep / Glob → find related code in existing repos"
+      3: "sequentialthinking → reason about approach"
+      4: "notion-search → check for existing specs"
+      5: "Write → create spec.md"
+      6: "mcp__github__issue_write → create Issue with spec"
+    enforcement:
+      - "CI check: PR must reference an Issue"
+      - "Issue must have [FRAME] or [SCORE] label"
+      - "spec.md must exist in branch before code changes"
+
+  SHAPE:
+    metaphor: "Arrange"
+    artifact: "plan.md + branch + TODO"
+    primary_clusters:
+      - sequential_thinking   # reason about architecture
+      - code_analysis_mcp     # analyze existing code
+      - diagramming           # create architecture diagrams
+      - neon_database          # design schema if needed
+    ai_role: "Architect"
+    ai_models:
+      primary: "Claude (architecture)"
+      secondary: "o3/o4 (critique the plan)"
+    tools_sequence:
+      1: "Agent (Explore) → understand existing codebase"
+      2: "sequentialthinking → design approach"
+      3: "validate_and_render_mermaid_diagram → visualize architecture"
+      4: "Write → create plan.md with numbered steps"
+      5: "Bash → git checkout -b feat/<organ>/<slug>"
+      6: "TaskCreate → create TODO checklist from plan"
+    enforcement:
+      - "plan.md must exist before implementation commits"
+      - "Branch name must match feat/<organ>/<slug> pattern"
+      - "Plan must reference spec.md"
+
+  BUILD:
+    metaphor: "Rehearse"
+    artifact: "Code + tests"
+    primary_clusters:
+      - claude_code_core      # Read/Write/Edit/Grep
+      - code_execution         # run_js, sandbox_exec
+      - code_quality_cli       # lint, format
+      - git_core               # commit in tiny slices
+      - jupyter_notebooks      # for data-oriented work
+    ai_role: "Implementer + Tester"
+    ai_models:
+      primary: "Claude Code (implementation)"
+      secondary: "Copilot (boilerplate)"
+    tools_sequence:
+      1: "Read → understand current code"
+      2: "Edit/Write → implement one function/file at a time"
+      3: "Bash → run tests (pytest/vitest)"
+      4: "code_quality_cli → lint + format"
+      5: "Bash → git add + git commit -m 'build: implement X'"
+      6: "Repeat for each plan.md step"
+    enforcement:
+      - "Commits must use Conventional Commits with phase prefix"
+      - "Each commit should touch minimal files"
+      - "Tests must pass before moving to next step"
+    constraints:
+      - "Three-Prompt Rule: if 3 AI iterations don't work, rewrite spec"
+      - "One file or one function per AI request"
+      - "Never let AI change architecture without returning to SHAPE"
+
+  PROVE:
+    metaphor: "Perform"
+    artifact: "status.md + PR + release"
+    primary_clusters:
+      - code_quality_cli       # final lint/typecheck
+      - security_scanning      # trivy, gitleaks
+      - browser_playwright     # visual testing
+      - browser_chrome         # manual verification
+      - github_platform        # PR + review
+      - vercel_platform        # preview deploy
+      - sentry_monitoring      # check for errors post-deploy
+    ai_role: "Tester + Reviewer"
+    ai_models:
+      primary: "Claude (review)"
+      secondary: "Different model for cross-verification"
+    tools_sequence:
+      1: "security_scanning → trivy + gitleaks scan"
+      2: "code_quality_cli → full lint + typecheck"
+      3: "Bash → full test suite"
+      4: "browser_playwright → E2E test if applicable"
+      5: "Write → update status.md with session notes"
+      6: "github_platform → create PR with governance checklist"
+      7: "vercel_platform → preview deploy for visual check"
+      8: "github_platform → merge when checks pass"
+      9: "Write → update CHANGELOG"
+    enforcement:
+      - "All CI checks must pass"
+      - "PR must include governance gates checklist"
+      - "status.md must be updated"
+      - "If regression: 5-sentence postmortem"
+
+# =============================================================================
+# AI ORCHESTRA SEATING CHART
+# =============================================================================
+# Maps the "AI-conductor" metaphor to concrete tool assignments.
+# This is the "score" that each AI "instrument" plays from.
+# =============================================================================
+
+ai_orchestra:
+
+  sections:
+
+    first_violin:  # Lead melody — primary reasoning
+      role: "Architect / Lead Reasoner"
+      model: "Claude (Opus/Sonnet)"
+      tools: [claude_code_core, sequential_thinking]
+      phases: [FRAME, SHAPE]
+      allowed_actions:
+        - "Analyze requirements"
+        - "Design architecture"
+        - "Critique plans"
+        - "Review code"
+      forbidden_actions:
+        - "Generate boilerplate without spec"
+        - "Change architecture during BUILD phase"
+        - "Touch governance JSON without explicit approval"
+
+    second_violin:  # Supporting melody — implementation
+      role: "Implementer"
+      model: "Claude Code / Copilot"
+      tools: [claude_code_core, code_execution]
+      phases: [BUILD]
+      allowed_actions:
+        - "Write code bounded by plan.md"
+        - "Generate tests"
+        - "Refactor within scope"
+      forbidden_actions:
+        - "Add new dependencies without SHAPE approval"
+        - "Expand scope beyond current plan.md step"
+        - "Skip tests"
+
+    viola:  # Depth — research and context
+      role: "Librarian / Researcher"
+      model: "Perplexity / Gemini"
+      tools: [web_search, academic_research, documentation, wikipedia]
+      phases: [FRAME]
+      allowed_actions:
+        - "Research problem domain"
+        - "Find prior art"
+        - "Fetch documentation"
+        - "Summarize large codebases"
+      forbidden_actions:
+        - "Write code"
+        - "Make architectural decisions"
+
+    cello:  # Foundation — testing and verification
+      role: "Tester / Verifier"
+      model: "Claude (different instance) or alternative model"
+      tools: [code_quality_cli, security_scanning, browser_playwright, code_analysis_mcp]
+      phases: [PROVE]
+      allowed_actions:
+        - "Run tests"
+        - "Security scan"
+        - "Browser testing"
+        - "Cross-verify against spec.md"
+      forbidden_actions:
+        - "Fix code directly (report findings, let Implementer fix)"
+        - "Change specs"
+
+    bass:  # Infrastructure — deployment and monitoring
+      role: "Stage Crew / DevOps"
+      model: "Claude Code (Bash tool)"
+      tools: [container_orchestration, vercel_platform, cloudflare_platform, ci_cd, sentry_monitoring]
+      phases: [PROVE]
+      allowed_actions:
+        - "Deploy to preview"
+        - "Configure CI"
+        - "Monitor post-deploy"
+      forbidden_actions:
+        - "Deploy to production without PROVE completion"
+        - "Modify code"
+
+    percussion:  # Rhythm — task management and tracking
+      role: "Conductor's Baton"
+      model: "Claude Code (built-in)"
+      tools: [task_management, github_platform, knowledge_graph, knowledge_apps]
+      phases: [ALL]
+      allowed_actions:
+        - "Create/update tasks"
+        - "Create/update issues"
+        - "Track progress"
+        - "Update knowledge graph"
+        - "Update Notion"
+      forbidden_actions:
+        - "Write code"
+        - "Make decisions without human approval"
+
+  # Conductor (Human) responsibilities that NO AI should do:
+  conductor_only:
+    - "Decide WHAT to build (FRAME intent)"
+    - "Set WIP limits"
+    - "Approve architecture (SHAPE sign-off)"
+    - "Approve PR merges"
+    - "Decide deployment targets"
+    - "Write 'why' documentation"
+    - "Evaluate AI output quality"
+    - "Declare something DONE"
+
+# =============================================================================
+# WORKFLOW DSL: CANONICAL PIPELINES FROM RESEARCH
+# =============================================================================
+# These workflows should be added to workflow-dsl.yaml
+# =============================================================================
+
+new_workflows:
+
+  - name: frame-shape-build-prove
+    description: "The canonical lifecycle loop from 5-document synthesis"
+    trigger: manual
+    steps:
+      - name: frame
+        cluster: sequential_thinking
+        checkpoint: true  # Human approves scope
+        output: spec
+
+      - name: shape
+        cluster: sequential_thinking
+        input: "${spec}"
+        checkpoint: true  # Human approves architecture
+        output: plan
+
+      - name: build
+        cluster: claude_code_core
+        input: "${plan}"
+        loop:
+          mode: for_each
+          over: "${plan.steps}"
+          step:
+            name: implement_step
+            parallel:
+              - name: code
+                cluster: claude_code_core
+                tool: Edit
+              - name: test
+                cluster: code_execution
+                tool: sandbox_exec
+
+      - name: prove
+        depends_on: [build]
+        parallel:
+          - name: lint
+            cluster: code_quality_cli
+          - name: security
+            cluster: security_scanning
+          - name: visual
+            cluster: browser_playwright
+            on_error: skip
+        output: results
+
+      - name: ship
+        cluster: github_platform
+        tool: create_pull_request
+        depends_on: [prove]
+        condition: "all_passed(prove)"
+        checkpoint: true  # Human approves merge
+
+  - name: research-to-spec
+    description: "Research a problem domain and produce a spec.md"
+    trigger: manual
+    input:
+      problem: string
+    steps:
+      - name: web_research
+        cluster: web_search
+        tool: perplexity_research
+        input: "${input.problem}"
+
+      - name: academic_research
+        cluster: academic_research
+        tool: semanticSearch
+        input: "${input.problem}"
+        on_error: skip
+
+      - name: existing_code
+        cluster: claude_code_core
+        tool: Agent
+        input:
+          type: Explore
+          prompt: "Find code related to: ${input.problem}"
+
+      - name: synthesize
+        cluster: sequential_thinking
+        tool: sequentialthinking
+        input: "Synthesize: ${web_research} + ${academic_research} + ${existing_code}"
+        depends_on: [web_research, academic_research, existing_code]
+        output: synthesis
+
+      - name: write_spec
+        cluster: claude_code_core
+        tool: Write
+        input:
+          file: "spec.md"
+          content: "${synthesis | text}"
+        depends_on: [synthesize]
+        checkpoint: true  # Human reviews spec
+
+  - name: session-ritual
+    description: "D4's 6-step session protocol"
+    trigger: manual
+    input:
+      organ: string
+      repo: string
+      scope: string
+    steps:
+      - name: pick_scope
+        cluster: task_management
+        input: "${input.scope}"
+        output: task
+
+      - name: draft_plan
+        cluster: sequential_thinking
+        input: "Plan for ${input.scope} in ${input.organ}/${input.repo}"
+        output: micro_plan
+
+      - name: critique_plan
+        cluster: claude_code_core
+        input: "Critique this plan, make it smaller: ${micro_plan}"
+        output: refined_plan
+        depends_on: [draft_plan]
+        checkpoint: true  # Human refines
+
+      - name: create_branch
+        cluster: git_core
+        input: "feat/${input.organ}/${input.scope | slug}"
+        depends_on: [critique_plan]
+
+      - name: implement
+        cluster: claude_code_core
+        input: "${refined_plan}"
+        depends_on: [create_branch]
+        loop:
+          mode: for_each
+          over: "${refined_plan.steps}"
+
+      - name: breadcrumb
+        cluster: claude_code_core
+        tool: Write
+        input:
+          file: "status.md"
+          content: "Session ${timestamp}: ${implement.summary}"
+        depends_on: [implement]
+
+      - name: push
+        cluster: git_core
+        input: "git push"
+        depends_on: [breadcrumb]
+
+# =============================================================================
+# NEW ONTOLOGY CLUSTERS TO ADD
+# =============================================================================
+# The research reveals tool capabilities not currently in the ontology.
+# =============================================================================
+
+new_clusters:
+
+  - id: prompt_engineering
+    domain: AI_AGENTS
+    label: "Prompt Architecture & Templates"
+    rationale: "D5 recommends version-controlled prompt templates as commodified assets"
+    tools:
+      - CLAUDE.md files (per-repo AI instructions)
+      - .cursorrules files
+      - agents.yaml (new, per-organ AI role definitions)
+      - spec.md / plan.md / status.md templates
+    capabilities: [CONFIGURE, GENERATE, STORE]
+    protocols: [FILESYSTEM]
+    input_types: [TEXT, YAML]
+    output_types: [TEXT, YAML]
+
+  - id: governance_engine
+    domain: ORCHESTRATION
+    label: "Governance & Registry"
+    rationale: "D1 and D4 identify Taxis/registry as central discipline mechanism"
+    tools:
+      - registry-v2.json
+      - governance-rules.json
+      - seed.yaml contracts
+      - organ-audit.py
+      - validate-deps.py
+      - calculate-metrics.py
+    capabilities: [READ, WRITE, ANALYZE, ORCHESTRATE, CONFIGURE]
+    protocols: [FILESYSTEM, CLI]
+    input_types: [JSON, YAML]
+    output_types: [JSON, TEXT]
+
+  - id: knowledge_management
+    domain: RESEARCH
+    label: "Personal Knowledge Management"
+    rationale: "D2 recommends PARA system; D4 recommends pattern language catalog"
+    tools:
+      - app: Obsidian.app
+      - app: Notion.app
+      - PARA structure (Projects/Areas/Resources/Archives)
+      - pattern catalog (Organvm Patterns)
+    capabilities: [READ, WRITE, SEARCH, STORE, ORGANIZE]
+    protocols: [GUI, FILESYSTEM]
+    input_types: [TEXT, JSON]
+    output_types: [TEXT, JSON]
+
+# =============================================================================
+# NEW ROUTES TO ADD
+# =============================================================================
+
+new_routes:
+
+  - id: governance_to_ci
+    from: governance_engine
+    to: ci_cd
+    data_flow: "JSON → YAML"
+    protocol: "FILESYSTEM → CLI"
+    automatable: true
+    description: "Registry/governance rules drive CI validation"
+
+  - id: prompt_to_code
+    from: prompt_engineering
+    to: claude_code_core
+    data_flow: "TEXT → CODE"
+    protocol: "FILESYSTEM → MCP"
+    automatable: true
+    description: "CLAUDE.md and spec.md configure AI behavior for code generation"
+
+  - id: kg_to_governance
+    from: knowledge_graph
+    to: governance_engine
+    data_flow: "JSON → JSON"
+    protocol: "MCP → FILESYSTEM"
+    automatable: true
+    description: "Knowledge graph entities inform registry updates"
+
+  - id: sentry_to_governance
+    from: sentry_monitoring
+    to: governance_engine
+    data_flow: "JSON → JSON"
+    protocol: "MCP → FILESYSTEM"
+    automatable: true
+    description: "Error rates inform governance metrics and SLO tracking"

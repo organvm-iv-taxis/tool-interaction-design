@@ -1,0 +1,242 @@
+%% =============================================================================
+%% TOOL INTERACTION GRAPH — HIGH-LEVEL DOMAIN VIEW
+%% =============================================================================
+%% Render with: mmdc -i graph.mmd -o graph.svg -t dark
+%% Or use Mermaid Live Editor: https://mermaid.live
+%% =============================================================================
+
+graph TB
+    subgraph ORCHESTRATION["ORCHESTRATION"]
+        CC[Claude Code Core]
+        SK[Skills ×90+]
+        TM[Task Manager]
+        ST[Sequential Thinking]
+        MM[MCP Meta]
+    end
+
+    subgraph AI["AI AGENTS"]
+        CLI_AI[AI CLIs<br/>codex, gemini, goose,<br/>kimi, opencode, pplx]
+        GUI_AI[AI GUIs<br/>ChatGPT, Claude,<br/>Copilot, Perplexity]
+        LOCAL[Local LLM<br/>Ollama, HuggingFace]
+    end
+
+    subgraph RESEARCH["RESEARCH"]
+        WS[Web Search<br/>Perplexity, Tavily,<br/>WebSearch, DDG]
+        WK[Wikipedia]
+        AC[Academic<br/>Scholar, HuggingFace]
+        DOC[Documentation<br/>Library Docs, Context7]
+        WC[Web Content<br/>Fetch, Markdownify]
+        YT[Media Research<br/>YouTube Transcripts]
+    end
+
+    subgraph KNOWLEDGE["KNOWLEDGE"]
+        KG[Knowledge Graph<br/>Entities, Relations]
+        NT[Notion<br/>Pages, Databases]
+        OB[Obsidian / SnippetsLab]
+    end
+
+    subgraph CODE["CODE"]
+        ED[Code Editors<br/>VS Code, Cursor,<br/>Neovim, Xcode]
+        CA[Code Analysis<br/>Python Analyzer,<br/>Security Patterns]
+        CQ[Code Quality<br/>shellcheck, black,<br/>pre-commit]
+        CE[Code Execution<br/>Sandboxes, run_js]
+    end
+
+    subgraph GIT["GIT and SCM"]
+        GC[Git Core<br/>git CLI, MCP git]
+        GE[Git Enhanced<br/>lazygit, delta,<br/>absorb, GitKraken]
+        GH[GitHub Platform<br/>PRs, Issues, Code,<br/>Releases]
+        GS[Git Security<br/>gitleaks, ggshield,<br/>git-secrets]
+    end
+
+    subgraph CLOUD["CLOUD and DEPLOY"]
+        VR[Vercel]
+        CF[Cloudflare<br/>Workers, D1, KV, R2]
+        NL[Netlify]
+        GCP[GCP<br/>gcloud, Firebase]
+        DK[Containers<br/>Docker, kind,<br/>k9s, envoy]
+        TN[Tunnels<br/>ngrok, localtunnel]
+    end
+
+    subgraph DATA["DATA"]
+        NE[Neon Postgres]
+        CFD[Cloudflare Data<br/>D1, KV, R2]
+        DT[Data Tools<br/>jq, yq, gron]
+        JP[Jupyter<br/>Notebooks]
+    end
+
+    subgraph BROWSER["BROWSER"]
+        BC[Chrome Extension<br/>claude-in-chrome]
+        BP[Playwright<br/>Docker MCP]
+        BU[Puppeteer<br/>Docker MCP]
+        BW[Web Browsers<br/>Chrome, Safari]
+    end
+
+    subgraph CREATIVE["CREATIVE"]
+        AU[Audio<br/>Logic Pro, SC,<br/>Pure Data, plugdata]
+        VD[Visual Design<br/>Figma, GIMP,<br/>Blender, TD]
+        VP[Video<br/>FCP, ffmpeg]
+        DG[Diagrams<br/>Mermaid, Three.js]
+        PB[Publishing<br/>Keynote, PDF]
+        GM[Game Dev<br/>Unity]
+    end
+
+    subgraph SECURITY["SECURITY"]
+        SS[Security Scanning<br/>trivy, gitleaks]
+        SE[Sentry<br/>Error Tracking]
+        AU2[Auth & Identity<br/>1Password]
+    end
+
+    subgraph SYSTEM["SYSTEM"]
+        FS[Filesystem<br/>MCP + CLI]
+        PM[Process Mgmt<br/>btop, htop, procs]
+        SH[Shell<br/>zsh, fish, starship,<br/>atuin, iTerm, Warp]
+        SC2[System Config<br/>chezmoi, mise,<br/>direnv, pywal]
+        LV[Link Validation<br/>lychee]
+    end
+
+    subgraph COMMS["COMMUNICATION"]
+        MSG[Messaging<br/>Discord, WhatsApp,<br/>Mail, Slack]
+        JM[Bug Reports<br/>Jam]
+        JOB[Job Search<br/>Indeed]
+        NP[Nonprofit<br/>Benevity]
+    end
+
+    %% =========================================================================
+    %% CORE ORCHESTRATION CONNECTIONS
+    %% =========================================================================
+
+    CC -->|"Agent/Skill"| SK
+    CC -->|"TaskCreate"| TM
+    CC -->|"MCP"| MM
+    CC -->|"plan"| ST
+    SK -->|"invoke"| CC
+
+    %% Orchestration → Everything
+    CC -.->|"Read/Write/Edit"| FS
+    CC -.->|"Bash"| SH
+    CC -.->|"Grep/Glob"| CODE
+    CC -.->|"WebSearch"| WS
+    CC -.->|"WebFetch"| WC
+    CC -.->|"ToolSearch"| MM
+
+    %% =========================================================================
+    %% RESEARCH → KNOWLEDGE PIPELINE
+    %% =========================================================================
+
+    WS -->|"results"| KG
+    WS -->|"results"| NT
+    WK -->|"articles"| KG
+    AC -->|"papers"| KG
+    DOC -->|"docs"| KG
+    WC -->|"content"| KG
+    YT -->|"transcripts"| KG
+    KG <-->|"sync"| NT
+
+    %% =========================================================================
+    %% CODE → GIT → DEPLOY PIPELINE
+    %% =========================================================================
+
+    ED -->|"save"| FS
+    CA -->|"findings"| CC
+    CQ -->|"lint"| GC
+    CE -->|"test"| GC
+    CC -->|"edits"| GC
+    GC -->|"push"| GH
+    GH -->|"merge"| VR
+    GH -->|"merge"| CF
+    GH -->|"merge"| NL
+    GH -->|"merge"| GCP
+
+    %% =========================================================================
+    %% DESIGN → CODE PIPELINE
+    %% =========================================================================
+
+    VD -->|"design context"| CC
+    DG -->|"diagrams"| CC
+    CC -->|"generate"| DG
+
+    %% =========================================================================
+    %% TESTING PIPELINE
+    %% =========================================================================
+
+    CC -->|"test"| BC
+    CC -->|"test"| BP
+    CC -->|"test"| BU
+    CC -->|"test"| CE
+
+    %% =========================================================================
+    %% ERROR RESOLUTION
+    %% =========================================================================
+
+    SE -->|"issue"| CC
+    JM -->|"bug"| CC
+    SE -->|"alert"| GH
+    JM -->|"report"| GH
+
+    %% =========================================================================
+    %% SECURITY PIPELINE
+    %% =========================================================================
+
+    GS -->|"scan"| GH
+    SS -->|"findings"| GH
+    SS -->|"audit"| CC
+
+    %% =========================================================================
+    %% DATA PIPELINE
+    %% =========================================================================
+
+    NE <-->|"SQL"| CC
+    CFD <-->|"queries"| CC
+    JP <-->|"cells"| CC
+    DT -->|"transform"| CC
+    NE -->|"schema"| CC
+
+    %% =========================================================================
+    %% CONTAINER PIPELINE
+    %% =========================================================================
+
+    DK -->|"deploy"| VR
+    DK -->|"images"| GCP
+    DK -->|"logs"| PM
+
+    %% =========================================================================
+    %% CROSS-DOMAIN BRIDGES
+    %% =========================================================================
+
+    DOC -.->|"inform"| CC
+    NT -.->|"specs"| CC
+    CLI_AI -.->|"generate"| CC
+    LOCAL -.->|"inference"| CC
+
+    %% =========================================================================
+    %% STYLING
+    %% =========================================================================
+
+    classDef orchestration fill:#6366f1,stroke:#4f46e5,color:#fff
+    classDef ai fill:#8b5cf6,stroke:#7c3aed,color:#fff
+    classDef research fill:#3b82f6,stroke:#2563eb,color:#fff
+    classDef knowledge fill:#06b6d4,stroke:#0891b2,color:#fff
+    classDef code fill:#10b981,stroke:#059669,color:#fff
+    classDef git fill:#f59e0b,stroke:#d97706,color:#fff
+    classDef cloud fill:#ec4899,stroke:#db2777,color:#fff
+    classDef data fill:#14b8a6,stroke:#0d9488,color:#fff
+    classDef browser fill:#f97316,stroke:#ea580c,color:#fff
+    classDef creative fill:#a855f7,stroke:#9333ea,color:#fff
+    classDef security fill:#ef4444,stroke:#dc2626,color:#fff
+    classDef system fill:#64748b,stroke:#475569,color:#fff
+    classDef comms fill:#22d3ee,stroke:#06b6d4,color:#fff
+
+    class CC,SK,TM,ST,MM orchestration
+    class CLI_AI,GUI_AI,LOCAL ai
+    class WS,WK,AC,DOC,WC,YT research
+    class KG,NT,OB knowledge
+    class ED,CA,CQ,CE code
+    class GC,GE,GH,GS git
+    class VR,CF,NL,GCP,DK,TN cloud
+    class NE,CFD,DT,JP data
+    class BC,BP,BU,BW browser
+    class AU,VD,VP,DG,PB,GM creative
+    class SS,SE,AU2 security
+    class FS,PM,SH,SC2,LV system
+    class MSG,JM,JOB,NP comms

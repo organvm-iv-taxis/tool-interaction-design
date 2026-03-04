@@ -1,0 +1,696 @@
+# =============================================================================
+# WORKFLOW DSL SPECIFICATION v1.0
+# =============================================================================
+# A YAML-based domain-specific language for composing tool interactions.
+# Workflows define multi-step, multi-tool pipelines with data flow,
+# parallelism, conditionals, error handling, and human checkpoints.
+# =============================================================================
+
+version: "1.0"
+created: "2026-03-03"
+
+# =============================================================================
+# SPECIFICATION
+# =============================================================================
+
+spec:
+
+  # ---------------------------------------------------------------------------
+  # PRIMITIVES
+  # ---------------------------------------------------------------------------
+
+  primitives:
+
+    pipe:
+      description: "Sequential data flow — output of step N feeds input of step N+1"
+      symbol: "|>"
+      example: "search |> extract |> store"
+
+    fan_out:
+      description: "Parallel execution — one input spawns multiple concurrent steps"
+      symbol: "=>"
+      constraint: "All branches receive same input; no inter-branch data deps"
+
+    fan_in:
+      description: "Merge parallel results into a single output"
+      symbol: "<="
+      strategies:
+        - merge_all      # Concatenate all results
+        - first_success  # Take first non-error result
+        - vote           # Majority/consensus
+        - select         # Pick by predicate
+
+    gate:
+      description: "Conditional routing — execute step only if condition met"
+      symbol: "?>"
+      conditions:
+        - success        # Previous step succeeded
+        - failure        # Previous step failed
+        - output_matches # Output matches predicate
+        - approval       # Human approved
+        - timeout        # Time-based
+
+    loop:
+      description: "Iterate until condition met"
+      symbol: "@>"
+      modes:
+        - for_each       # Over collection
+        - until          # Until predicate
+        - retry          # On failure, up to N times
+
+    fallback:
+      description: "Try alternatives on failure"
+      symbol: "!>"
+      behavior: "Try next alternative when current fails"
+
+    checkpoint:
+      description: "Human-in-the-loop pause point"
+      symbol: "||"
+      actions:
+        - approve        # User approves to continue
+        - modify         # User modifies data before continuing
+        - abort          # User cancels workflow
+        - redirect       # User picks alternative path
+
+    emit:
+      description: "Output data to external sink"
+      symbol: ">>"
+      sinks:
+        - file           # Write to filesystem
+        - github         # Post to GitHub (issue, PR, comment)
+        - notion         # Create Notion page
+        - knowledge      # Store in knowledge graph
+        - stdout         # Display to user
+
+  # ---------------------------------------------------------------------------
+  # STEP SCHEMA
+  # ---------------------------------------------------------------------------
+
+  step:
+    required:
+      name: string           # Unique identifier within workflow
+      cluster: string        # Ontology cluster ID (e.g., "web_search")
+    optional:
+      tool: string           # Specific tool override (e.g., "perplexity_research")
+      input: expression      # Input data — reference, literal, or transform
+      output: binding        # Named output for downstream reference
+      depends_on: [string]   # Step names that must complete first
+      condition: expression  # Gate condition
+      on_error: strategy     # fallback | abort | retry(n) | skip | ask
+      timeout: duration      # Max execution time
+      parallel: [step]       # Fan-out sub-steps
+      loop: loop_config      # Iteration config
+      checkpoint: bool       # Require human approval
+      metadata: object       # Arbitrary annotations
+
+  # ---------------------------------------------------------------------------
+  # EXPRESSION LANGUAGE
+  # ---------------------------------------------------------------------------
+
+  expressions:
+
+    references:
+      - "${step_name}"                    # Full output of a step
+      - "${step_name.field}"              # Nested field access
+      - "${step_name[0]}"                # Array indexing
+      - "${step_name | transform}"        # Piped transform
+
+    transforms:
+      - "json"          # Parse as JSON
+      - "text"          # Convert to plain text
+      - "lines"         # Split into array of lines
+      - "first"         # First element
+      - "last"          # Last element
+      - "count"         # Length/count
+      - "flatten"       # Flatten nested arrays
+      - "unique"        # Deduplicate
+      - "sort"          # Sort
+      - "filter(pred)"  # Filter by predicate
+      - "map(expr)"     # Transform each element
+      - "join(sep)"     # Join array to string
+      - "take(n)"       # First N elements
+      - "summary"       # AI-generated summary
+
+    literals:
+      - "'string literal'"
+      - "42"
+      - "true"
+      - "[1, 2, 3]"
+      - "{key: value}"
+
+    predicates:
+      - "exists(field)"       # Field is non-null
+      - "empty(field)"        # Field is empty/null
+      - "matches(field, re)"  # Regex match
+      - "gt(field, n)"        # Greater than
+      - "contains(field, s)"  # String contains
+      - "all_passed(step)"    # All parallel branches passed
+      - "any_passed(step)"    # At least one branch passed
+
+  # ---------------------------------------------------------------------------
+  # WORKFLOW SCHEMA
+  # ---------------------------------------------------------------------------
+
+  workflow:
+    required:
+      name: string
+      version: string
+      steps: [step]
+    optional:
+      description: string
+      trigger: trigger_config
+      input: object           # Workflow-level input parameters
+      output: expression      # Final workflow output
+      on_error: strategy      # Workflow-level error handling
+      tags: [string]
+      timeout: duration
+      concurrency: integer    # Max parallel steps
+
+  trigger_config:
+    types:
+      - manual               # Invoked explicitly
+      - schedule             # Cron expression
+      - event                # On file change, git push, etc.
+      - webhook              # External HTTP trigger
+      - chain                # Triggered by another workflow
+
+# =============================================================================
+# EXAMPLE WORKFLOWS
+# =============================================================================
+
+examples:
+
+  # ---------------------------------------------------------------------------
+  # 1. RESEARCH → KNOWLEDGE PIPELINE
+  # ---------------------------------------------------------------------------
+
+  - name: research-ingest
+    version: "1.0"
+    description: "Research a topic and store findings in knowledge graph + Notion"
+    input:
+      topic: string
+      depth: "shallow | medium | deep"
+
+    steps:
+      - name: search_web
+        cluster: web_search
+        tool: perplexity_research
+        input: "${input.topic}"
+        output: web_results
+
+      - name: search_academic
+        cluster: academic_research
+        tool: semanticSearch
+        input: "${input.topic}"
+        output: academic_results
+
+      - name: search_wikipedia
+        cluster: wikipedia
+        tool: search_wikipedia
+        input: "${input.topic}"
+        output: wiki_results
+
+      # fan_out: all three searches run in parallel
+      # fan_in: merge results
+
+      - name: extract_facts
+        cluster: web_content
+        tool: extract_key_facts
+        input: "${web_results | text}"
+        output: facts
+        depends_on: [search_web, search_academic, search_wikipedia]
+
+      - name: store_kg
+        cluster: knowledge_graph
+        tool: create_entities
+        input: "${facts | json}"
+        depends_on: [extract_facts]
+
+      - name: store_notion
+        cluster: knowledge_apps
+        tool: "notion-create-pages"
+        input:
+          title: "Research: ${input.topic}"
+          content: "${facts | text}"
+        depends_on: [extract_facts]
+
+      - name: create_relations
+        cluster: knowledge_graph
+        tool: create_relations
+        input: "${store_kg}"
+        depends_on: [store_kg]
+
+    output: "${store_kg}"
+
+  # ---------------------------------------------------------------------------
+  # 2. FULL DEVELOPMENT PIPELINE
+  # ---------------------------------------------------------------------------
+
+  - name: feature-dev-pipeline
+    version: "1.0"
+    description: "Full feature development: plan → code → test → review → deploy"
+    input:
+      feature_spec: string
+      repo: string
+      branch_name: string
+
+    steps:
+      - name: plan
+        cluster: sequential_thinking
+        tool: sequentialthinking
+        input: "${input.feature_spec}"
+        output: plan
+        checkpoint: true  # Human reviews plan
+
+      - name: create_branch
+        cluster: git_core
+        input: "${input.branch_name}"
+        depends_on: [plan]
+
+      - name: implement
+        cluster: claude_code_core
+        input:
+          plan: "${plan}"
+          files: "${plan.files_to_modify}"
+        output: code_changes
+        depends_on: [create_branch]
+
+      - name: quality_check
+        depends_on: [implement]
+        parallel:
+          - name: lint
+            cluster: code_quality_cli
+            input: "${code_changes.files}"
+
+          - name: type_check
+            cluster: code_execution
+            input: "${code_changes.files}"
+
+          - name: security_scan
+            cluster: security_scanning
+            tool: trivy
+            input: "${code_changes.files}"
+
+          - name: test
+            cluster: code_execution
+            tool: sandbox_exec
+            input: "npm test"
+
+      - name: commit
+        cluster: git_core
+        input: "${code_changes}"
+        condition: "all_passed(quality_check)"
+        depends_on: [quality_check]
+
+      - name: create_pr
+        cluster: github_platform
+        tool: create_pull_request
+        input:
+          title: "${input.feature_spec | summary}"
+          body: "${plan | text}"
+          branch: "${input.branch_name}"
+        depends_on: [commit]
+        output: pr
+
+      - name: browser_test
+        cluster: browser_playwright
+        tool: browser_navigate
+        input: "${pr.preview_url}"
+        depends_on: [create_pr]
+        checkpoint: true  # Human verifies visually
+
+      - name: deploy
+        cluster: vercel_platform
+        tool: deploy_to_vercel
+        depends_on: [browser_test]
+        condition: "approval(browser_test)"
+        on_error: "ask"
+
+    output: "${deploy}"
+
+  # ---------------------------------------------------------------------------
+  # 3. BUG FIX FROM SENTRY
+  # ---------------------------------------------------------------------------
+
+  - name: sentry-bug-fix
+    version: "1.0"
+    description: "Sentry issue → root cause → fix → PR"
+    input:
+      issue_id: string
+
+    steps:
+      - name: get_issue
+        cluster: sentry_monitoring
+        tool: get_issue_details
+        input: "${input.issue_id}"
+        output: issue
+
+      - name: analyze
+        cluster: sentry_monitoring
+        tool: analyze_issue_with_seer
+        input: "${input.issue_id}"
+        output: analysis
+        depends_on: [get_issue]
+
+      - name: find_code
+        cluster: claude_code_core
+        tool: Grep
+        input: "${analysis.suspected_file}:${analysis.suspected_function}"
+        output: source_code
+        depends_on: [analyze]
+
+      - name: fix
+        cluster: claude_code_core
+        tool: Edit
+        input:
+          file: "${analysis.suspected_file}"
+          issue: "${analysis.root_cause}"
+        output: fix
+        depends_on: [find_code]
+        checkpoint: true  # Human reviews fix
+
+      - name: test
+        cluster: code_execution
+        tool: sandbox_exec
+        input: "npm test"
+        depends_on: [fix]
+
+      - name: commit_and_pr
+        cluster: github_platform
+        tool: create_pull_request
+        input:
+          title: "fix: ${issue.title}"
+          body: "Fixes ${input.issue_id}\n\n${analysis.root_cause}"
+        depends_on: [test]
+        condition: "success(test)"
+
+      - name: update_sentry
+        cluster: sentry_monitoring
+        tool: update_issue
+        input:
+          status: resolved
+          assignee: me
+        depends_on: [commit_and_pr]
+
+    output: "${commit_and_pr}"
+
+  # ---------------------------------------------------------------------------
+  # 4. DESIGN-TO-CODE PIPELINE
+  # ---------------------------------------------------------------------------
+
+  - name: figma-to-deploy
+    version: "1.0"
+    description: "Figma design → code → test → deploy"
+    input:
+      figma_url: string
+      target_path: string
+
+    steps:
+      - name: get_design
+        cluster: visual_design
+        tool: get_design_context
+        input:
+          fileKey: "${input.figma_url | extract_file_key}"
+          nodeId: "${input.figma_url | extract_node_id}"
+        output: design
+
+      - name: get_screenshot
+        cluster: visual_design
+        tool: get_screenshot
+        input:
+          fileKey: "${input.figma_url | extract_file_key}"
+          nodeId: "${input.figma_url | extract_node_id}"
+        output: screenshot
+
+      - name: generate_code
+        cluster: claude_code_core
+        tool: Write
+        input:
+          design: "${design}"
+          screenshot: "${screenshot}"
+          target: "${input.target_path}"
+        output: code
+        depends_on: [get_design, get_screenshot]
+
+      - name: visual_test
+        cluster: browser_chrome
+        tool: navigate
+        input: "http://localhost:3000${input.target_path}"
+        depends_on: [generate_code]
+
+      - name: compare
+        cluster: browser_chrome
+        tool: gif_creator
+        input: "side-by-side comparison"
+        depends_on: [visual_test]
+        checkpoint: true  # Human compares Figma vs implementation
+
+      - name: deploy
+        cluster: vercel_platform
+        tool: deploy_to_vercel
+        depends_on: [compare]
+        condition: "approval(compare)"
+
+    output: "${deploy}"
+
+  # ---------------------------------------------------------------------------
+  # 5. MULTI-AGENT RESEARCH SWARM
+  # ---------------------------------------------------------------------------
+
+  - name: research-swarm
+    version: "1.0"
+    description: "Parallel multi-source research with synthesis"
+    input:
+      question: string
+
+    steps:
+      - name: decompose
+        cluster: sequential_thinking
+        tool: sequentialthinking
+        input: "Break '${input.question}' into 3-5 sub-questions"
+        output: sub_questions
+
+      - name: research
+        depends_on: [decompose]
+        loop:
+          mode: for_each
+          over: "${sub_questions}"
+          as: sq
+          step:
+            name: "research_${sq.index}"
+            parallel:
+              - name: web
+                cluster: web_search
+                tool: perplexity_research
+                input: "${sq.value}"
+
+              - name: academic
+                cluster: academic_research
+                tool: semanticSearch
+                input: "${sq.value}"
+
+              - name: docs
+                cluster: documentation
+                tool: "get-library-docs"
+                input: "${sq.value}"
+                on_error: skip
+
+        output: all_research
+
+      - name: synthesize
+        cluster: claude_code_core
+        tool: Agent
+        input:
+          type: general-purpose
+          prompt: "Synthesize: ${all_research | flatten | text}"
+        output: synthesis
+        depends_on: [research]
+
+      - name: store
+        depends_on: [synthesize]
+        parallel:
+          - name: to_kg
+            cluster: knowledge_graph
+            tool: create_entities
+            input: "${synthesis | json}"
+
+          - name: to_notion
+            cluster: knowledge_apps
+            tool: "notion-create-pages"
+            input:
+              title: "Research: ${input.question}"
+              content: "${synthesis | text}"
+
+    output: "${synthesize}"
+
+  # ---------------------------------------------------------------------------
+  # 6. CONTINUOUS MONITORING & RESPONSE
+  # ---------------------------------------------------------------------------
+
+  - name: monitor-respond
+    version: "1.0"
+    description: "Monitor deployment health, auto-respond to issues"
+    trigger:
+      type: schedule
+      cron: "*/15 * * * *"  # Every 15 minutes
+
+    steps:
+      - name: check_sentry
+        cluster: sentry_monitoring
+        tool: search_issues
+        input:
+          query: "is:unresolved level:error"
+          sort: date
+        output: new_errors
+
+      - name: check_vercel
+        cluster: vercel_platform
+        tool: get_runtime_logs
+        input:
+          filter: "error"
+        output: runtime_errors
+
+      - name: triage
+        cluster: sequential_thinking
+        tool: sequentialthinking
+        input: "Triage: ${new_errors} + ${runtime_errors}"
+        output: triage_result
+        depends_on: [check_sentry, check_vercel]
+        condition: "gt(new_errors | count, 0)"
+
+      - name: alert
+        cluster: github_platform
+        tool: issue_write
+        input:
+          title: "Auto-triage: ${triage_result.severity} issues detected"
+          body: "${triage_result | text}"
+        depends_on: [triage]
+        condition: "matches(triage_result.severity, 'critical|high')"
+
+    output: "${triage_result}"
+
+  # ---------------------------------------------------------------------------
+  # 7. DOCUMENTATION GENERATION
+  # ---------------------------------------------------------------------------
+
+  - name: auto-document
+    version: "1.0"
+    description: "Generate comprehensive docs from codebase"
+    input:
+      repo_path: string
+      output_format: "markdown | notion | pdf"
+
+    steps:
+      - name: scan_structure
+        cluster: claude_code_core
+        tool: Agent
+        input:
+          type: Explore
+          prompt: "Map the architecture of ${input.repo_path}"
+        output: architecture
+
+      - name: analyze_code
+        cluster: code_analysis_mcp
+        tool: analyze_python_package
+        input: "${input.repo_path}"
+        output: analysis
+        on_error: skip  # Not all repos are Python
+
+      - name: generate_docs
+        cluster: claude_code_core
+        tool: Agent
+        input:
+          type: general-purpose
+          prompt: "Generate documentation from: ${architecture} + ${analysis}"
+        output: docs
+        depends_on: [scan_structure, analyze_code]
+
+      - name: create_diagrams
+        cluster: diagramming
+        tool: validate_and_render_mermaid_diagram
+        input: "${architecture.component_graph}"
+        output: diagrams
+        depends_on: [scan_structure]
+
+      - name: emit
+        depends_on: [generate_docs, create_diagrams]
+        parallel:
+          - name: to_files
+            condition: "matches(input.output_format, 'markdown')"
+            cluster: claude_code_core
+            tool: Write
+            input: "${docs | text}"
+
+          - name: to_notion
+            condition: "matches(input.output_format, 'notion')"
+            cluster: knowledge_apps
+            tool: "notion-create-pages"
+            input: "${docs | json}"
+
+          - name: to_pdf
+            condition: "matches(input.output_format, 'pdf')"
+            cluster: publishing
+            tool: write_pdf
+            input: "${docs | text}"
+
+    output: "${emit}"
+
+# =============================================================================
+# DSL EXECUTION SEMANTICS
+# =============================================================================
+
+execution:
+
+  step_lifecycle:
+    - PENDING      # Waiting for dependencies
+    - BLOCKED      # Dependencies not yet met
+    - READY        # All dependencies satisfied
+    - RUNNING      # Currently executing
+    - CHECKPOINT   # Waiting for human approval
+    - COMPLETED    # Finished successfully
+    - FAILED       # Finished with error
+    - SKIPPED      # Skipped due to condition
+
+  error_strategies:
+    abort:
+      description: "Stop entire workflow"
+      cascade: true
+
+    retry:
+      description: "Retry step up to N times"
+      params: [max_retries, backoff]
+
+    fallback:
+      description: "Try alternative tool/cluster"
+      params: [alternatives]
+
+    skip:
+      description: "Skip step, continue workflow"
+      cascade: false
+
+    ask:
+      description: "Pause and ask human for guidance"
+      uses: AskUserQuestion
+
+  data_passing:
+    between_steps: "Named bindings via output/input references"
+    serialization: "JSON by default, TEXT for display"
+    max_payload: "10MB per step output"
+
+  concurrency:
+    default_max: 4
+    per_protocol:
+      MCP: 8         # MCP tools are non-blocking
+      CLI: 4         # Bash processes (RAM constrained, 16GB)
+      BROWSER_AUTO: 2  # Browser instances are heavy
+      API: 6         # HTTP connections
+    note: "Respect 16GB RAM constraint — avoid >4 parallel heavy processes"
+
+  timeouts:
+    default: "120s"
+    per_cluster:
+      web_search: "30s"
+      code_analysis_mcp: "60s"
+      browser_chrome: "30s"
+      container_orchestration: "300s"
+      neon_database: "30s"

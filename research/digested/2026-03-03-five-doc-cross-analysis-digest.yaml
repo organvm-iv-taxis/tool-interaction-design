@@ -1,0 +1,555 @@
+# =============================================================================
+# FIVE-DOCUMENT CROSS-ANALYSIS DIGEST
+# =============================================================================
+# Full ingestion and synthesis of 5 research documents on AI-conductor
+# software development methodology for the meta-organvm eight-organ system.
+# =============================================================================
+
+version: "1.0"
+created: "2026-03-03"
+
+# =============================================================================
+# DOCUMENT INVENTORY
+# =============================================================================
+
+documents:
+
+  - id: D1
+    filename: "deep-research-report.md"
+    source: "Claude Deep Research"
+    length: "~583 lines"
+    focus: "Repo audit of actual meta-organvm + SDLC mapping + roadmap"
+    unique_strength: "Ground-truth analysis of what already exists in the system"
+
+  - id: D2
+    filename: "compass_artifact_*.md"
+    source: "ChatGPT (Compass)"
+    length: "~122 lines"
+    focus: "Shipping discipline, vibe coding limits, business models, triple-serving, 50-hour roadmap"
+    unique_strength: "External market intelligence + monetization playbook"
+
+  - id: D3
+    filename: "I am undisciplined...procedu.md"
+    source: "Perplexity (run 1)"
+    length: "~260 lines"
+    focus: "Rhetorician's Development Framework, 3-phase commodification, 30-day plan"
+    unique_strength: "Captures/canonicalizes/systematizes pipeline + metrics"
+
+  - id: D4
+    filename: "I am undisciplined...procedu (1).md"
+    source: "Perplexity (run 2)"
+    length: "~302 lines"
+    focus: "Frame/Shape/Build/Prove loop, session protocols, Taxis as discipline engine"
+    unique_strength: "Most operationally concrete session-level ritual"
+
+  - id: D5
+    filename: "AI Conductor's Software Development Growth.md"
+    source: "ChatGPT (Academic)"
+    length: "~55KB / ~1,100 lines"
+    focus: "Enterprise governance, rhetorical theory, multi-agent frameworks, MCP, GraphRAG"
+    unique_strength: "Enterprise infrastructure + formal rhetorical epistemology"
+
+# =============================================================================
+# UNANIMOUS CONSENSUS (All 5 agree)
+# =============================================================================
+
+unanimous:
+
+  - id: U1
+    claim: "The rhetorician/AI-conductor approach is a STRENGTH, not a deficiency"
+    evidence:
+      D1: "Your meta-organvm ecosystem already contains an unusually rich 'process-as-product' substrate"
+      D2: "Non-traditional background is the asset, not the liability"
+      D3: "Your approach as an 'AI-conductor' isn't naiveté—it's emergent methodology (SE 3.0)"
+      D4: "Your naiveté is no longer a bug; it is the source of your style"
+      D5: "The rhetorician has a structural advantage because the primary mechanism is now semantic articulation"
+    implication: "Stop apologizing. Formalize the methodology."
+
+  - id: U2
+    claim: "You need a MINIMAL canonical lifecycle, not a heavyweight one"
+    evidence:
+      D1: "The gap is not absence of process but translation into canonical SDLC-shaped primitives"
+      D2: "Use PARA for knowledge, Personal Kanban for work, Shape Up appetite for scoping"
+      D3: "Shrink to decision points, not comprehensive coverage"
+      D4: "4-step personal loop: Frame, Shape, Build, Prove"
+      D5: "AI generation must be bound by a highly structured, human-centered AI-Enabled SDLC"
+    implication: "Adopt ONE loop. All five propose variants of the same 3-5 step cycle."
+
+  - id: U3
+    claim: "WIP limits are critical — the labyrinth comes from too many concurrent threads"
+    evidence:
+      D1: "Kanban flow for multi-repo orchestration + WIP control"
+      D2: "Personal Kanban's WIP limit is the crucial mechanism: cap how many things can be in progress"
+      D3: "Single-Session Scope Limit: define 'what ONE thing am I shipping today?'"
+      D4: "At most 3 CANDIDATE efforts across the whole system; at most 1 PUBLIC_PROCESS per organ"
+      D5: "Forbid monolithic prompts; use node-based architectures (one function/step at a time)"
+    implication: "Enforce WIP limits in registry and session protocol."
+
+  - id: U4
+    claim: "Different AI models should serve different ROLES, not be used interchangeably"
+    evidence:
+      D1: "Not explicitly stated but implied by tiered CI and review workflows"
+      D2: "Multi-model ensemble: Claude for conversation/coding, o3 for reasoning, Gemini for large context"
+      D3: "Parallel Verification: Ask 2+ AIs to critique each other"
+      D4: "Architect, Implementer, Tester, Librarian — different 'chairs' for the same model"
+      D5: "Orchestrator-Worker paradigm: central orchestrator delegates to specialized workers"
+    implication: "Formalize AI role assignments per lifecycle phase."
+
+  - id: U5
+    claim: "The process itself is a commodifiable product"
+    evidence:
+      D1: "Productize by extracting seed contracts, schema-driven governance, docs-first workflows"
+      D2: "Productized consulting $2K-$15K; cohort courses $50-$1,500/student; YouTube+newsletter funnel"
+      D3: "Internal Product → External Value → Research Contribution"
+      D4: "Organvm Patterns as pattern catalog → book → course → consulting playbook"
+      D5: "Identify 20% of workflows that solve 80% of friction and automate relentlessly"
+    implication: "Package templates, playbooks, and the method itself as offerings."
+
+  - id: U6
+    claim: "Automated enforcement beats willpower — turn discipline into defaults"
+    evidence:
+      D1: "Use org-wide rulesets/branch protection + required status checks + CODEOWNERS"
+      D2: "GitHub Actions makes CI a single YAML file; commit working versions before AI changes"
+      D3: "CI gates, structured issue forms encode governance automatically"
+      D4: "Add CI checks that fail if repo is missing README sections; automate breadcrumbs"
+      D5: "Strict guardrails: inline (blocking) and async (advisory) AI validators in CI/CD"
+    implication: "Every recommendation that says 'remember to do X' should become a CI check."
+
+  - id: U7
+    claim: "Trunk-based development with short-lived branches"
+    evidence:
+      D1: "Trunk-based development complements CI; squash-merge"
+      D2: "Always commit working versions to Git before asking AI to make changes"
+      D3: "Create branch, work in tiny testable slices, commit with phase verbs"
+      D4: "Create branch: feat/<organ>/<short-slug>"
+      D5: "Incremental bite-sized generation bounded by plan.md"
+    implication: "Standardize branch naming and squash-merge across all repos."
+
+  - id: U8
+    claim: "Document WHY, not WHAT — intent over implementation"
+    evidence:
+      D1: "Micro-spec in Issue: Outcome, Non-goals, Acceptance checks, Risk, Rollback"
+      D2: "AI generates 'how,' you generate 'why'"
+      D3: "Mandatory 'Why' Documentation before writing code"
+      D4: "Leave a breadcrumb: what was done, what is next, where it sits in promotion"
+      D5: "spec.md as absolute source of truth; status.md as ephemeral session log"
+    implication: "Every commit, PR, and session log must answer 'why' first."
+
+  - id: U9
+    claim: "Small changes, fast feedback, fast CI"
+    evidence:
+      D1: "Keep a strict rule: 'if it's slow, it's optional'"
+      D2: "The CHAOS Report found small projects are 9× more likely to succeed"
+      D3: "Three-Prompt Rule: if you can't get it in 3 iterations, you haven't specified clearly"
+      D4: "Work in tiny, testable slices; one file or one function at a time"
+      D5: "Forbid monolithic prompts; node-based architectures"
+    implication: "One PR = one idea. CI pipeline under 10 minutes."
+
+  - id: U10
+    claim: "The organvm organ model maps naturally to bounded contexts (DDD)"
+    evidence:
+      D1: "Strategic DDD: organs as bounded contexts; schema-definitions as 'published language'"
+      D2: "Not explicitly DDD, but 'each organ resembles a domain' implicitly"
+      D3: "Organ-as-Stage Model maps organs to SDLC phases"
+      D4: "Treat the 8 organs as your role system with explicit responsibilities"
+      D5: "Grouping organizations based on shared governance and security requirements"
+    implication: "Each organ has its own ubiquitous language, schema contracts, and API boundaries."
+
+# =============================================================================
+# STRONG MAJORITY (4 of 5 agree)
+# =============================================================================
+
+strong_majority:
+
+  - id: M1
+    claim: "Kanban is the best-fit methodology for multi-repo orchestration"
+    agree: [D1, D2, D3, D4]
+    absent: D5  # D5 focuses on enterprise governance; doesn't discuss Kanban vs Scrum
+    resolution: "Adopt. D5's enterprise governance layer sits above methodology choice."
+
+  - id: M2
+    claim: "Shape Up's 'appetite over estimation' concept applies"
+    agree: [D1, D2, D3, D4]
+    absent: D5
+    resolution: "Adopt for project-level scoping."
+
+  - id: M3
+    claim: "Score/Rehearse/Perform or Frame/Shape/Build/Prove as named lifecycle"
+    agree: [D1, D3, D4]
+    variant_in: D2  # D2 proposes "fixed time, variable scope" but not a named loop
+    absent: D5  # D5 proposes spec.md/plan.md/status.md triad instead
+    resolution: "MERGE — see Contentions section."
+
+  - id: M4
+    claim: "A 30-day ramp-up plan with weekly milestones"
+    agree: [D1, D2, D3, D4]
+    absent: D5
+    resolution: "Adopt D4's weekly structure as canonical; supplement with D2's 50-hour roadmap."
+
+  - id: M5
+    claim: "DORA metrics for deployed services"
+    agree: [D1, D2, D3, D5]
+    absent: D4
+    resolution: "Adopt for ORGAN-III and any deployed services. Skip for docs/theory repos."
+
+# =============================================================================
+# CONTENTIONS (Where documents DISAGREE or DIVERGE)
+# =============================================================================
+
+contentions:
+
+  - id: C1
+    topic: "What is the canonical lifecycle loop called?"
+    positions:
+      D1: "Score → Rehearse → Perform (3 steps)"
+      D2: "No named loop — uses Shape Up appetite + indie hacker 'ship fast'"
+      D3: "Capture → Canonicalize → Systematize (3 phases of commodification, not lifecycle)"
+      D4: "Frame → Shape → Build → Prove & Publish (4 steps)"
+      D5: "spec.md → plan.md → status.md (3 documents, not steps)"
+    analysis: |
+      D1 and D4 are most operational. D1's metaphor (Score/Rehearse/Perform) is more
+      musically resonant with the conductor identity. D4's verbs (Frame/Shape/Build/Prove)
+      are more precise as engineering actions. D5's triad (spec/plan/status) is about
+      ARTIFACTS, not phases — it's complementary, not competing.
+    resolution: |
+      SYNTHESIZE: Use D4's verbs as the phase names, D1's metaphor as the cultural framing,
+      and D5's artifacts as the deliverables within each phase:
+        FRAME (Score)    → produces spec.md
+        SHAPE (Arrange)  → produces plan.md
+        BUILD (Rehearse) → produces code + tests
+        PROVE (Perform)  → produces status.md + release + postmortem
+
+  - id: C2
+    topic: "How much formal CS education is needed?"
+    positions:
+      D1: "Not a learning roadmap — assumes you'll codify what you already have"
+      D2: "50-70 hours targeted learning: Git, debugging, project structure, CI/CD, dependencies"
+      D3: "Minimum effective dose: 4 books (Ousterhout, Pragmatic Programmer, Refactoring.guru, Working in Public)"
+      D4: "Not about learning — about encoding knowledge into Taxis automation"
+      D5: "No learning roadmap — assumes enterprise-grade governance knowledge"
+    analysis: |
+      D2 is the most practical here. D3's book list is good but insufficient as a
+      standalone learning path. The real answer: some targeted learning IS needed,
+      but the AI-conductor model means you need JUDGMENT more than SYNTAX.
+    resolution: |
+      Adopt D2's 50-hour roadmap as the canonical "minimum viable CS knowledge" baseline,
+      supplemented by D3's reading list. But prioritize JUDGMENT SKILLS over syntax:
+        1. Git mental model (4-8h) — Learn Git Branching
+        2. Debugging methodology (3-5h) — scientific method applied to code
+        3. Project structure conventions (2-3h) — src/, README, .gitignore, .env
+        4. Dependency management (3-5h) — lock files, trust evaluation
+        5. CI/CD basics (3-5h) — GitHub Actions YAML
+        6. Architecture judgment (5-10h) — "start monolith" heuristic, REST basics
+        7. Reading: A Philosophy of Software Design (Ousterhout) — 200 pages
+        Total: ~25-40 hours (not 50-70; the AI handles the rest)
+
+  - id: C3
+    topic: "Session protocol structure"
+    positions:
+      D1: "No session protocol — operates at milestone/roadmap level"
+      D2: "No explicit session protocol — focuses on project-level discipline"
+      D3: "Implicit: Three-Prompt Rule + Demystification Checklist"
+      D4: "Explicit 6-step session ritual: Pick scope → AI drafts plan → You critique → Branch + TODO → Tiny slices + commit → Breadcrumb + close"
+      D5: "Implicit via spec.md/plan.md/status.md document discipline"
+    analysis: |
+      D4 has the best session-level protocol. D5's document triad should be the
+      artifacts WITHIN D4's session protocol. D3's checklists are enforcement
+      mechanisms that should be embedded as gates.
+    resolution: |
+      Adopt D4's 6-step session ritual as canonical, embedding D5's artifacts and D3's checks:
+        BEFORE (10-15 min):
+          1. Pick ONE scope (D3's Single-Session Scope Limit)
+          2. AI drafts micro-plan (D5: generates plan.md fragment)
+          3. You critique and constrain (D3: Three-Prompt Rule applies)
+        DURING (60-90 min):
+          4. Tiny testable slices (D4's commit verbs: "shape:", "build:", "prove:")
+          5. AI roles: Architect for Shape, Implementer for Build, Tester for Prove (D4+D5)
+        AFTER (10-15 min):
+          6. Update status.md/ONGOING.md + push (D5's breadcrumb + D4's issue update)
+
+  - id: C4
+    topic: "Enterprise governance level"
+    positions:
+      D1: "Org-wide rulesets, CODEOWNERS, branch protection — GitHub-native"
+      D2: "Minimal — just use GitHub Projects and Actions"
+      D3: "Decision matrices + AGENTS.md per repo"
+      D4: "Taxis as discipline engine — WIP limits in registry, CI checks for docs"
+      D5: "Full GitHub Enterprise Cloud: SCIM/IdP, Enterprise Teams, Custom Properties, ESM role"
+    analysis: |
+      D5 is the most ambitious (and most expensive — Enterprise Cloud costs money).
+      D1 and D4 are pragmatic middle ground. D2 is too light for an 8-org, 80+ repo system.
+      The real question: are you on GitHub Enterprise Cloud or GitHub Free/Team?
+    resolution: |
+      TIERED ADOPTION:
+        IMMEDIATE (Free plan): D1's approach — rulesets, CODEOWNERS, branch protection, issue forms
+        NEAR-TERM: D4's approach — WIP limits in registry, CI checks for missing docs/states
+        WHEN JUSTIFIED: D5's Enterprise Cloud features — Custom Properties, SCIM, ESM
+      Note: ORGAN-III on free plan already has rulesets API limitations (from MEMORY.md).
+      Enterprise Cloud becomes justified when there are collaborators or revenue.
+
+  - id: C5
+    topic: "Multi-agent orchestration architecture"
+    positions:
+      D1: "Not addressed — focuses on process, not infrastructure"
+      D2: "Multi-model ensemble: Claude for coding, o3 for reasoning, Gemini for context"
+      D3: "Same model, different prompts/roles (Architect/Implementer/Tester/Librarian)"
+      D4: "AI 'chairs' — different instructions per role, explicitly bounded per organ"
+      D5: "Full Orchestrator-Worker pattern with 5 frameworks evaluated (LangChain, AutoGen, CrewAI, Vellum, Orkes)"
+    analysis: |
+      D2-D4 describe MANUAL orchestration (human switches roles/models).
+      D5 describes AUTOMATED orchestration (agents coordinate programmatically).
+      These aren't competing — they're different maturity levels:
+        Level 1: Human switches between AI tools manually (D2/D3)
+        Level 2: Named roles with per-organ boundaries (D4)
+        Level 3: Automated multi-agent workflows (D5)
+    resolution: |
+      PROGRESSIVE ADOPTION:
+        NOW: Level 1 + Level 2 — use D4's named roles with D2's model assignments
+        NEXT: Add D5's spec.md/plan.md/status.md as structured context for each role
+        LATER: Evaluate D5's frameworks when automation justifies the complexity
+      Map to existing tool surface:
+        - Claude Code (Agent tool) already supports Level 2 (subagent_type parameter)
+        - MCP meta-tools (mcp-add, mcp-exec) support Level 3 infrastructure
+        - Orchestrator-Worker is achievable NOW via Agent tool + background tasks
+
+  - id: C6
+    topic: "How to handle context window limitations"
+    positions:
+      D1: "Not addressed"
+      D2: "Gemini 2.5 Pro for large-context analysis (2M-token window)"
+      D3: "Not addressed"
+      D4: "Control context: feed narrow, relevant slices instead of entire repos"
+      D5: "Programmatic Tool Calling (PTC) — LLM writes scripts that process data in sandbox; also MCP + GraphRAG + tree-sitter"
+    analysis: |
+      D5 has the most sophisticated answer. D4's "narrow slices" is the
+      manual version of what D5 automates via PTC and MCP.
+    resolution: |
+      IMMEDIATE: D4's approach — narrow context slices, one file at a time
+      INVEST IN: D5's approaches:
+        - spec.md/plan.md as context-packing strategy (already cheap to implement)
+        - MCP is already deployed in your system (19+ Docker MCP servers)
+        - GraphRAG via knowledge_graph MCP cluster (already available)
+        - tree-sitter is already installed via Homebrew (brew dependency)
+      The tool-interaction-design ontology ALREADY maps these connections.
+
+  - id: C7
+    topic: "Commodification strategy"
+    positions:
+      D1: "Open core (templates) + paid accelerators (workshops, dashboards, consulting)"
+      D2: "Learn in public → audience → cohort courses → consulting; Swyx/McKay/Levels model"
+      D3: "Templates → Course → Consulting playbook; 'commodify institutional grammar'"
+      D4: "Pattern language catalog → book → course → consulting"
+      D5: "SOP platforms (Whale) + prompt recipe frameworks (Goose) + low-code automation (Zapier/n8n)"
+    analysis: |
+      D1-D4 agree on the funnel: free templates → paid courses → consulting.
+      D5 adds a tooling/platform layer (SaaS). These aren't competing.
+    resolution: |
+      FULL FUNNEL:
+        Layer 1 (Free): Open-source templates, GitHub repos, blog posts, POSSE distribution
+        Layer 2 (Low-cost): Cohort courses, pattern language publication, Substack/newsletter
+        Layer 3 (Mid-cost): Productized consulting, workshop facilitation
+        Layer 4 (High-cost): Custom methodology installation, hosted dashboards (SaaS)
+        Layer 5 (Recurring): Membership community (Greg Isenberg ACP model)
+      ORGAN MAPPING:
+        ORGAN-V (Logos) → Layer 1 + Layer 2 (publication + public process)
+        ORGAN-VI (Koinonia) → Layer 5 (community)
+        ORGAN-VII (Kerygma) → Distribution for all layers
+        ORGAN-III (Ergon) → Layer 3 + Layer 4 (commercial products)
+
+# =============================================================================
+# GAPS — What NO document covers adequately
+# =============================================================================
+
+gaps:
+
+  - id: G1
+    topic: "Mobile and cross-platform development"
+    coverage: "None of the 5 documents address mobile app development"
+    relevance: "Low for current system; revisit if ORGAN-III products require mobile"
+
+  - id: G2
+    topic: "Data engineering and ML ops"
+    coverage: "D5 touches GraphRAG but none cover data pipelines, ML training, or MLOps"
+    relevance: "Medium — the system has Jupyter and HuggingFace MCP tools"
+
+  - id: G3
+    topic: "Incident response and on-call"
+    coverage: "D1 mentions SRE selectively; D5 mentions observability tracing"
+    relevance: "Low now; critical when ORGAN-III services have paying users"
+
+  - id: G4
+    topic: "Accessibility and inclusive design"
+    coverage: "Zero coverage across all 5 documents"
+    relevance: "Medium — important for any public-facing product"
+
+  - id: G5
+    topic: "Legal/licensing strategy for multi-org open source"
+    coverage: "Zero coverage"
+    relevance: "High — 8 orgs with 80+ repos need a coherent licensing strategy"
+
+  - id: G6
+    topic: "Performance engineering and optimization"
+    coverage: "Zero coverage"
+    relevance: "Low now; grows with user scale"
+
+  - id: G7
+    topic: "Internationalization"
+    coverage: "Zero coverage"
+    relevance: "Low"
+
+  - id: G8
+    topic: "The actual creative/artistic methodology"
+    coverage: "D2 covers creative coding communities (Genuary, OpenProcessing); D5 covers SFPC; rest focus on engineering"
+    relevance: "HIGH — ORGAN-I (Theoria) and ORGAN-II (Poiesis) are the artistic core. The research focuses too heavily on engineering discipline and underserves the generative/artistic process."
+
+  - id: G9
+    topic: "Integration between tool-interaction-design ontology and these recommendations"
+    coverage: "None — these docs were written before the ontology existed"
+    relevance: "CRITICAL — the whole point of this research ingestion"
+
+# =============================================================================
+# EXHAUSTIVE EXPANSION MAP
+# =============================================================================
+# For each unanimous recommendation, how to expand it to maximum depth
+# using the existing tool surface.
+# =============================================================================
+
+expansions:
+
+  - from: U1  # Rhetorician's advantage
+    expand_into:
+      - "Create a 'Computational Rhetoric' skill in a-i--skills that encodes D5's Burke/Knuth/Reid framework"
+      - "Add ORGAN-V essay: 'The AI-Conductor as Methodologist' — publish via Kerygma"
+      - "Apply to Kairos journal (D2's recommendation) with a webtext on the eight-organ model"
+      - "Map D5's NYC institutional ecosystem (SFPC, Columbia AI, Tech:NYC) as collaboration targets"
+
+  - from: U2  # Minimal lifecycle
+    expand_into:
+      - "Encode FRAME/SHAPE/BUILD/PROVE as a reusable workflow-dsl.yaml workflow"
+      - "Create GitHub Issue Form templates for each phase (from D1's YAML examples)"
+      - "Add lifecycle phase as a Custom Property on repos (D5's recommendation)"
+      - "Create a /frame, /shape, /build, /prove skill chain in a-i--skills"
+      - "Add lifecycle-phase enforcement to CI: PRs must reference an issue tagged with a phase"
+
+  - from: U3  # WIP limits
+    expand_into:
+      - "Add wip_limits section to registry-v2.json: { candidate_max: 3, public_process_per_organ: 1 }"
+      - "Extend organ-audit.py to enforce WIP limits and fail if exceeded"
+      - "Create a GitHub Projects board per organ with WIP columns"
+      - "Add WIP status to system-dashboard"
+      - "Create an alerting workflow: if WIP > limit, block new CANDIDATE promotions"
+
+  - from: U4  # AI role assignments
+    expand_into:
+      - "Extend CLAUDE.md per-repo to include role assignments"
+      - "Create agents.yaml per organ defining which models serve which roles"
+      - "Map to tool-interaction-design ontology clusters:"
+      - "  Architect role → sequential_thinking + code_analysis_mcp clusters"
+      - "  Implementer role → claude_code_core + code_execution clusters"
+      - "  Tester role → browser_playwright + code_quality_cli + security_scanning clusters"
+      - "  Librarian role → documentation + web_search + knowledge_graph clusters"
+      - "  Reviewer role → ai_cli_agents (cross-model verification)"
+      - "Create a workflow-dsl.yaml workflow: 'ai-orchestra' that formalizes the role rotation"
+
+  - from: U5  # Process as product
+    expand_into:
+      - "Create 'organvm-process-kit' template repo in ORGAN-IV"
+      - "Include: issue forms, PR template, CI templates, CLAUDE.md template, seed.yaml template"
+      - "Create MkDocs site in ORGAN-V: 'The AI-Conductor's Playbook'"
+      - "Write 5 Organvm Pattern essays for ORGAN-V (D4's recommendation)"
+      - "Create a Substack/newsletter via ORGAN-VII distribution"
+      - "Build a 'methodology audit' consulting package in ORGAN-III"
+      - "Price tiers: Free (templates) → $50 (course) → $2K (consulting) → $15K (custom install)"
+
+  - from: U6  # Automated enforcement
+    expand_into:
+      - "Create org-wide reusable GitHub Actions workflows:"
+      - "  - validate-spec.yml: check that every PR references an issue with spec.md"
+      - "  - enforce-wip.yml: check WIP limits before allowing CANDIDATE promotion"
+      - "  - lint-readme.yml: ensure README has required sections per tier"
+      - "  - check-breadcrumb.yml: ensure status.md / ONGOING.md is updated"
+      - "  - dependency-direction.yml: (already exists) validate no back-edges"
+      - "Create pre-commit hooks via pre-commit framework (already installed)"
+      - "Add AI validators (D5's recommendation): Claude Code Skill for PR review"
+      - "Map to tool clusters: ci_cd + code_quality_cli + security_scanning"
+
+  - from: U7  # Trunk-based development
+    expand_into:
+      - "Standardize across all 80+ repos: default branch 'main' (fix metasystem-master 'master' branch)"
+      - "Enforce squash-merge via org-level ruleset"
+      - "Standardize branch naming: feat/<organ>/<slug>, fix/<organ>/<slug>"
+      - "Create branch name validation in CI"
+      - "Create commit message convention enforcement (Conventional Commits already adopted)"
+
+  - from: U8  # Document WHY
+    expand_into:
+      - "Create spec.md template in process kit (D5's format)"
+      - "Create plan.md template (D5's format)"
+      - "Create status.md template (D5's format + D4's breadcrumb format)"
+      - "Add 'intent' field to seed.yaml contracts"
+      - "Create a /why skill that prompts for intent documentation before coding"
+      - "Add ADR (Architecture Decision Record) template enforcement (already have 130 ADRs)"
+
+  - from: U9  # Small changes, fast feedback
+    expand_into:
+      - "Audit all CI pipelines: target < 10 min runtime"
+      - "Create fast-path CI (lint + typecheck only) for draft PRs"
+      - "Create full-path CI (lint + typecheck + tests + schema validation) for ready PRs"
+      - "Add CI timing metrics to system-dashboard"
+      - "Enforce single-concern PRs via PR size checker workflow"
+
+  - from: U10  # Organs as bounded contexts
+    expand_into:
+      - "Create a ubiquitous language glossary per organ (D1's DDD recommendation)"
+      - "Formalize schema contracts between organs (already in schema-definitions)"
+      - "Add organ-boundary validation: PRs that touch multiple organs require explicit justification"
+      - "Create an 'organ API' layer defining how organs communicate (event bus via dispatch)"
+      - "Map to ontology: each organ IS a domain in the tool interaction ontology"
+
+# =============================================================================
+# IMPLEMENTATION PRIORITY (What to do first)
+# =============================================================================
+
+implementation_priority:
+
+  tier_1_immediate:
+    label: "Do This Week"
+    items:
+      - "Adopt FRAME/SHAPE/BUILD/PROVE as canonical lifecycle names"
+      - "Adopt D4's 6-step session ritual"
+      - "Add WIP limits to registry-v2.json"
+      - "Create spec.md + plan.md + status.md templates"
+      - "Standardize branch naming across 3 flagship repos as pilot"
+
+  tier_2_this_month:
+    label: "Do This Month"
+    items:
+      - "Create GitHub Issue Forms (D1's YAML examples) in all 8 org .github repos"
+      - "Create system-aware PR template (D1's governance-gated version)"
+      - "Enforce CODEOWNERS in 7 flagship repos"
+      - "Extend organ-audit.py with WIP limit checking"
+      - "Begin D2's 50-hour learning roadmap (Git + debugging + project structure)"
+      - "Audit all CI pipelines for < 10 min runtime"
+
+  tier_3_this_quarter:
+    label: "Do This Quarter"
+    items:
+      - "Create 'organvm-process-kit' template repo"
+      - "Write 5 Organvm Pattern essays for ORGAN-V"
+      - "Build MkDocs playbook site"
+      - "Add lifecycle-phase Custom Properties to repos (if on Enterprise)"
+      - "Create AI role assignment configs (agents.yaml per organ)"
+      - "Evaluate D5's multi-agent frameworks for automation opportunities"
+      - "Apply to Kairos / DHQ with research-creation webtext"
+      - "Launch newsletter via ORGAN-VII"
+
+  tier_4_this_year:
+    label: "Do This Year"
+    items:
+      - "Launch cohort course: 'The AI-Conductor's Playbook'"
+      - "Publish pattern language as book/site"
+      - "Build hosted methodology dashboard (SaaS product)"
+      - "Apply for NEH Digital Humanities Advancement Grant"
+      - "Upgrade to GitHub Enterprise Cloud when collaborator count justifies"
+      - "Implement full Orchestrator-Worker multi-agent automation"
+      - "Build GraphRAG knowledge graph across all 80+ repos"

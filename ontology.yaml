@@ -1,0 +1,1441 @@
+# =============================================================================
+# TOOL INTERACTION ONTOLOGY v1.0
+# =============================================================================
+# Canonical taxonomy for tools across Claude Code, MCP servers,
+# macOS applications, Homebrew packages, and runtime ecosystems.
+# =============================================================================
+
+version: "1.1"
+created: "2026-03-03"
+updated: "2026-03-03"
+surface_count: 578
+surface_count_note: "578 distinct tools enumerated across 64 clusters in 12 domains. Additional ~90 Skills invoke these tools but are a meta-layer, not counted separately."
+
+# =============================================================================
+# TAXONOMY
+# =============================================================================
+
+taxonomy:
+
+  domains:
+    - id: AI_AGENTS
+      label: "AI Agents & Assistants"
+      description: "LLM-powered tools that generate, analyze, and orchestrate"
+
+    - id: CODE
+      label: "Code Authoring & Analysis"
+      description: "Reading, writing, editing, analyzing source code"
+
+    - id: GIT_SCM
+      label: "Version Control & Collaboration"
+      description: "Git operations, PRs, issues, code review"
+
+    - id: CLOUD_DEPLOY
+      label: "Cloud & Deployment"
+      description: "Infrastructure, hosting, CI/CD, containers"
+
+    - id: CREATIVE
+      label: "Creative & Media"
+      description: "Audio, visual, design, 3D, music production"
+
+    - id: RESEARCH
+      label: "Research & Knowledge"
+      description: "Search, fetch, knowledge graphs, documentation"
+
+    - id: DATA
+      label: "Data & Databases"
+      description: "SQL, pipelines, analysis, storage"
+
+    - id: SECURITY
+      label: "Security & Compliance"
+      description: "Scanning, secrets, threat modeling, audit"
+
+    - id: SYSTEM
+      label: "System & OS"
+      description: "Filesystem, processes, shell, configuration"
+
+    - id: ORCHESTRATION
+      label: "Orchestration & Meta"
+      description: "Task management, MCP meta-tools, workflow coordination"
+
+    - id: COMMUNICATION
+      label: "Communication & Collaboration"
+      description: "Messaging, notifications, documentation sharing"
+
+    - id: BROWSER
+      label: "Browser Automation"
+      description: "Web page interaction, scraping, testing"
+
+  capabilities:
+    - READ           # Read files, data, resources, state
+    - WRITE          # Create new files, data, resources
+    - EDIT           # Modify existing content in place
+    - SEARCH         # Find, discover, query content
+    - EXECUTE        # Run commands, code, scripts
+    - ANALYZE        # Inspect, audit, assess, profile
+    - DEPLOY         # Ship to production, publish
+    - GENERATE       # Create new content, code, media
+    - TRANSFORM      # Convert formats, reshape data
+    - MONITOR        # Observe, log, alert, track
+    - AUTHENTICATE   # Auth, identity, permissions
+    - ORCHESTRATE    # Coordinate multiple tools/steps
+    - VISUALIZE      # Render, display, graph, diagram
+    - TEST           # Validate, verify, assert
+    - CONFIGURE      # Set up, tune, manage settings
+    - FETCH          # Retrieve remote content
+    - STORE          # Persist data, state, memory
+    - NAVIGATE       # Browse, explore, traverse
+    - COMPOSE        # Combine, merge, chain outputs
+    - COMMUNICATE    # Send messages, post, notify
+
+  protocols:
+    - id: MCP
+      label: "Model Context Protocol"
+      description: "Structured tool calls via JSON-RPC"
+      bidirectional: true
+      automatable: true
+
+    - id: CLI
+      label: "Command Line Interface"
+      description: "Shell commands via Bash tool"
+      bidirectional: true
+      automatable: true
+
+    - id: API
+      label: "HTTP/REST/GraphQL"
+      description: "Network API calls"
+      bidirectional: true
+      automatable: true
+
+    - id: FILESYSTEM
+      label: "File System"
+      description: "Read/write files as data exchange"
+      bidirectional: true
+      automatable: true
+
+    - id: STDIO
+      label: "Standard I/O Pipes"
+      description: "stdin/stdout/stderr streaming"
+      bidirectional: true
+      automatable: true
+
+    - id: GUI
+      label: "Graphical Interface"
+      description: "Visual apps — automatable only via browser/accessibility tools"
+      bidirectional: false
+      automatable: false
+
+    - id: BROWSER_AUTO
+      label: "Browser Automation"
+      description: "Playwright/Puppeteer/Chrome extension control"
+      bidirectional: true
+      automatable: true
+
+  data_types:
+    - id: TEXT
+      mime: "text/plain"
+      extensions: [".txt", ".md", ".rst"]
+
+    - id: CODE
+      mime: "text/*"
+      extensions: [".py", ".ts", ".js", ".rs", ".go", ".rb", ".sh", ".zsh"]
+
+    - id: JSON
+      mime: "application/json"
+      extensions: [".json", ".jsonl"]
+
+    - id: YAML
+      mime: "application/yaml"
+      extensions: [".yaml", ".yml"]
+
+    - id: HTML
+      mime: "text/html"
+      extensions: [".html", ".htm"]
+
+    - id: IMAGE
+      mime: "image/*"
+      extensions: [".png", ".jpg", ".gif", ".svg", ".webp"]
+
+    - id: AUDIO
+      mime: "audio/*"
+      extensions: [".wav", ".mp3", ".flac", ".aiff"]
+
+    - id: VIDEO
+      mime: "video/*"
+      extensions: [".mp4", ".mov", ".webm"]
+
+    - id: PDF
+      mime: "application/pdf"
+      extensions: [".pdf"]
+
+    - id: BINARY
+      mime: "application/octet-stream"
+      extensions: [".wasm", ".bin", ".exe"]
+
+    - id: NOTEBOOK
+      mime: "application/x-ipynb+json"
+      extensions: [".ipynb"]
+
+    - id: CONFIG
+      mime: "text/*"
+      extensions: [".toml", ".env", ".ini", ".cfg"]
+
+    - id: STREAM
+      mime: "application/x-ndjson"
+      description: "Continuous/streaming data (logs, events)"
+
+    - id: DIAGRAM
+      mime: "text/x-mermaid"
+      extensions: [".mmd", ".mermaid"]
+
+    - id: SQL
+      mime: "application/sql"
+      extensions: [".sql"]
+
+# =============================================================================
+# TOOL CLUSTERS
+# =============================================================================
+# Tools grouped by functional affinity. Each cluster is the atomic unit
+# for routing — individual tools are instances within clusters.
+# =============================================================================
+
+clusters:
+
+  # ---------------------------------------------------------------------------
+  # AI_AGENTS domain
+  # ---------------------------------------------------------------------------
+
+  - id: claude_code_core
+    domain: AI_AGENTS
+    label: "Claude Code Built-in"
+    tools:
+      - Read
+      - Write
+      - Edit
+      - Glob
+      - Grep
+      - Bash
+      - Agent
+      - WebSearch
+      - WebFetch
+      - NotebookEdit
+      - AskUserQuestion
+      - EnterPlanMode
+      - ExitPlanMode
+      - EnterWorktree
+      - ToolSearch
+      - TaskCreate
+      - TaskUpdate
+      - TaskGet
+      - TaskList
+      - TaskStop
+      - TaskOutput
+      - Skill
+      - ListMcpResourcesTool
+      - ReadMcpResourceTool
+    capabilities: [READ, WRITE, EDIT, SEARCH, EXECUTE, ORCHESTRATE, FETCH, GENERATE]
+    protocols: [MCP, FILESYSTEM, CLI]
+    input_types: [TEXT, CODE, JSON, YAML, HTML, IMAGE, PDF, NOTEBOOK]
+    output_types: [TEXT, CODE, JSON, YAML, HTML]
+
+  - id: ai_cli_agents
+    domain: AI_AGENTS
+    label: "AI CLI Assistants"
+    tools:
+      - cli: codex
+      - cli: gemini-cli
+      - cli: kimi-cli
+      - cli: opencode
+      - cli: block-goose-cli
+      - cli: pplx-cli
+      - npm: "@google/jules"
+      - npm: "@github/copilot"
+      - npm: "@githubnext/github-copilot-cli"
+    capabilities: [GENERATE, ANALYZE, SEARCH, EDIT]
+    protocols: [CLI, STDIO]
+    input_types: [TEXT, CODE]
+    output_types: [TEXT, CODE]
+
+  - id: ai_gui_agents
+    domain: AI_AGENTS
+    label: "AI GUI Assistants"
+    tools:
+      - app: Claude.app
+      - app: ChatGPT.app
+      - app: "ChatGPT Atlas.app"
+      - app: Copilot.app
+      - app: Perplexity.app
+      - app: Goose.app
+      - app: Grok.app
+      - app: Codex.app
+    capabilities: [GENERATE, ANALYZE, SEARCH, VISUALIZE]
+    protocols: [GUI]
+    input_types: [TEXT, IMAGE]
+    output_types: [TEXT, IMAGE, CODE]
+
+  - id: local_llm
+    domain: AI_AGENTS
+    label: "Local LLM Infrastructure"
+    tools:
+      - app: Ollama.app
+      - cli: huggingface-cli
+    capabilities: [GENERATE, ANALYZE, CONFIGURE]
+    protocols: [CLI, API]
+    input_types: [TEXT, CODE]
+    output_types: [TEXT, CODE, JSON]
+
+  # ---------------------------------------------------------------------------
+  # CODE domain
+  # ---------------------------------------------------------------------------
+
+  - id: code_editors
+    domain: CODE
+    label: "Code Editors & IDEs"
+    tools:
+      - app: "Visual Studio Code.app"
+      - app: "Visual Studio Code - Insiders.app"
+      - app: Cursor.app
+      - app: "Android Studio.app"
+      - app: Xcode.app
+      - app: "Swift Playground.app"
+      - cli: neovim
+      - cli: micro
+      - cli: fresh-editor
+    capabilities: [READ, WRITE, EDIT, SEARCH, ANALYZE]
+    protocols: [GUI, CLI, FILESYSTEM]
+    input_types: [CODE, TEXT, JSON, YAML, CONFIG]
+    output_types: [CODE, TEXT]
+
+  - id: code_analysis_mcp
+    domain: CODE
+    label: "Code Analysis (MCP Docker)"
+    tools:
+      - mcp: analyze_python_file
+      - mcp: analyze_python_package
+      - mcp: analyze_security_and_patterns
+      - mcp: analyze_test_coverage
+      - mcp: find_long_functions
+      - mcp: find_package_issues
+      - mcp: get_package_metrics
+      - mcp: get_dependency_types
+      - mcp: tdd_refactoring_guidance
+    capabilities: [ANALYZE, SEARCH, TEST]
+    protocols: [MCP]
+    input_types: [CODE]
+    output_types: [JSON, TEXT]
+
+  - id: code_quality_cli
+    domain: CODE
+    label: "Code Quality CLI"
+    tools:
+      - cli: shellcheck
+      - cli: shfmt
+      - cli: black
+      - cli: golangci-lint
+      - cli: pre-commit
+      - cli: actionlint
+      - npm: lighthouse
+      - npm: "@trunkio/launcher"
+    capabilities: [ANALYZE, EDIT, TEST]
+    protocols: [CLI, STDIO]
+    input_types: [CODE]
+    output_types: [TEXT, CODE]
+
+  - id: code_execution
+    domain: CODE
+    label: "Code Execution Sandboxes"
+    tools:
+      - mcp: run_js
+      - mcp: run_js_ephemeral
+      - mcp: "code-mode"
+      - mcp: sandbox_initialize
+      - mcp: sandbox_exec
+      - mcp: sandbox_stop
+    capabilities: [EXECUTE, TEST]
+    protocols: [MCP]
+    input_types: [CODE]
+    output_types: [TEXT, JSON]
+
+  # ---------------------------------------------------------------------------
+  # GIT_SCM domain
+  # ---------------------------------------------------------------------------
+
+  - id: git_core
+    domain: GIT_SCM
+    label: "Git Core Operations"
+    tools:
+      - cli: git
+      - mcp_docker: git_init
+      - mcp_docker: git_status
+      - mcp_docker: git_add
+      - mcp_docker: git_commit
+      - mcp_docker: git_checkout
+      - mcp_docker: git_create_branch
+      - mcp_docker: git_diff
+      - mcp_docker: git_diff_staged
+      - mcp_docker: git_diff_unstaged
+      - mcp_docker: git_log
+      - mcp_docker: git_show
+      - mcp_docker: git_reset
+    capabilities: [READ, WRITE, SEARCH, STORE]
+    protocols: [CLI, MCP]
+    input_types: [CODE, TEXT]
+    output_types: [TEXT, CODE]
+
+  - id: git_enhanced
+    domain: GIT_SCM
+    label: "Git Power Tools"
+    tools:
+      - cli: lazygit
+      - cli: git-delta
+      - cli: git-absorb
+      - cli: git-filter-repo
+      - cli: git-gui
+      - app: "GitHub Desktop.app"
+      - app: GitKraken.app
+      - cli: gitkraken-cli
+    capabilities: [READ, WRITE, EDIT, VISUALIZE]
+    protocols: [CLI, GUI]
+    input_types: [CODE, TEXT]
+    output_types: [TEXT, CODE]
+
+  - id: github_platform
+    domain: GIT_SCM
+    label: "GitHub Platform"
+    tools:
+      - cli: gh
+      - mcp_github: create_repository
+      - mcp_github: fork_repository
+      - mcp_github: search_repositories
+      - mcp_github: get_file_contents
+      - mcp_github: create_or_update_file
+      - mcp_github: delete_file
+      - mcp_github: push_files
+      - mcp_github: create_branch
+      - mcp_github: list_branches
+      - mcp_github: list_commits
+      - mcp_github: get_commit
+      - mcp_github: list_tags
+      - mcp_github: get_tag
+      - mcp_github: issue_read
+      - mcp_github: issue_write
+      - mcp_github: list_issues
+      - mcp_github: search_issues
+      - mcp_github: add_issue_comment
+      - mcp_github: list_issue_types
+      - mcp_github: sub_issue_write
+      - mcp_github: create_pull_request
+      - mcp_github: update_pull_request
+      - mcp_github: update_pull_request_branch
+      - mcp_github: merge_pull_request
+      - mcp_github: list_pull_requests
+      - mcp_github: search_pull_requests
+      - mcp_github: pull_request_read
+      - mcp_github: pull_request_review_write
+      - mcp_github: add_comment_to_pending_review
+      - mcp_github: add_reply_to_pull_request_comment
+      - mcp_github: list_releases
+      - mcp_github: get_latest_release
+      - mcp_github: get_release_by_tag
+      - mcp_github: get_me
+      - mcp_github: search_users
+      - mcp_github: get_teams
+      - mcp_github: get_team_members
+      - mcp_github: get_label
+      - mcp_github: search_code
+      - mcp_github: assign_copilot_to_issue
+      - mcp_github: request_copilot_review
+    capabilities: [READ, WRITE, SEARCH, COMMUNICATE, DEPLOY, AUTHENTICATE]
+    protocols: [MCP, CLI, API]
+    input_types: [CODE, TEXT, JSON]
+    output_types: [JSON, TEXT, CODE]
+
+  - id: git_security
+    domain: GIT_SCM
+    label: "Git Security"
+    tools:
+      - cli: git-secrets
+      - cli: gitleaks
+      - cli: ggshield
+    capabilities: [ANALYZE, SEARCH, TEST]
+    protocols: [CLI]
+    input_types: [CODE, TEXT, CONFIG]
+    output_types: [TEXT, JSON]
+
+  # ---------------------------------------------------------------------------
+  # CLOUD_DEPLOY domain
+  # ---------------------------------------------------------------------------
+
+  - id: vercel_platform
+    domain: CLOUD_DEPLOY
+    label: "Vercel"
+    tools:
+      - cli: vercel
+      - mcp_vercel: deploy_to_vercel
+      - mcp_vercel: get_deployment
+      - mcp_vercel: get_deployment_build_logs
+      - mcp_vercel: get_runtime_logs
+      - mcp_vercel: list_deployments
+      - mcp_vercel: get_project
+      - mcp_vercel: list_projects
+      - mcp_vercel: list_teams
+      - mcp_vercel: check_domain_availability_and_price
+      - mcp_vercel: get_access_to_vercel_url
+      - mcp_vercel: web_fetch_vercel_url
+      - mcp_vercel: search_vercel_documentation
+    capabilities: [DEPLOY, READ, MONITOR, SEARCH, CONFIGURE]
+    protocols: [MCP, CLI]
+    input_types: [CODE, JSON, CONFIG]
+    output_types: [JSON, TEXT]
+
+  - id: cloudflare_platform
+    domain: CLOUD_DEPLOY
+    label: "Cloudflare"
+    tools:
+      - cli: wrangler
+      - app: Cloudflare.app
+      - mcp_cloudflare: accounts_list
+      - mcp_cloudflare: d1_database_create
+      - mcp_cloudflare: d1_database_query
+      - mcp_cloudflare: d1_databases_list
+      - mcp_cloudflare: kv_namespace_create
+      - mcp_cloudflare: kv_namespaces_list
+      - mcp_cloudflare: r2_bucket_create
+      - mcp_cloudflare: r2_buckets_list
+      - mcp_cloudflare: workers_list
+      - mcp_cloudflare: workers_get_worker
+      - mcp_cloudflare: search_cloudflare_documentation
+    capabilities: [DEPLOY, READ, WRITE, SEARCH, STORE, CONFIGURE]
+    protocols: [MCP, CLI]
+    input_types: [CODE, JSON, SQL, CONFIG]
+    output_types: [JSON, TEXT]
+
+  - id: netlify_platform
+    domain: CLOUD_DEPLOY
+    label: "Netlify"
+    tools:
+      - mcp_netlify: "get-netlify-coding-context"
+      - mcp_netlify: "netlify-deploy-services-reader"
+      - mcp_netlify: "netlify-deploy-services-updater"
+      - mcp_netlify: "netlify-project-services-reader"
+      - mcp_netlify: "netlify-project-services-updater"
+      - mcp_netlify: "netlify-extension-services-reader"
+      - mcp_netlify: "netlify-extension-services-updater"
+      - mcp_netlify: "netlify-team-services-reader"
+      - mcp_netlify: "netlify-user-services-reader"
+    capabilities: [DEPLOY, READ, CONFIGURE]
+    protocols: [MCP]
+    input_types: [CODE, JSON, CONFIG]
+    output_types: [JSON, TEXT]
+
+  - id: gcp_platform
+    domain: CLOUD_DEPLOY
+    label: "Google Cloud Platform"
+    tools:
+      - cli: gcloud
+      - cli: firebase-tools
+      - docker: "mcp/cloud-run-mcp"
+    capabilities: [DEPLOY, READ, CONFIGURE, MONITOR, STORE]
+    protocols: [CLI, MCP]
+    input_types: [CODE, JSON, CONFIG]
+    output_types: [JSON, TEXT]
+
+  - id: container_orchestration
+    domain: CLOUD_DEPLOY
+    label: "Containers & Kubernetes"
+    tools:
+      - app: Docker.app
+      - cli: lazydocker
+      - cli: k9s
+      - cli: kind
+      - cli: qemu
+      - docker: "kindest/node"
+      - docker: "envoyproxy/envoy"
+      - docker: "localstack/localstack"
+      - mcp_docker: deploy_container_image
+      - mcp_docker: deploy_file_contents
+      - mcp_docker: deploy_local_folder
+    capabilities: [DEPLOY, EXECUTE, MONITOR, CONFIGURE]
+    protocols: [CLI, MCP, GUI]
+    input_types: [CODE, CONFIG, JSON, BINARY]
+    output_types: [JSON, TEXT, STREAM]
+
+  - id: tunnel_expose
+    domain: CLOUD_DEPLOY
+    label: "Tunnels & Exposure"
+    tools:
+      - cli: ngrok
+      - npm: localtunnel
+      - npm: "@expo/ngrok"
+    capabilities: [DEPLOY, CONFIGURE]
+    protocols: [CLI]
+    input_types: [CONFIG]
+    output_types: [TEXT]
+
+  - id: ci_cd
+    domain: CLOUD_DEPLOY
+    label: "CI/CD & Testing"
+    tools:
+      - cli: act
+      - cli: actionlint
+      - cli: stripe
+    capabilities: [TEST, EXECUTE, ANALYZE]
+    protocols: [CLI]
+    input_types: [YAML, CODE]
+    output_types: [TEXT, JSON]
+
+  # ---------------------------------------------------------------------------
+  # CREATIVE domain
+  # ---------------------------------------------------------------------------
+
+  - id: audio_production
+    domain: CREATIVE
+    label: "Audio Production"
+    tools:
+      - app: "Logic Pro.app"
+      - app: MainStage.app
+      - app: GarageBand.app
+      - app: SuperCollider
+      - app: plugdata.app
+      - app: "Pd-0.56-2.app"
+      - app: StepPolyArp.app
+    capabilities: [GENERATE, EDIT, VISUALIZE]
+    protocols: [GUI]
+    input_types: [AUDIO, CODE]
+    output_types: [AUDIO]
+
+  - id: visual_design
+    domain: CREATIVE
+    label: "Visual Design"
+    tools:
+      - app: Figma.app
+      - app: GIMP.app
+      - app: Photomator.app
+      - app: Blender.app
+      - app: TouchDesigner.app
+      - app: Pastel.app
+      - mcp_figma: get_design_context
+      - mcp_figma: get_screenshot
+      - mcp_figma: get_metadata
+      - mcp_figma: get_figjam
+      - mcp_figma: generate_diagram
+      - mcp_figma: get_variable_defs
+      - mcp_figma: get_code_connect_map
+      - mcp_figma: add_code_connect_map
+      - mcp_figma: create_design_system_rules
+    capabilities: [GENERATE, EDIT, VISUALIZE, READ]
+    protocols: [GUI, MCP]
+    input_types: [IMAGE, CODE, JSON]
+    output_types: [IMAGE, CODE, JSON]
+
+  - id: video_production
+    domain: CREATIVE
+    label: "Video Production"
+    tools:
+      - app: "Final Cut Pro.app"
+      - app: Compressor.app
+      - app: iMovie.app
+      - cli: ffmpeg
+    capabilities: [GENERATE, EDIT, TRANSFORM]
+    protocols: [GUI, CLI]
+    input_types: [VIDEO, AUDIO, IMAGE]
+    output_types: [VIDEO, AUDIO, IMAGE]
+
+  - id: diagramming
+    domain: CREATIVE
+    label: "Diagramming & Visualization"
+    tools:
+      - mcp_mermaid: validate_and_render_mermaid_diagram
+      - mcp_mermaid: get_diagram_summary
+      - mcp_mermaid: get_diagram_title
+      - mcp_threejs: show_threejs_scene
+      - mcp_threejs: learn_threejs
+      - mcp_figma: generate_diagram
+    capabilities: [GENERATE, VISUALIZE, TRANSFORM]
+    protocols: [MCP]
+    input_types: [TEXT, DIAGRAM, JSON]
+    output_types: [IMAGE, HTML, DIAGRAM]
+
+  - id: publishing
+    domain: CREATIVE
+    label: "Publishing & Documents"
+    tools:
+      - app: Keynote.app
+      - app: Numbers.app
+      - app: Pages.app
+      - app: "Pages Creator Studio.app"
+      - app: "Highland 2.app"
+      - app: "Highland Pro.app"
+      - mcp_docker: write_pdf
+      - mcp_docker: convert_to_markdown
+      - cli: poppler
+      - cli: qpdf
+      - cli: klatexformula
+    capabilities: [GENERATE, EDIT, TRANSFORM, VISUALIZE]
+    protocols: [GUI, MCP, CLI]
+    input_types: [TEXT, PDF, IMAGE, HTML]
+    output_types: [PDF, TEXT, HTML, IMAGE]
+
+  - id: unity_gamedev
+    domain: CREATIVE
+    label: "Game Development"
+    tools:
+      - app: "Unity Hub.app"
+      - app: Unity
+    capabilities: [GENERATE, EDIT, EXECUTE, VISUALIZE]
+    protocols: [GUI]
+    input_types: [CODE, IMAGE, AUDIO]
+    output_types: [BINARY, IMAGE]
+
+  # ---------------------------------------------------------------------------
+  # RESEARCH domain
+  # ---------------------------------------------------------------------------
+
+  - id: web_search
+    domain: RESEARCH
+    label: "Web Search"
+    tools:
+      - builtin: WebSearch
+      - builtin: WebFetch
+      - mcp_docker: perplexity_ask
+      - mcp_docker: perplexity_reason
+      - mcp_docker: perplexity_research
+      - mcp_docker: tavily_search
+      - mcp_docker: tavily_research
+      - mcp_docker: tavily_crawl
+      - mcp_docker: tavily_extract
+      - mcp_docker: tavily_map
+      - mcp_docker: search
+      - mcp_docker: start_search
+      - mcp_docker: stop_search
+      - mcp_docker: get_more_search_results
+      - mcp_docker: "duckduckgo"
+    capabilities: [SEARCH, FETCH]
+    protocols: [MCP, CLI]
+    input_types: [TEXT]
+    output_types: [TEXT, JSON, HTML]
+
+  - id: wikipedia
+    domain: RESEARCH
+    label: "Wikipedia"
+    tools:
+      - mcp_docker: search_wikipedia
+      - mcp_docker: get_article
+      - mcp_docker: get_links
+      - mcp_docker: get_sections
+      - mcp_docker: get_related_topics
+      - mcp_docker: summarize_article_for_query
+      - mcp_docker: summarize_article_section
+      - mcp_docker: test_wikipedia_connectivity
+    capabilities: [SEARCH, FETCH, READ]
+    protocols: [MCP]
+    input_types: [TEXT]
+    output_types: [TEXT, JSON]
+
+  - id: academic_research
+    domain: RESEARCH
+    label: "Academic & ML Research"
+    tools:
+      - mcp_scholar: semanticSearch
+      - mcp_huggingface: paper_search
+      - mcp_huggingface: hub_repo_search
+      - mcp_huggingface: hub_repo_details
+      - mcp_huggingface: hf_doc_search
+      - mcp_huggingface: hf_doc_fetch
+      - mcp_huggingface: space_search
+      - mcp_huggingface: dynamic_space
+      - mcp_huggingface: hf_hub_community
+      - mcp_huggingface: hf_whoami
+    capabilities: [SEARCH, FETCH, READ]
+    protocols: [MCP]
+    input_types: [TEXT]
+    output_types: [TEXT, JSON, PDF]
+
+  - id: documentation
+    domain: RESEARCH
+    label: "Documentation & Libraries"
+    tools:
+      - mcp_docker: "get-library-docs"
+      - mcp_docker: "resolve-library-id"
+      - mcp_docker: search_documentation
+      - mcp_docker: fetch_generic_documentation
+      - mcp_docker: search_generic_documentation
+      - mcp_docker: search_generic_code
+      - mcp_docker: fetch_generic_url_content
+    capabilities: [SEARCH, FETCH, READ]
+    protocols: [MCP]
+    input_types: [TEXT]
+    output_types: [TEXT, JSON, HTML]
+
+  - id: knowledge_graph
+    domain: RESEARCH
+    label: "Knowledge Graph"
+    tools:
+      - mcp_docker: create_entities
+      - mcp_docker: create_relations
+      - mcp_docker: delete_entities
+      - mcp_docker: delete_relations
+      - mcp_docker: add_observations
+      - mcp_docker: delete_observations
+      - mcp_docker: open_nodes
+      - mcp_docker: read_graph
+      - mcp_docker: search_nodes
+    capabilities: [READ, WRITE, SEARCH, STORE]
+    protocols: [MCP]
+    input_types: [JSON, TEXT]
+    output_types: [JSON]
+
+  - id: knowledge_apps
+    domain: RESEARCH
+    label: "Knowledge Management Apps"
+    tools:
+      - app: Obsidian.app
+      - app: Notion.app
+      - app: SnippetsLab.app
+      - mcp_notion: "notion-search"
+      - mcp_notion: "notion-create-pages"
+      - mcp_notion: "notion-create-database"
+      - mcp_notion: "notion-update-page"
+      - mcp_notion: "notion-duplicate-page"
+      - mcp_notion: "notion-move-pages"
+      - mcp_notion: "notion-get-comments"
+      - mcp_notion: "notion-create-comment"
+      - mcp_notion: "notion-get-users"
+      - mcp_notion: "notion-get-teams"
+      - mcp_notion: "notion-fetch"
+      - mcp_notion: "notion-update-data-source"
+    capabilities: [READ, WRITE, SEARCH, STORE, ORGANIZE]
+    protocols: [GUI, MCP]
+    input_types: [TEXT, JSON]
+    output_types: [TEXT, JSON]
+
+  - id: web_content
+    domain: RESEARCH
+    label: "Web Content Extraction"
+    tools:
+      - mcp_docker: fetch
+      - mcp_docker: fetch_content
+      - mcp_docker: convert_to_markdown
+      - mcp_docker: extract_key_facts
+      - app: "Notion Web Clipper.app"
+      - app: "Obsidian Web Clipper.app"
+      - app: SingleFile.app
+      - app: Userscripts.app
+    capabilities: [FETCH, TRANSFORM, STORE]
+    protocols: [MCP, GUI]
+    input_types: [HTML, TEXT]
+    output_types: [TEXT, JSON, HTML]
+
+  - id: media_research
+    domain: RESEARCH
+    label: "Media Research (YouTube, etc.)"
+    tools:
+      - mcp_docker: get_video_info
+      - mcp_docker: get_transcript
+      - mcp_docker: get_timed_transcript
+    capabilities: [FETCH, READ, TRANSFORM]
+    protocols: [MCP]
+    input_types: [TEXT]
+    output_types: [TEXT, JSON]
+
+  # ---------------------------------------------------------------------------
+  # DATA domain
+  # ---------------------------------------------------------------------------
+
+  - id: neon_database
+    domain: DATA
+    label: "Neon Postgres"
+    tools:
+      - mcp_neon: create_project
+      - mcp_neon: run_sql
+      - mcp_neon: run_sql_transaction
+      - mcp_neon: explain_sql_statement
+      - mcp_neon: list_slow_queries
+      - mcp_neon: get_database_tables
+      - mcp_neon: describe_table_schema
+      - mcp_neon: compare_database_schema
+      - mcp_neon: prepare_database_migration
+      - mcp_neon: complete_database_migration
+      - mcp_neon: prepare_query_tuning
+      - mcp_neon: complete_query_tuning
+      - mcp_neon: get_connection_string
+      - mcp_neon: create_branch
+      - mcp_neon: describe_branch
+      - mcp_neon: provision_neon_auth
+      - mcp_neon: provision_neon_data_api
+    capabilities: [READ, WRITE, SEARCH, ANALYZE, CONFIGURE, STORE]
+    protocols: [MCP]
+    input_types: [SQL, JSON, TEXT]
+    output_types: [JSON, TEXT]
+
+  - id: cloudflare_data
+    domain: DATA
+    label: "Cloudflare Data Services"
+    tools:
+      - mcp_cloudflare: d1_database_create
+      - mcp_cloudflare: d1_database_query
+      - mcp_cloudflare: d1_database_get
+      - mcp_cloudflare: d1_database_delete
+      - mcp_cloudflare: kv_namespace_create
+      - mcp_cloudflare: kv_namespace_get
+      - mcp_cloudflare: kv_namespace_update
+      - mcp_cloudflare: kv_namespace_delete
+      - mcp_cloudflare: r2_bucket_create
+      - mcp_cloudflare: r2_bucket_get
+      - mcp_cloudflare: r2_bucket_delete
+    capabilities: [READ, WRITE, STORE, SEARCH]
+    protocols: [MCP]
+    input_types: [SQL, JSON, BINARY]
+    output_types: [JSON]
+
+  - id: data_tools
+    domain: DATA
+    label: "Data Processing CLI"
+    tools:
+      - cli: jq
+      - cli: yq
+      - cli: gron
+      - cli: tesseract
+      - cli: poppler
+      - app: "CSV Editor Pro X.app"
+    capabilities: [TRANSFORM, READ, SEARCH]
+    protocols: [CLI, STDIO, GUI]
+    input_types: [JSON, YAML, PDF, IMAGE, TEXT]
+    output_types: [JSON, YAML, TEXT]
+
+  - id: jupyter_notebooks
+    domain: DATA
+    label: "Jupyter Notebooks"
+    tools:
+      - mcp_jupyter: connect_to_jupyter
+      - mcp_jupyter: list_notebooks
+      - mcp_jupyter: use_notebook
+      - mcp_jupyter: unuse_notebook
+      - mcp_jupyter: read_notebook
+      - mcp_jupyter: read_cell
+      - mcp_jupyter: insert_cell
+      - mcp_jupyter: overwrite_cell_source
+      - mcp_jupyter: delete_cell
+      - mcp_jupyter: execute_cell
+      - mcp_jupyter: execute_code
+      - mcp_jupyter: insert_execute_code_cell
+      - mcp_jupyter: list_files
+      - mcp_jupyter: list_kernels
+      - mcp_jupyter: restart_notebook
+      - pipx: jupyter-mcp-server
+    capabilities: [READ, WRITE, EXECUTE, VISUALIZE, ANALYZE]
+    protocols: [MCP]
+    input_types: [NOTEBOOK, CODE, TEXT]
+    output_types: [NOTEBOOK, TEXT, JSON, IMAGE]
+
+  # ---------------------------------------------------------------------------
+  # SECURITY domain
+  # ---------------------------------------------------------------------------
+
+  - id: security_scanning
+    domain: SECURITY
+    label: "Security Scanning"
+    tools:
+      - cli: trivy
+      - cli: ggshield
+      - cli: gitleaks
+      - cli: git-secrets
+      - mcp_docker: analyze_security_and_patterns
+    capabilities: [ANALYZE, SEARCH, TEST]
+    protocols: [CLI, MCP]
+    input_types: [CODE, CONFIG, BINARY]
+    output_types: [JSON, TEXT]
+
+  - id: sentry_monitoring
+    domain: SECURITY
+    label: "Sentry Error Tracking"
+    tools:
+      - mcp_sentry: find_organizations
+      - mcp_sentry: find_projects
+      - mcp_sentry: find_teams
+      - mcp_sentry: search_issues
+      - mcp_sentry: get_issue_details
+      - mcp_sentry: update_issue
+      - mcp_sentry: search_events
+      - mcp_sentry: search_issue_events
+      - mcp_sentry: get_event_attachment
+      - mcp_sentry: get_issue_tag_values
+      - mcp_sentry: get_trace_details
+      - mcp_sentry: find_releases
+      - mcp_sentry: create_project
+      - mcp_sentry: create_team
+      - mcp_sentry: create_dsn
+      - mcp_sentry: find_dsns
+      - mcp_sentry: analyze_issue_with_seer
+      - mcp_sentry: whoami
+    capabilities: [MONITOR, SEARCH, READ, ANALYZE, CONFIGURE]
+    protocols: [MCP]
+    input_types: [TEXT, JSON]
+    output_types: [JSON, TEXT]
+
+  - id: auth_identity
+    domain: SECURITY
+    label: "Authentication & Identity"
+    tools:
+      - app: 1Password.app
+      - cli: 1password-cli
+      - mcp_neon: provision_neon_auth
+    capabilities: [AUTHENTICATE, STORE, READ]
+    protocols: [CLI, GUI, MCP]
+    input_types: [TEXT, JSON]
+    output_types: [TEXT, JSON]
+
+  # ---------------------------------------------------------------------------
+  # BROWSER domain
+  # ---------------------------------------------------------------------------
+
+  - id: browser_chrome
+    domain: BROWSER
+    label: "Chrome Browser Automation"
+    tools:
+      - mcp_chrome: navigate
+      - mcp_chrome: read_page
+      - mcp_chrome: get_page_text
+      - mcp_chrome: computer
+      - mcp_chrome: find
+      - mcp_chrome: form_input
+      - mcp_chrome: javascript_tool
+      - mcp_chrome: gif_creator
+      - mcp_chrome: upload_image
+      - mcp_chrome: resize_window
+      - mcp_chrome: tabs_context_mcp
+      - mcp_chrome: tabs_create_mcp
+      - mcp_chrome: switch_browser
+      - mcp_chrome: shortcuts_execute
+      - mcp_chrome: shortcuts_list
+      - mcp_chrome: read_console_messages
+      - mcp_chrome: read_network_requests
+      - mcp_chrome: update_plan
+    capabilities: [NAVIGATE, READ, WRITE, EXECUTE, TEST, VISUALIZE]
+    protocols: [BROWSER_AUTO]
+    input_types: [TEXT, HTML, CODE]
+    output_types: [TEXT, HTML, IMAGE, JSON]
+
+  - id: browser_playwright
+    domain: BROWSER
+    label: "Playwright Browser (Docker)"
+    tools:
+      - mcp_docker: browser_navigate
+      - mcp_docker: browser_navigate_back
+      - mcp_docker: browser_click
+      - mcp_docker: browser_hover
+      - mcp_docker: browser_drag
+      - mcp_docker: browser_fill_form
+      - mcp_docker: browser_select_option
+      - mcp_docker: browser_press_key
+      - mcp_docker: browser_type
+      - mcp_docker: browser_file_upload
+      - mcp_docker: browser_evaluate
+      - mcp_docker: browser_snapshot
+      - mcp_docker: browser_take_screenshot
+      - mcp_docker: browser_resize
+      - mcp_docker: browser_tabs
+      - mcp_docker: browser_wait_for
+      - mcp_docker: browser_handle_dialog
+      - mcp_docker: browser_console_messages
+      - mcp_docker: browser_network_requests
+      - mcp_docker: browser_install
+      - mcp_docker: browser_close
+      - mcp_docker: browser_run_code
+    capabilities: [NAVIGATE, READ, WRITE, EXECUTE, TEST]
+    protocols: [MCP, BROWSER_AUTO]
+    input_types: [TEXT, HTML, CODE]
+    output_types: [TEXT, HTML, IMAGE, JSON]
+
+  - id: browser_puppeteer
+    domain: BROWSER
+    label: "Puppeteer Browser (Docker)"
+    tools:
+      - mcp_docker: puppeteer_navigate
+      - mcp_docker: puppeteer_screenshot
+      - mcp_docker: puppeteer_click
+      - mcp_docker: puppeteer_fill
+      - mcp_docker: puppeteer_select
+      - mcp_docker: puppeteer_hover
+      - mcp_docker: puppeteer_evaluate
+    capabilities: [NAVIGATE, READ, EXECUTE, TEST]
+    protocols: [MCP, BROWSER_AUTO]
+    input_types: [TEXT, HTML]
+    output_types: [TEXT, HTML, IMAGE]
+
+  - id: browsers
+    domain: BROWSER
+    label: "Web Browsers"
+    tools:
+      - app: "Google Chrome.app"
+      - app: "Google Chrome Canary.app"
+      - app: Safari.app
+      - app: DuckDuckGo.app
+    capabilities: [NAVIGATE, READ]
+    protocols: [GUI]
+    input_types: [HTML, TEXT]
+    output_types: [HTML, IMAGE]
+
+  # ---------------------------------------------------------------------------
+  # SYSTEM domain
+  # ---------------------------------------------------------------------------
+
+  - id: filesystem_mcp
+    domain: SYSTEM
+    label: "Filesystem (MCP Docker)"
+    tools:
+      - mcp_docker: read_file
+      - mcp_docker: write_file
+      - mcp_docker: read_multiple_files
+      - mcp_docker: edit_file
+      - mcp_docker: edit_block
+      - mcp_docker: search_files
+      - mcp_docker: list_directory
+      - mcp_docker: directory_tree
+      - mcp_docker: create_directory
+      - mcp_docker: move_file
+      - mcp_docker: get_file_info
+      - mcp_docker: list_allowed_directories
+    capabilities: [READ, WRITE, EDIT, SEARCH]
+    protocols: [MCP]
+    input_types: [TEXT, CODE, JSON, YAML, CONFIG, BINARY]
+    output_types: [TEXT, CODE, JSON]
+
+  - id: filesystem_cli
+    domain: SYSTEM
+    label: "Filesystem CLI"
+    tools:
+      - cli: bat
+      - cli: eza
+      - cli: fd
+      - cli: duf
+      - cli: ncdu
+      - cli: entr
+      - cli: fswatch
+      - cli: rclone
+      - cli: fileicon
+    capabilities: [READ, SEARCH, MONITOR, TRANSFORM]
+    protocols: [CLI, STDIO]
+    input_types: [TEXT, CODE, BINARY]
+    output_types: [TEXT]
+
+  - id: process_management
+    domain: SYSTEM
+    label: "Process Management"
+    tools:
+      - mcp_docker: start_process
+      - mcp_docker: kill_process
+      - mcp_docker: list_processes
+      - mcp_docker: read_process_output
+      - mcp_docker: interact_with_process
+      - mcp_docker: force_terminate
+      - cli: btop
+      - cli: htop
+      - cli: procs
+      - cli: progress
+      - cli: pv
+    capabilities: [EXECUTE, MONITOR, READ]
+    protocols: [MCP, CLI]
+    input_types: [TEXT]
+    output_types: [TEXT, STREAM]
+
+  - id: shell_environment
+    domain: SYSTEM
+    label: "Shell & Terminal"
+    tools:
+      - cli: zsh
+      - cli: fish
+      - cli: starship
+      - cli: atuin
+      - cli: byobu
+      - cli: carapace
+      - cli: navi
+      - cli: thefuck
+      - cli: zoxide
+      - cli: direnv
+      - cli: fzf
+      - cli: tlrc
+      - app: iTerm.app
+      - app: iTermAI.app
+      - app: kitty.app
+      - app: Warp.app
+      - app: "Termius Beta.app"
+      - app: Terminal.app
+    capabilities: [EXECUTE, NAVIGATE, CONFIGURE]
+    protocols: [CLI, GUI]
+    input_types: [TEXT, CODE]
+    output_types: [TEXT]
+
+  - id: system_config
+    domain: SYSTEM
+    label: "System Configuration"
+    tools:
+      - cli: chezmoi
+      - cli: mise
+      - cli: flavours
+      - pipx: pywal
+      - cli: just
+    capabilities: [CONFIGURE, READ, WRITE]
+    protocols: [CLI]
+    input_types: [CONFIG, YAML, TEXT]
+    output_types: [CONFIG, TEXT]
+
+  - id: link_validation
+    domain: SYSTEM
+    label: "Link & Content Validation"
+    tools:
+      - cli: lychee
+      - cli: markdown
+      - cli: glow
+    capabilities: [TEST, READ, VISUALIZE]
+    protocols: [CLI]
+    input_types: [TEXT, HTML]
+    output_types: [TEXT, JSON]
+
+  # ---------------------------------------------------------------------------
+  # ORCHESTRATION domain
+  # ---------------------------------------------------------------------------
+
+  - id: mcp_meta
+    domain: ORCHESTRATION
+    label: "MCP Meta-Management"
+    tools:
+      - mcp_docker: "mcp-add"
+      - mcp_docker: "mcp-remove"
+      - mcp_docker: "mcp-find"
+      - mcp_docker: "mcp-exec"
+      - mcp_docker: "mcp-config-set"
+    capabilities: [CONFIGURE, ORCHESTRATE, EXECUTE]
+    protocols: [MCP]
+    input_types: [JSON, TEXT]
+    output_types: [JSON, TEXT]
+
+  - id: sequential_thinking
+    domain: ORCHESTRATION
+    label: "Reasoning & Planning"
+    tools:
+      - mcp_docker: sequentialthinking
+      - builtin: EnterPlanMode
+      - builtin: ExitPlanMode
+    capabilities: [ANALYZE, ORCHESTRATE, GENERATE]
+    protocols: [MCP]
+    input_types: [TEXT]
+    output_types: [TEXT]
+
+  - id: task_management
+    domain: ORCHESTRATION
+    label: "Task Tracking"
+    tools:
+      - builtin: TaskCreate
+      - builtin: TaskUpdate
+      - builtin: TaskGet
+      - builtin: TaskList
+    capabilities: [ORCHESTRATE, READ, WRITE]
+    protocols: [MCP]
+    input_types: [TEXT, JSON]
+    output_types: [JSON]
+
+  - id: usage_meta
+    domain: ORCHESTRATION
+    label: "Usage & Introspection"
+    tools:
+      - mcp_docker: get_usage_stats
+      - mcp_docker: get_recent_tool_calls
+      - mcp_docker: get_prompts
+      - mcp_docker: get_current_model
+      - mcp_docker: get_config
+      - mcp_docker: set_config_value
+      - mcp_docker: give_feedback_to_desktop_commander
+      - builtin: ToolSearch
+    capabilities: [READ, CONFIGURE, MONITOR]
+    protocols: [MCP]
+    input_types: [TEXT]
+    output_types: [JSON, TEXT]
+
+  - id: time_location
+    domain: ORCHESTRATION
+    label: "Time & Location"
+    tools:
+      - mcp_docker: convert_time
+      - mcp_docker: get_current_time
+      - mcp_docker: get_coordinates
+    capabilities: [READ, TRANSFORM]
+    protocols: [MCP]
+    input_types: [TEXT]
+    output_types: [JSON, TEXT]
+
+  # ---------------------------------------------------------------------------
+  # COMMUNICATION domain
+  # ---------------------------------------------------------------------------
+
+  - id: messaging_apps
+    domain: COMMUNICATION
+    label: "Messaging"
+    tools:
+      - app: Discord.app
+      - app: WhatsApp.app
+      - app: Messages.app
+      - app: Mail.app
+      - app: FaceTime.app
+      - cask: mailmate
+    capabilities: [COMMUNICATE, READ]
+    protocols: [GUI]
+    input_types: [TEXT, IMAGE]
+    output_types: [TEXT]
+
+  - id: bug_reporting
+    domain: COMMUNICATION
+    label: "Bug Reporting (Jam)"
+    tools:
+      - mcp_jam: getDetails
+      - mcp_jam: getMetadata
+      - mcp_jam: getScreenshots
+      - mcp_jam: getConsoleLogs
+      - mcp_jam: getNetworkRequests
+      - mcp_jam: getUserEvents
+      - mcp_jam: analyzeVideo
+      - mcp_jam: getVideoTranscript
+      - mcp_jam: createComment
+      - mcp_jam: search
+      - mcp_jam: listJams
+      - mcp_jam: listFolders
+      - mcp_jam: listMembers
+      - mcp_jam: updateJam
+      - mcp_jam: fetch
+    capabilities: [READ, SEARCH, COMMUNICATE, ANALYZE]
+    protocols: [MCP]
+    input_types: [TEXT, JSON]
+    output_types: [JSON, TEXT, IMAGE]
+
+  # ---------------------------------------------------------------------------
+  # SPECIALIZED domain
+  # ---------------------------------------------------------------------------
+
+  - id: npm_registry
+    domain: RESEARCH
+    label: "NPM Package Discovery"
+    tools:
+      - mcp_docker: search_npm_packages
+      - mcp_docker: match_common_libs_owner_repo_mapping
+    capabilities: [SEARCH]
+    protocols: [MCP]
+    input_types: [TEXT]
+    output_types: [JSON]
+
+  - id: job_search
+    domain: COMMUNICATION
+    label: "Job Search (Indeed)"
+    tools:
+      - mcp_indeed: search_jobs
+      - mcp_indeed: get_job_details
+      - mcp_indeed: get_company_data
+      - mcp_indeed: get_resume
+    capabilities: [SEARCH, READ]
+    protocols: [MCP]
+    input_types: [TEXT]
+    output_types: [JSON, TEXT]
+
+  - id: nonprofit
+    domain: COMMUNICATION
+    label: "Nonprofit Discovery (Benevity)"
+    tools:
+      - mcp_benevity: benevity_nonprofit_search
+      - mcp_benevity: benevity_nonprofit_details
+    capabilities: [SEARCH, READ]
+    protocols: [MCP]
+    input_types: [TEXT]
+    output_types: [JSON, TEXT]
+
+  - id: learning_standards
+    domain: RESEARCH
+    label: "Learning Standards"
+    tools:
+      - mcp_learning: find_standard_statement
+      - mcp_learning: find_learning_components_from_standard
+      - mcp_learning: find_standards_progression_from_standard
+    capabilities: [SEARCH, READ]
+    protocols: [MCP]
+    input_types: [TEXT]
+    output_types: [JSON, TEXT]
+
+  - id: music_playback
+    domain: CREATIVE
+    label: "Music Playback"
+    tools:
+      - mcp_music: "play-sheet-music"
+      - app: Spotify.app
+      - app: Music.app
+    capabilities: [EXECUTE, VISUALIZE]
+    protocols: [MCP, GUI]
+    input_types: [TEXT, AUDIO]
+    output_types: [AUDIO]
+
+  - id: utility_apps
+    domain: SYSTEM
+    label: "Utility Applications"
+    tools:
+      - app: "1Password for Safari.app"
+      - app: Actions.app
+      - app: Boop.app
+      - app: "CSV Editor Pro X.app"
+      - app: "Delete Apps.app"
+      - app: DevCleaner.app
+      - app: Extractor.app
+      - app: FitFileExplorer.app
+      - app: Flycut.app
+      - app: "Image Converter.app"
+      - app: "Key Codes.app"
+      - app: MCPDock.app
+      - app: Paste.app
+      - app: "Plist Extractor.app"
+      - app: "Royal TSX.app"
+      - app: "Stirling-PDF.app"
+      - app: WordService.app
+    capabilities: [READ, TRANSFORM, EDIT]
+    protocols: [GUI]
+    input_types: [TEXT, PDF, IMAGE, BINARY, CONFIG]
+    output_types: [TEXT, PDF, IMAGE]
+
+  # ---------------------------------------------------------------------------
+  # MONITORING (Grafana stack in Docker)
+  # ---------------------------------------------------------------------------
+
+  - id: observability
+    domain: SYSTEM
+    label: "Observability Stack"
+    tools:
+      - docker: "grafana/alloy"
+      - docker: "grafana/docker-desktop-extension"
+    capabilities: [MONITOR, VISUALIZE, READ]
+    protocols: [GUI, API]
+    input_types: [STREAM, JSON]
+    output_types: [JSON, IMAGE]
+
+# =============================================================================
+# RELATIONSHIP TYPES
+# =============================================================================
+
+relationship_types:
+  - id: INVOKES
+    description: "Tool A can call/launch Tool B"
+    directionality: directed
+
+  - id: FEEDS
+    description: "Output of A is valid input for B"
+    directionality: directed
+
+  - id: ALTERNATIVE_TO
+    description: "A and B serve the same function"
+    directionality: undirected
+
+  - id: ENHANCES
+    description: "A augments the capabilities of B"
+    directionality: directed
+
+  - id: DEPENDS_ON
+    description: "A requires B to function"
+    directionality: directed
+
+  - id: BRIDGES
+    description: "A connects domain X to domain Y"
+    directionality: undirected
