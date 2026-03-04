@@ -8,8 +8,8 @@
 version: "1.1"
 created: "2026-03-03"
 updated: "2026-03-03"
-surface_count: 578
-surface_count_note: "578 distinct tools enumerated across 64 clusters in 12 domains. Additional ~90 Skills invoke these tools but are a meta-layer, not counted separately."
+surface_count: 592
+surface_count_note: "592 distinct tools enumerated across 67 clusters in 12 domains. Additional ~90 Skills invoke these tools but are a meta-layer, not counted separately."
 
 # =============================================================================
 # TAXONOMY
@@ -87,6 +87,7 @@ taxonomy:
     - NAVIGATE       # Browse, explore, traverse
     - COMPOSE        # Combine, merge, chain outputs
     - COMMUNICATE    # Send messages, post, notify
+    - ORGANIZE       # Categorize, structure, curate, manage collections
 
   protocols:
     - id: MCP
@@ -1410,6 +1411,51 @@ clusters:
     protocols: [GUI, API]
     input_types: [STREAM, JSON]
     output_types: [JSON, IMAGE]
+
+  # ---------------------------------------------------------------------------
+  # NEW CLUSTERS (from research/digested/2026-03-03-tool-surface-integration)
+  # ---------------------------------------------------------------------------
+
+  - id: prompt_engineering
+    domain: AI_AGENTS
+    label: "Prompt Architecture & Templates"
+    tools:
+      - "CLAUDE.md files (per-repo AI instructions)"
+      - ".cursorrules files"
+      - "agents.yaml (per-organ AI role definitions)"
+      - "spec.md / plan.md / status.md templates"
+    capabilities: [CONFIGURE, GENERATE, STORE]
+    protocols: [FILESYSTEM]
+    input_types: [TEXT, YAML]
+    output_types: [TEXT, YAML]
+
+  - id: governance_engine
+    domain: ORCHESTRATION
+    label: "Governance & Registry"
+    tools:
+      - "registry-v2.json"
+      - "governance-rules.json"
+      - "seed.yaml contracts"
+      - cli: organ-audit.py
+      - cli: validate-deps.py
+      - cli: calculate-metrics.py
+    capabilities: [READ, WRITE, ANALYZE, ORCHESTRATE, CONFIGURE]
+    protocols: [FILESYSTEM, CLI]
+    input_types: [JSON, YAML]
+    output_types: [JSON, TEXT]
+
+  - id: knowledge_management
+    domain: RESEARCH
+    label: "Personal Knowledge Management"
+    tools:
+      - app: Obsidian.app
+      - app: Notion.app
+      - "PARA structure (Projects/Areas/Resources/Archives)"
+      - "pattern catalog (Organvm Patterns)"
+    capabilities: [READ, WRITE, SEARCH, STORE, ORGANIZE]
+    protocols: [GUI, FILESYSTEM]
+    input_types: [TEXT, JSON]
+    output_types: [TEXT, JSON]
 
 # =============================================================================
 # RELATIONSHIP TYPES

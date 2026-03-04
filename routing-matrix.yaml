@@ -455,6 +455,601 @@ routes:
         target: "[any cluster via Skill workflow]"
     note: "Skills have their own internal routing — see skills section"
 
+  # ===========================================================================
+  # INTRA-DOMAIN COMPLETION
+  # ===========================================================================
+
+  - id: analysis_to_quality
+    from: code_analysis_mcp
+    to: code_quality_cli
+    data_flow: JSON → CODE
+    protocol: MCP → CLI
+    automatable: true
+    description: "Analysis findings drive lint/format fixes"
+    exemplars:
+      - source: analyze_python_file
+        target: black
+
+  - id: quality_to_git
+    from: code_quality_cli
+    to: git_core
+    data_flow: CODE → CODE
+    protocol: CLI → CLI
+    automatable: true
+    description: "Lint-clean code committed"
+    exemplars:
+      - source: ruff
+        target: "git add && git commit"
+
+  - id: git_core_to_enhanced
+    from: git_core
+    to: git_enhanced
+    data_flow: CODE → CODE
+    protocol: CLI → CLI
+    automatable: true
+    description: "Core git ops feed power tools"
+    exemplars:
+      - source: "git log"
+        target: "git-delta"
+
+  - id: git_enhanced_to_github
+    from: git_enhanced
+    to: github_platform
+    data_flow: CODE → CODE
+    protocol: CLI → MCP
+    automatable: true
+    description: "Enhanced git info drives platform actions"
+    exemplars:
+      - source: "git-cliff"
+        target: create_pull_request
+
+  - id: filesystem_mcp_to_cli
+    from: filesystem_mcp
+    to: filesystem_cli
+    data_flow: TEXT → TEXT
+    protocol: MCP → CLI
+    automatable: true
+    description: "MCP filesystem results piped to CLI tools"
+    exemplars:
+      - source: read_file
+        target: bat
+
+  - id: browser_chrome_to_playwright
+    from: browser_chrome
+    to: browser_playwright
+    data_flow: HTML → HTML
+    protocol: BROWSER_AUTO → MCP
+    automatable: true
+    description: "Chrome interaction fallback to headless"
+    exemplars:
+      - source: navigate
+        target: browser_navigate
+
+  - id: web_search_to_content
+    from: web_search
+    to: web_content
+    data_flow: TEXT → TEXT
+    protocol: MCP → MCP
+    automatable: true
+    description: "Search results drive content extraction"
+    exemplars:
+      - source: tavily_search
+        target: fetch_content
+
+  - id: web_content_to_docs
+    from: web_content
+    to: documentation
+    data_flow: TEXT → TEXT
+    protocol: MCP → MCP
+    automatable: true
+    description: "Extracted web content feeds doc lookup"
+    exemplars:
+      - source: convert_to_markdown
+        target: "get-library-docs"
+
+  - id: wikipedia_to_content
+    from: wikipedia
+    to: web_content
+    data_flow: TEXT → TEXT
+    protocol: MCP → MCP
+    automatable: true
+    description: "Wiki articles feed content pipeline"
+    exemplars:
+      - source: get_article
+        target: extract_key_facts
+
+  - id: npm_to_docs
+    from: npm_registry
+    to: documentation
+    data_flow: JSON → TEXT
+    protocol: MCP → MCP
+    automatable: true
+    description: "NPM package info drives doc lookup"
+    exemplars:
+      - source: search_npm_packages
+        target: "get-library-docs"
+
+  - id: academic_to_content
+    from: academic_research
+    to: web_content
+    data_flow: JSON → TEXT
+    protocol: MCP → MCP
+    automatable: true
+    description: "Academic results feed content extraction"
+    exemplars:
+      - source: semanticSearch
+        target: fetch_content
+
+  - id: cloudflare_platform_to_data
+    from: cloudflare_platform
+    to: cloudflare_data
+    data_flow: CODE → JSON
+    protocol: CLI → MCP
+    automatable: true
+    description: "Platform deploys feed data services"
+    exemplars:
+      - source: "wrangler deploy"
+        target: d1_database_query
+
+  - id: vercel_to_cicd
+    from: vercel_platform
+    to: ci_cd
+    data_flow: JSON → YAML
+    protocol: MCP → CLI
+    automatable: true
+    description: "Vercel deploy status feeds CI"
+    exemplars:
+      - source: get_deployment
+        target: act
+
+  - id: netlify_to_cicd
+    from: netlify_platform
+    to: ci_cd
+    data_flow: JSON → YAML
+    protocol: MCP → CLI
+    automatable: true
+    description: "Netlify deploy status feeds CI"
+    exemplars:
+      - source: "netlify-deploy-services-reader"
+        target: act
+
+  - id: container_to_cicd
+    from: container_orchestration
+    to: ci_cd
+    data_flow: STREAM → YAML
+    protocol: CLI → CLI
+    automatable: true
+    description: "Container builds feed CI pipelines"
+    exemplars:
+      - source: "docker build"
+        target: act
+
+  # ===========================================================================
+  # CROSS-DOMAIN PIPELINES
+  # ===========================================================================
+
+  - id: thinking_to_code
+    from: sequential_thinking
+    to: claude_code_core
+    data_flow: TEXT → CODE
+    protocol: MCP → FILESYSTEM
+    automatable: true
+    description: "Reasoning output drives code generation"
+    exemplars:
+      - source: sequentialthinking
+        target: Write
+
+  - id: tasks_to_github
+    from: task_management
+    to: github_platform
+    data_flow: JSON → TEXT
+    protocol: MCP → MCP
+    automatable: true
+    description: "Task items become GitHub issues"
+    exemplars:
+      - source: TaskCreate
+        target: issue_write
+
+  - id: tasks_to_thinking
+    from: task_management
+    to: sequential_thinking
+    data_flow: JSON → TEXT
+    protocol: MCP → MCP
+    automatable: true
+    description: "Tasks drive reasoning about approach"
+    exemplars:
+      - source: TaskGet
+        target: sequentialthinking
+
+  - id: kg_to_thinking
+    from: knowledge_graph
+    to: sequential_thinking
+    data_flow: JSON → TEXT
+    protocol: MCP → MCP
+    automatable: true
+    description: "Knowledge graph informs reasoning"
+    exemplars:
+      - source: read_graph
+        target: sequentialthinking
+
+  - id: docs_to_analysis
+    from: documentation
+    to: code_analysis_mcp
+    data_flow: TEXT → CODE
+    protocol: MCP → MCP
+    automatable: true
+    description: "Library docs inform code analysis"
+    exemplars:
+      - source: "get-library-docs"
+        target: analyze_python_file
+
+  - id: code_core_to_analysis
+    from: claude_code_core
+    to: code_analysis_mcp
+    data_flow: CODE → CODE
+    protocol: FILESYSTEM → MCP
+    automatable: true
+    description: "Code authoring triggers analysis"
+    exemplars:
+      - source: Write
+        target: analyze_python_file
+
+  - id: code_core_to_quality
+    from: claude_code_core
+    to: code_quality_cli
+    data_flow: CODE → CODE
+    protocol: FILESYSTEM → CLI
+    automatable: true
+    description: "Written code gets linted"
+    exemplars:
+      - source: Edit
+        target: ruff
+
+  - id: code_core_to_filesystem
+    from: claude_code_core
+    to: filesystem_cli
+    data_flow: CODE → TEXT
+    protocol: FILESYSTEM → CLI
+    automatable: true
+    description: "Code tools drive filesystem operations"
+    exemplars:
+      - source: Write
+        target: eza
+
+  - id: execution_to_code
+    from: code_execution
+    to: claude_code_core
+    data_flow: JSON → CODE
+    protocol: MCP → FILESYSTEM
+    automatable: true
+    description: "Sandbox results drive code fixes"
+    exemplars:
+      - source: sandbox_exec
+        target: Edit
+
+  - id: security_to_github
+    from: security_scanning
+    to: github_platform
+    data_flow: JSON → TEXT
+    protocol: CLI → MCP
+    automatable: true
+    description: "Security scan findings become issues"
+    exemplars:
+      - source: trivy
+        target: issue_write
+
+  - id: github_to_sentry
+    from: github_platform
+    to: sentry_monitoring
+    data_flow: CODE → JSON
+    protocol: MCP → MCP
+    automatable: true
+    description: "Deployments feed monitoring"
+    exemplars:
+      - source: merge_pull_request
+        target: search_issues
+
+  - id: github_to_tasks
+    from: github_platform
+    to: task_management
+    data_flow: JSON → JSON
+    protocol: MCP → MCP
+    automatable: true
+    description: "GitHub issues drive task tracking"
+    exemplars:
+      - source: issue_read
+        target: TaskCreate
+
+  - id: neon_to_analysis
+    from: neon_database
+    to: code_analysis_mcp
+    data_flow: JSON → CODE
+    protocol: MCP → MCP
+    automatable: true
+    description: "Schema info drives code analysis"
+    exemplars:
+      - source: describe_table_schema
+        target: analyze_python_file
+
+  - id: jupyter_to_neon
+    from: jupyter_notebooks
+    to: neon_database
+    data_flow: SQL → JSON
+    protocol: MCP → MCP
+    automatable: true
+    description: "Notebook SQL queries run against DB"
+    exemplars:
+      - source: execute_cell
+        target: run_sql
+
+  - id: jupyter_to_diagrams
+    from: jupyter_notebooks
+    to: diagramming
+    data_flow: JSON → DIAGRAM
+    protocol: MCP → MCP
+    automatable: true
+    description: "Notebook output drives diagram generation"
+    exemplars:
+      - source: execute_cell
+        target: validate_and_render_mermaid_diagram
+
+  - id: code_to_publishing
+    from: claude_code_core
+    to: publishing
+    data_flow: TEXT → PDF
+    protocol: FILESYSTEM → MCP
+    automatable: true
+    description: "Code/docs generate published output"
+    exemplars:
+      - source: Write
+        target: write_pdf
+
+  - id: diagrams_to_github
+    from: diagramming
+    to: github_platform
+    data_flow: DIAGRAM → TEXT
+    protocol: MCP → MCP
+    automatable: true
+    description: "Diagrams included in PRs"
+    exemplars:
+      - source: validate_and_render_mermaid_diagram
+        target: create_pull_request
+
+  - id: diagrams_to_publishing
+    from: diagramming
+    to: publishing
+    data_flow: DIAGRAM → PDF
+    protocol: MCP → MCP
+    automatable: true
+    description: "Diagrams feed published docs"
+    exemplars:
+      - source: validate_and_render_mermaid_diagram
+        target: write_pdf
+
+  - id: design_to_publishing
+    from: visual_design
+    to: publishing
+    data_flow: IMAGE → PDF
+    protocol: MCP → MCP
+    automatable: true
+    description: "Design assets feed published docs"
+    exemplars:
+      - source: get_screenshot
+        target: write_pdf
+
+  - id: web_search_to_thinking
+    from: web_search
+    to: sequential_thinking
+    data_flow: TEXT → TEXT
+    protocol: MCP → MCP
+    automatable: true
+    description: "Search results inform reasoning"
+    exemplars:
+      - source: perplexity_research
+        target: sequentialthinking
+
+  - id: academic_to_thinking
+    from: academic_research
+    to: sequential_thinking
+    data_flow: JSON → TEXT
+    protocol: MCP → MCP
+    automatable: true
+    description: "Research papers inform reasoning"
+    exemplars:
+      - source: semanticSearch
+        target: sequentialthinking
+
+  - id: mcp_meta_to_code
+    from: mcp_meta
+    to: claude_code_core
+    data_flow: JSON → CODE
+    protocol: MCP → FILESYSTEM
+    automatable: true
+    description: "MCP meta-tools configure code tools"
+    exemplars:
+      - source: "mcp-find"
+        target: Write
+
+  - id: usage_to_thinking
+    from: usage_meta
+    to: sequential_thinking
+    data_flow: JSON → TEXT
+    protocol: MCP → MCP
+    automatable: true
+    description: "Usage stats inform reasoning about tool selection"
+    exemplars:
+      - source: get_usage_stats
+        target: sequentialthinking
+
+  - id: shell_to_processes
+    from: shell_environment
+    to: process_management
+    data_flow: TEXT → STREAM
+    protocol: CLI → CLI
+    automatable: true
+    description: "Shell commands spawn processes"
+    exemplars:
+      - source: zsh
+        target: start_process
+
+  - id: process_to_observability
+    from: process_management
+    to: observability
+    data_flow: STREAM → JSON
+    protocol: CLI → API
+    automatable: true
+    description: "Process output feeds monitoring"
+    exemplars:
+      - source: read_process_output
+        target: "grafana/alloy"
+
+  - id: config_to_filesystem
+    from: system_config
+    to: filesystem_cli
+    data_flow: CONFIG → TEXT
+    protocol: CLI → CLI
+    automatable: true
+    description: "Config tools write to filesystem"
+    exemplars:
+      - source: chezmoi
+        target: eza
+
+  - id: sentry_to_thinking
+    from: sentry_monitoring
+    to: sequential_thinking
+    data_flow: JSON → TEXT
+    protocol: MCP → MCP
+    automatable: true
+    description: "Error data informs reasoning about fixes"
+    exemplars:
+      - source: get_issue_details
+        target: sequentialthinking
+
+  - id: bugs_to_tasks
+    from: bug_reporting
+    to: task_management
+    data_flow: JSON → JSON
+    protocol: MCP → MCP
+    automatable: true
+    description: "Bug reports create tasks"
+    exemplars:
+      - source: getDetails
+        target: TaskCreate
+
+  - id: time_to_thinking
+    from: time_location
+    to: sequential_thinking
+    data_flow: JSON → TEXT
+    protocol: MCP → MCP
+    automatable: true
+    description: "Time context informs reasoning"
+    exemplars:
+      - source: get_current_time
+        target: sequentialthinking
+
+  - id: auth_to_github
+    from: auth_identity
+    to: github_platform
+    data_flow: JSON → JSON
+    protocol: MCP → MCP
+    automatable: true
+    description: "Auth identity drives platform operations"
+    exemplars:
+      - source: get_me
+        target: create_pull_request
+
+  - id: learning_to_kg
+    from: learning_standards
+    to: knowledge_graph
+    data_flow: JSON → JSON
+    protocol: MCP → MCP
+    automatable: true
+    description: "Learning standards stored in knowledge graph"
+    exemplars:
+      - source: find_standard_statement
+        target: create_entities
+
+  - id: media_to_knowledge_apps
+    from: media_research
+    to: knowledge_apps
+    data_flow: TEXT → JSON
+    protocol: MCP → MCP
+    automatable: true
+    description: "Media transcripts stored in Notion"
+    exemplars:
+      - source: get_transcript
+        target: "notion-create-pages"
+
+  - id: browser_chrome_to_code
+    from: browser_chrome
+    to: claude_code_core
+    data_flow: HTML → CODE
+    protocol: BROWSER_AUTO → FILESYSTEM
+    automatable: true
+    description: "Browser inspection results drive code changes"
+    exemplars:
+      - source: read_page
+        target: Edit
+
+  - id: browser_playwright_to_code
+    from: browser_playwright
+    to: claude_code_core
+    data_flow: HTML → CODE
+    protocol: MCP → FILESYSTEM
+    automatable: true
+    description: "Headless test results drive code fixes"
+    exemplars:
+      - source: browser_snapshot
+        target: Edit
+
+  # ===========================================================================
+  # RESEARCH-RECOMMENDED ROUTES (from tool-surface-integration.yaml)
+  # ===========================================================================
+
+  - id: governance_to_ci
+    from: governance_engine
+    to: ci_cd
+    data_flow: JSON → YAML
+    protocol: FILESYSTEM → CLI
+    automatable: true
+    description: "Registry/governance rules drive CI validation"
+    exemplars:
+      - source: "governance-rules.json"
+        target: act
+
+  - id: prompt_to_code
+    from: prompt_engineering
+    to: claude_code_core
+    data_flow: TEXT → CODE
+    protocol: FILESYSTEM → MCP
+    automatable: true
+    description: "CLAUDE.md and spec.md configure AI behavior for code generation"
+    exemplars:
+      - source: "CLAUDE.md"
+        target: Write
+
+  - id: kg_to_governance
+    from: knowledge_graph
+    to: governance_engine
+    data_flow: JSON → JSON
+    protocol: MCP → FILESYSTEM
+    automatable: true
+    description: "Knowledge graph entities inform registry updates"
+    exemplars:
+      - source: read_graph
+        target: "registry-v2.json"
+
+  - id: sentry_to_governance
+    from: sentry_monitoring
+    to: governance_engine
+    data_flow: JSON → JSON
+    protocol: MCP → FILESYSTEM
+    automatable: true
+    description: "Error rates inform governance metrics and SLO tracking"
+    exemplars:
+      - source: search_issues
+        target: "calculate-metrics.py"
+
 alternatives:
     - cluster: web_search
       tools_ranked:

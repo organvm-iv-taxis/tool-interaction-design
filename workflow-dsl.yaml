@@ -635,6 +635,183 @@ examples:
 
     output: "${emit}"
 
+  # ---------------------------------------------------------------------------
+  # 8. FRAME-SHAPE-BUILD-PROVE LIFECYCLE
+  # ---------------------------------------------------------------------------
+
+  - name: frame-shape-build-prove
+    version: "1.0"
+    description: "The canonical lifecycle loop from 5-document research synthesis"
+    trigger:
+      type: manual
+
+    steps:
+      - name: frame
+        cluster: sequential_thinking
+        tool: sequentialthinking
+        input: "Frame the problem: research, define scope, write spec"
+        checkpoint: true  # Human approves scope
+        output: spec
+
+      - name: shape
+        cluster: sequential_thinking
+        tool: sequentialthinking
+        input: "${spec}"
+        checkpoint: true  # Human approves architecture
+        output: plan
+
+      - name: build
+        cluster: claude_code_core
+        input: "${plan}"
+        depends_on: [shape]
+        loop:
+          mode: for_each
+          over: "${plan.steps}"
+          step:
+            name: implement_step
+            parallel:
+              - name: code
+                cluster: claude_code_core
+                tool: Edit
+              - name: test
+                cluster: code_execution
+                tool: sandbox_exec
+
+      - name: prove
+        depends_on: [build]
+        parallel:
+          - name: lint
+            cluster: code_quality_cli
+          - name: security
+            cluster: security_scanning
+          - name: visual
+            cluster: browser_playwright
+            on_error: skip
+        output: results
+
+      - name: ship
+        cluster: github_platform
+        tool: create_pull_request
+        depends_on: [prove]
+        condition: "all_passed(prove)"
+        checkpoint: true  # Human approves merge
+
+    output: "${ship}"
+
+  # ---------------------------------------------------------------------------
+  # 9. RESEARCH-TO-SPEC PIPELINE
+  # ---------------------------------------------------------------------------
+
+  - name: research-to-spec
+    version: "1.0"
+    description: "Research a problem domain and produce a spec.md"
+    trigger:
+      type: manual
+    input:
+      problem: string
+
+    steps:
+      - name: web_research
+        cluster: web_search
+        tool: perplexity_research
+        input: "${input.problem}"
+        output: web_results
+
+      - name: academic_research
+        cluster: academic_research
+        tool: semanticSearch
+        input: "${input.problem}"
+        output: academic_results
+        on_error: skip
+
+      - name: existing_code
+        cluster: claude_code_core
+        tool: Agent
+        input:
+          type: Explore
+          prompt: "Find code related to: ${input.problem}"
+        output: code_context
+
+      - name: synthesize
+        cluster: sequential_thinking
+        tool: sequentialthinking
+        input: "Synthesize: ${web_results} + ${academic_results} + ${code_context}"
+        depends_on: [web_research, academic_research, existing_code]
+        output: synthesis
+
+      - name: write_spec
+        cluster: claude_code_core
+        tool: Write
+        input:
+          file: "spec.md"
+          content: "${synthesis | text}"
+        depends_on: [synthesize]
+        checkpoint: true  # Human reviews spec
+
+    output: "${write_spec}"
+
+  # ---------------------------------------------------------------------------
+  # 10. SESSION RITUAL (D4's 6-step protocol)
+  # ---------------------------------------------------------------------------
+
+  - name: session-ritual
+    version: "1.0"
+    description: "D4's 6-step session protocol: pick → plan → critique → branch → implement → breadcrumb"
+    trigger:
+      type: manual
+    input:
+      organ: string
+      repo: string
+      scope: string
+
+    steps:
+      - name: pick_scope
+        cluster: task_management
+        input: "${input.scope}"
+        output: task
+
+      - name: draft_plan
+        cluster: sequential_thinking
+        tool: sequentialthinking
+        input: "Plan for ${input.scope} in ${input.organ}/${input.repo}"
+        output: micro_plan
+        depends_on: [pick_scope]
+
+      - name: critique_plan
+        cluster: claude_code_core
+        input: "Critique this plan, make it smaller: ${micro_plan}"
+        output: refined_plan
+        depends_on: [draft_plan]
+        checkpoint: true  # Human refines
+
+      - name: create_branch
+        cluster: git_core
+        input: "feat/${input.organ}/${input.scope | slug}"
+        depends_on: [critique_plan]
+
+      - name: implement
+        cluster: claude_code_core
+        input: "${refined_plan}"
+        depends_on: [create_branch]
+        loop:
+          mode: for_each
+          over: "${refined_plan.steps}"
+
+      - name: breadcrumb
+        cluster: claude_code_core
+        tool: Write
+        input:
+          file: "status.md"
+          content: "Session ${timestamp}: ${implement.summary}"
+        depends_on: [implement]
+
+      - name: push
+        cluster: git_core
+        input: "git push"
+        depends_on: [breadcrumb]
+
+    output: "${push}"
+
 # =============================================================================
 # DSL EXECUTION SEMANTICS
 # =============================================================================
