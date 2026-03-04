@@ -385,3 +385,515 @@ class TestPatchbayVersion:
         pyproject = Path(__file__).parent.parent / "pyproject.toml"
         content = pyproject.read_text()
         assert f'version = "{__version__}"' in content
+
+
+# ===========================================================================
+# Additional WorkQueue coverage
+# ===========================================================================
+
+
+class TestWorkQueueEdgeCases:
+    def test_malformed_last_validated_date(self, mini_registry, gov):
+        """Malformed date string produces a stale WorkItem with score 75."""
+        gov.registry["organs"]["ORGAN-III"]["repositories"].append(
+            {"name": "bad-date-repo", "promotion_status": "CANDIDATE",
+             "last_validated": "not-a-date", "ci_workflow": "ci.yml",
+             "dependencies": [], "org": "test-org"}
+        )
+        wq = WorkQueue(gov)
+        items = wq.compute()
+        bad = [i for i in items if i.repo == "bad-date-repo"]
+        assert len(bad) == 1
+        assert bad[0].category == "stale"
+        assert bad[0].score == 75
+        assert "invalid" in bad[0].description
+
+    def test_candidate_no_last_validated(self, mini_registry, gov):
+        """CANDIDATE with empty last_validated produces score-75 stale item."""
+        gov.registry["organs"]["ORGAN-III"]["repositories"].append(
+            {"name": "no-date-repo", "promotion_status": "CANDIDATE",
+             "last_validated": "", "ci_workflow": "ci.yml",
+             "dependencies": [], "org": "test-org"}
+        )
+        wq = WorkQueue(gov)
+        items = wq.compute()
+        no_date = [i for i in items if i.repo == "no-date-repo"]
+        assert len(no_date) == 1
+        assert no_date[0].score == 75
+        assert "no validation date" in no_date[0].description
+
+    def test_local_docs_no_ci_score_20(self, gov):
+        """LOCAL with docs DEPLOYED but no CI scores 20 (not 25)."""
+        gov.registry["organs"]["ORGAN-III"]["repositories"].append(
+            {"name": "docs-only", "promotion_status": "LOCAL",
+             "documentation_status": "DEPLOYED", "ci_workflow": "",
+             "dependencies": [], "org": "test-org"}
+        )
+        wq = WorkQueue(gov)
+        items = wq.compute()
+        promo = [i for i in items if i.repo == "docs-only" and i.category == "promotion_ready"]
+        assert len(promo) == 1
+        assert promo[0].score == 20
+        assert "add CI" in promo[0].description
+
+    def test_public_process_wip_violation(self, gov):
+        """Adding 2nd PUBLIC_PROCESS triggers WIP violation (limit is 1)."""
+        gov.registry["organs"]["ORGAN-III"]["repositories"].append(
+            {"name": "pub-extra", "promotion_status": "PUBLIC_PROCESS",
+             "dependencies": [], "org": "test-org"}
+        )
+        wq = WorkQueue(gov)
+        items = wq.compute()
+        viols = [i for i in items if i.category == "wip_violation"
+                 and "PUBLIC_PROCESS" in i.description]
+        assert len(viols) == 1
+        assert viols[0].priority == "CRITICAL"
+
+    def test_empty_registry_returns_empty(self, mini_registry, gov):
+        """Empty organs dict produces no work items."""
+        gov.registry["organs"] = {}
+        wq = WorkQueue(gov)
+        items = wq.compute()
+        assert items == []
+
+    def test_all_archived_no_missing_ci(self, mini_registry):
+        """Registry with only ARCHIVED repos produces no missing_ci items."""
+        reg_path, gov_path, _ = mini_registry
+        registry = {
+            "version": "2.0",
+            "organs": {
+                "ORGAN-I": {
+                    "name": "Theory",
+                    "repositories": [
+                        {"name": "arch1", "promotion_status": "ARCHIVED",
+                         "ci_workflow": "", "documentation_status": "EMPTY",
+                         "dependencies": [], "org": "test"},
+                        {"name": "arch2", "promotion_status": "ARCHIVED",
+                         "ci_workflow": "", "documentation_status": "EMPTY",
+                         "dependencies": [], "org": "test"},
+                    ],
+                },
+            },
+        }
+        reg_path.write_text(json.dumps(registry, indent=2))
+        with patch.object(conductor.governance, "REGISTRY_PATH", reg_path), \
+             patch.object(conductor.governance, "GOVERNANCE_PATH", gov_path):
+            gov = GovernanceRuntime()
+        wq = WorkQueue(gov)
+        items = wq.compute()
+        missing = [i for i in items if i.category in ("missing_ci", "missing_docs")]
+        assert missing == []
+
+
+# ===========================================================================
+# Patchbay formatting and edge cases
+# ===========================================================================
+
+
+class TestPatchbayFormatting:
+    def test_format_text_active_session(self, tmp_dir, gov):
+        """format_text with active session renders phase history, clusters, next command."""
+        engine = SessionEngine()
+        engine.start("III", "test-repo", "Test scope")
+        engine.phase("shape")
+
+        pb = Patchbay(engine=engine)
+        pb.gov = gov
+        pb.wq = WorkQueue(gov)
+        data = pb.briefing()
+        text = pb.format_text(data)
+
+        assert "SESSION: ACTIVE" in text
+        assert "test-repo" in text
+        assert "FRAME(" in text  # Phase history
+        assert "SHAPE(" in text
+        assert "conductor session phase build" in text  # Next command
+        assert "PULSE (abbreviated)" in text
+
+    def test_format_text_with_stats(self, tmp_dir, gov):
+        """format_text renders STATS section when sessions exist."""
+        engine = SessionEngine()
+        engine.start("III", "repo", "Test")
+        engine.phase("shape")
+        engine.phase("build")
+        engine.phase("prove")
+        engine.phase("done")
+        engine.close()
+
+        pb = Patchbay(engine=engine)
+        pb.gov = gov
+        pb.wq = WorkQueue(gov)
+        data = pb.briefing()
+        text = pb.format_text(data)
+
+        assert "STATS" in text
+        assert "Sessions: 1" in text
+        assert "Ship rate: 100%" in text
+        assert "Streak: 1" in text
+
+    def test_format_text_no_stats_when_zero(self, tmp_dir, gov):
+        """format_text omits STATS section when total_sessions is 0."""
+        with patch.object(conductor.session, "SESSION_STATE_FILE", tmp_dir / ".conductor-session.json"):
+            engine = SessionEngine()
+            pb = Patchbay(engine=engine)
+            pb.gov = gov
+            pb.wq = WorkQueue(gov)
+            data = pb.briefing()
+            text = pb.format_text(data)
+
+        assert "STATS\n" not in text
+
+    def test_format_text_last_closed_session(self, tmp_dir, gov):
+        """format_text shows last closed session when no active session."""
+        engine = SessionEngine()
+        engine.start("III", "repo", "Feature X")
+        engine.close()
+
+        pb = Patchbay(engine=engine)
+        pb.gov = gov
+        pb.wq = WorkQueue(gov)
+        data = pb.briefing()
+        text = pb.format_text(data)
+
+        assert "SESSION: none active" in text
+        assert "Last closed:" in text
+
+    def test_format_section_text_pulse(self, tmp_dir, gov):
+        """format_section_text renders pulse section."""
+        with patch.object(conductor.session, "SESSION_STATE_FILE", tmp_dir / ".conductor-session.json"):
+            engine = SessionEngine()
+            pb = Patchbay(engine=engine)
+            pb.gov = gov
+            pb.wq = WorkQueue(gov)
+            data = pb.briefing()
+            section_data = {"timestamp": data["timestamp"], "pulse": data["pulse"]}
+            text = pb.format_section_text(section_data)
+
+        assert "PULSE" in text
+        assert "ORGAN" in text
+        assert "REPOS" in text
+
+    def test_format_section_text_queue(self, tmp_dir, gov):
+        """format_section_text renders queue section."""
+        with patch.object(conductor.session, "SESSION_STATE_FILE", tmp_dir / ".conductor-session.json"):
+            engine = SessionEngine()
+            pb = Patchbay(engine=engine)
+            pb.gov = gov
+            pb.wq = WorkQueue(gov)
+            data = pb.briefing()
+            section_data = {"timestamp": data["timestamp"], "queue": data["queue"]}
+            text = pb.format_section_text(section_data)
+
+        assert "QUEUE" in text
+
+    def test_format_section_text_stats(self, tmp_dir, gov):
+        """format_section_text renders stats section."""
+        engine = SessionEngine()
+        engine.start("III", "repo", "Test")
+        engine.close()
+
+        pb = Patchbay(engine=engine)
+        pb.gov = gov
+        pb.wq = WorkQueue(gov)
+        data = pb.briefing()
+        section_data = {"timestamp": data["timestamp"], "stats": data["stats"]}
+        text = pb.format_section_text(section_data)
+
+        assert "STATS" in text
+        assert "Sessions:" in text
+
+    def test_format_section_text_unknown_falls_back_to_json(self, tmp_dir, gov):
+        """format_section_text returns JSON for unknown section keys."""
+        with patch.object(conductor.session, "SESSION_STATE_FILE", tmp_dir / ".conductor-session.json"):
+            engine = SessionEngine()
+            pb = Patchbay(engine=engine)
+            data = {"timestamp": "2026-03-04T00:00:00", "unknown_section": {"foo": "bar"}}
+            text = pb.format_section_text(data)
+
+        parsed = json.loads(text)
+        assert parsed["unknown_section"]["foo"] == "bar"
+
+
+# ===========================================================================
+# _next_command coverage
+# ===========================================================================
+
+
+class TestNextCommand:
+    def test_frame_command(self):
+        assert Patchbay._next_command("FRAME") == "conductor session phase shape"
+
+    def test_shape_command(self):
+        assert Patchbay._next_command("SHAPE") == "conductor session phase build"
+
+    def test_build_command(self):
+        assert Patchbay._next_command("BUILD") == "conductor session phase prove"
+
+    def test_prove_command(self):
+        assert Patchbay._next_command("PROVE") == "conductor session phase done"
+
+    def test_done_command(self):
+        assert Patchbay._next_command("DONE") == "conductor session close"
+
+    def test_unknown_phase_defaults_to_close(self):
+        assert Patchbay._next_command("INVALID") == "conductor session close"
+
+
+# ===========================================================================
+# _suggest_next coverage
+# ===========================================================================
+
+
+class TestSuggestNext:
+    def test_suggest_frame_phase(self, tmp_dir, gov):
+        engine = SessionEngine()
+        engine.start("III", "repo", "Test")
+
+        pb = Patchbay(engine=engine)
+        pb.gov = gov
+        pb.wq = WorkQueue(gov)
+        suggestion = pb._suggest_next()
+
+        assert "FRAME" in suggestion
+        assert "shape" in suggestion
+
+    def test_suggest_shape_phase(self, tmp_dir, gov):
+        engine = SessionEngine()
+        engine.start("III", "repo", "Test")
+        engine.phase("shape")
+
+        pb = Patchbay(engine=engine)
+        pb.gov = gov
+        pb.wq = WorkQueue(gov)
+        suggestion = pb._suggest_next()
+
+        assert "build" in suggestion
+
+    def test_suggest_build_phase(self, tmp_dir, gov):
+        engine = SessionEngine()
+        engine.start("III", "repo", "Test")
+        engine.phase("shape")
+        engine.phase("build")
+
+        pb = Patchbay(engine=engine)
+        pb.gov = gov
+        pb.wq = WorkQueue(gov)
+        suggestion = pb._suggest_next()
+
+        assert "prove" in suggestion
+
+    def test_suggest_prove_phase(self, tmp_dir, gov):
+        engine = SessionEngine()
+        engine.start("III", "repo", "Test")
+        engine.phase("shape")
+        engine.phase("build")
+        engine.phase("prove")
+
+        pb = Patchbay(engine=engine)
+        pb.gov = gov
+        pb.wq = WorkQueue(gov)
+        suggestion = pb._suggest_next()
+
+        assert "done" in suggestion
+
+    def test_suggest_done_phase(self, tmp_dir, gov):
+        engine = SessionEngine()
+        engine.start("III", "repo", "Test")
+        engine.phase("shape")
+        engine.phase("build")
+        engine.phase("prove")
+        engine.phase("done")
+
+        pb = Patchbay(engine=engine)
+        pb.gov = gov
+        pb.wq = WorkQueue(gov)
+        suggestion = pb._suggest_next()
+
+        assert "close" in suggestion
+
+    def test_suggest_empty_queue(self, tmp_dir, gov):
+        """Empty work queue suggests starting a new session."""
+        with patch.object(conductor.session, "SESSION_STATE_FILE", tmp_dir / ".conductor-session.json"):
+            engine = SessionEngine()
+            pb = Patchbay(engine=engine)
+            gov.registry["organs"] = {}
+            pb.gov = gov
+            pb.wq = WorkQueue(gov)
+            suggestion = pb._suggest_next()
+
+        assert "clean" in suggestion.lower()
+
+
+# ===========================================================================
+# Graceful degradation
+# ===========================================================================
+
+
+class TestGracefulDegradation:
+    def test_section_error_does_not_crash_briefing(self, tmp_dir, gov):
+        """If one section throws, other sections still render."""
+        with patch.object(conductor.session, "SESSION_STATE_FILE", tmp_dir / ".conductor-session.json"):
+            engine = SessionEngine()
+            pb = Patchbay(engine=engine)
+            pb.gov = gov
+            pb.wq = WorkQueue(gov)
+
+            # Sabotage _pulse_section to raise
+            original_pulse = pb._pulse_section
+            def broken_pulse(organ_filter=None):
+                raise RuntimeError("pulse broke")
+            pb._pulse_section = broken_pulse
+
+            data = pb.briefing()
+
+        assert "error" in data["pulse"]
+        assert data["pulse"]["error"] == "pulse broke"
+        # Other sections still populated
+        assert "active" in data["session"]
+        assert "total" in data["queue"]
+        assert "total_sessions" in data["stats"]
+
+    def test_corrupted_stats_file_returns_defaults(self, tmp_dir):
+        """Corrupted stats JSON returns default dict."""
+        stats_file = tmp_dir / ".conductor-stats.json"
+        stats_file.write_text("{{{corrupted json")
+
+        stats = _load_stats()
+        assert stats["total_sessions"] == 0
+        assert stats["streak"] == 0
+        assert stats["recent_sessions"] == []
+
+    def test_session_section_handles_corrupted_state(self, tmp_dir, gov):
+        """Corrupted session state file doesn't crash _session_section."""
+        state_file = tmp_dir / ".conductor-session.json"
+        state_file.write_text("{{{not json")
+
+        engine = SessionEngine()
+        pb = Patchbay(engine=engine)
+        pb.gov = gov
+        pb.wq = WorkQueue(gov)
+        # _session_section catches the exception from _load_session
+        section = pb._session_section()
+        assert section["active"] is False
+
+
+# ===========================================================================
+# Queue truncation
+# ===========================================================================
+
+
+class TestQueueTruncation:
+    def test_queue_section_caps_at_10(self, mini_registry, gov):
+        """_queue_section returns at most 10 items."""
+        # Add enough repos to generate >10 items
+        for i in range(15):
+            gov.registry["organs"]["ORGAN-III"]["repositories"].append(
+                {"name": f"extra-{i}", "promotion_status": "LOCAL",
+                 "documentation_status": "EMPTY", "ci_workflow": "",
+                 "dependencies": [], "org": "test-org"}
+            )
+
+        with patch.object(conductor.session, "SESSION_STATE_FILE", Path("/tmp/nonexistent")):
+            engine = SessionEngine()
+            pb = Patchbay(engine=engine)
+            pb.gov = gov
+            pb.wq = WorkQueue(gov)
+            data = pb.briefing()
+
+        queue = data["queue"]
+        assert len(queue["items"]) <= 10
+        assert queue["total"] > 10  # total reflects actual count
+
+    def test_format_text_queue_shows_max_5(self, mini_registry, gov):
+        """format_text shows at most 5 queue items."""
+        for i in range(15):
+            gov.registry["organs"]["ORGAN-III"]["repositories"].append(
+                {"name": f"xtra-{i}", "promotion_status": "LOCAL",
+                 "documentation_status": "EMPTY", "ci_workflow": "",
+                 "dependencies": [], "org": "test-org"}
+            )
+
+        with patch.object(conductor.session, "SESSION_STATE_FILE", Path("/tmp/nonexistent")):
+            engine = SessionEngine()
+            pb = Patchbay(engine=engine)
+            pb.gov = gov
+            pb.wq = WorkQueue(gov)
+            data = pb.briefing()
+            text = pb.format_text(data)
+
+        # Count "-> " lines within the QUEUE section only (between QUEUE header and next section)
+        lines = text.split("\n")
+        in_queue = False
+        queue_commands = []
+        for line in lines:
+            if "QUEUE" in line and "top" in line:
+                in_queue = True
+                continue
+            if in_queue and (line.strip().startswith("STATS") or line.strip().startswith("NEXT ACTION")):
+                break
+            if in_queue and line.strip().startswith("->"):
+                queue_commands.append(line)
+        assert len(queue_commands) <= 5
+
+
+# ===========================================================================
+# Patchbay pulse edge cases
+# ===========================================================================
+
+
+class TestPulseEdgeCases:
+    def test_empty_registry_pulse(self, mini_registry, gov):
+        """Empty organs produces empty pulse."""
+        gov.registry["organs"] = {}
+
+        with patch.object(conductor.session, "SESSION_STATE_FILE", Path("/tmp/nonexistent")):
+            engine = SessionEngine()
+            pb = Patchbay(engine=engine)
+            pb.gov = gov
+            pb.wq = WorkQueue(gov)
+            data = pb.briefing()
+
+        assert data["pulse"]["total_repos"] == 0
+        assert data["pulse"]["organs"] == {}
+        assert data["pulse"]["violations_count"] == 0
+
+    def test_archived_repos_counted_in_pulse(self, mini_registry, gov):
+        """ARCHIVED repos appear in pulse total and archived count."""
+        with patch.object(conductor.session, "SESSION_STATE_FILE", Path("/tmp/nonexistent")):
+            engine = SessionEngine()
+            pb = Patchbay(engine=engine)
+            pb.gov = gov
+            pb.wq = WorkQueue(gov)
+            data = pb.briefing()
+
+        organ = data["pulse"]["organs"]["ORGAN-III"]
+        assert organ["archived"] == 1  # repo-g
+        assert organ["total"] == 7  # all 7 repos counted
+
+
+# ===========================================================================
+# MCP server patch function
+# ===========================================================================
+
+
+class TestMCPPatch:
+    def test_mcp_patch_returns_valid_json(self, tmp_dir, gov):
+        """mcp_server.patch() returns valid JSON briefing."""
+        try:
+            from mcp_server import patch as mcp_patch
+        except (ImportError, SystemExit):
+            pytest.skip("MCP SDK not installed")
+
+        with patch.object(conductor.session, "SESSION_STATE_FILE", tmp_dir / ".conductor-session.json"), \
+             patch.object(conductor.governance, "REGISTRY_PATH", tmp_dir / "reg.json"), \
+             patch.object(conductor.governance, "GOVERNANCE_PATH", tmp_dir / "gov.json"):
+            # Write minimal registry
+            (tmp_dir / "reg.json").write_text(json.dumps({
+                "version": "2.0", "organs": {}
+            }))
+            (tmp_dir / "gov.json").write_text(json.dumps({"version": "1.0"}))
+
+            result = mcp_patch(organ=None)
+            parsed = json.loads(result)
+
+        assert "timestamp" in parsed or "error" in parsed

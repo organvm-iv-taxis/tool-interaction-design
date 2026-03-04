@@ -92,15 +92,16 @@ class WorkQueue:
             if repo.get("promotion_status") != "CANDIDATE":
                 continue
 
+            name = repo.get("name", "unknown")
             last_validated = repo.get("last_validated", "")
             if not last_validated:
                 items.append(WorkItem(
                     priority="HIGH",
                     category="stale",
                     organ=organ_key,
-                    repo=repo["name"],
+                    repo=name,
                     description="CANDIDATE with no validation date",
-                    suggested_command=f"conductor wip promote {repo['name']} PUBLIC_PROCESS",
+                    suggested_command=f"conductor wip promote {name} PUBLIC_PROCESS",
                     score=75,
                 ))
                 continue
@@ -113,13 +114,22 @@ class WorkQueue:
                         priority="HIGH",
                         category="stale",
                         organ=organ_key,
-                        repo=repo["name"],
+                        repo=name,
                         description=f"stale CANDIDATE (last validated {age_days}d ago)",
-                        suggested_command=f"conductor wip promote {repo['name']} PUBLIC_PROCESS",
+                        suggested_command=f"conductor wip promote {name} PUBLIC_PROCESS",
                         score=70 + min(age_days // 10, 20),
                     ))
             except ValueError:
-                pass
+                # Malformed date — treat as stale
+                items.append(WorkItem(
+                    priority="HIGH",
+                    category="stale",
+                    organ=organ_key,
+                    repo=name,
+                    description="CANDIDATE with invalid validation date",
+                    suggested_command=f"conductor wip promote {name} PUBLIC_PROCESS",
+                    score=75,
+                ))
 
         return items
 
@@ -134,7 +144,7 @@ class WorkQueue:
             if repo.get("promotion_status") == "ARCHIVED":
                 continue
 
-            name = repo["name"]
+            name = repo.get("name", "unknown")
 
             if not repo.get("ci_workflow"):
                 items.append(WorkItem(

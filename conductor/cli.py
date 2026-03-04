@@ -187,7 +187,11 @@ def _dispatch(args):
 
     elif args.command == "patch":
         organ_filter = resolve_organ_key(args.organ) if args.organ else None
-        pb = Patchbay(ontology=ontology, engine=SessionEngine(ontology))
+        try:
+            pb = Patchbay(ontology=ontology, engine=SessionEngine(ontology))
+        except Exception as e:
+            print(f"  ERROR: Patchbay initialization failed: {e}", file=sys.stderr)
+            sys.exit(1)
         data = pb.briefing(organ_filter=organ_filter)
 
         # Filter to one section if requested
@@ -199,11 +203,10 @@ def _dispatch(args):
 
         if args.json_output:
             print(pb.format_json(data))
+        elif args.section:
+            print(pb.format_section_text(data))
         else:
-            if args.section:
-                print(pb.format_json(data))
-            else:
-                print(pb.format_text(data))
+            print(pb.format_text(data))
 
     elif args.command == "route":
         if not engine:

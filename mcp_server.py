@@ -75,7 +75,10 @@ def get_engine() -> RoutingEngine:
 
 def get_session() -> dict | None:
     if SESSION_STATE_FILE.exists():
-        return json.loads(SESSION_STATE_FILE.read_text())
+        try:
+            return json.loads(SESSION_STATE_FILE.read_text())
+        except (json.JSONDecodeError, OSError):
+            return None
     return None
 
 
@@ -140,22 +143,25 @@ def wip_status() -> str:
 
 
 def session_phase() -> str:
-    session = get_session()
-    if not session:
-        return json.dumps({"active": False, "message": "No active session"})
+    try:
+        session = get_session()
+        if not session:
+            return json.dumps({"active": False, "message": "No active session"})
 
-    phase = session.get("current_phase", "UNKNOWN")
-    return json.dumps({
-        "active": True,
-        "session_id": session.get("session_id"),
-        "organ": session.get("organ"),
-        "repo": session.get("repo"),
-        "scope": session.get("scope"),
-        "current_phase": phase,
-        "ai_role": PHASE_ROLES.get(phase, "Unknown"),
-        "active_clusters": get_phase_clusters().get(phase, []),
-        "warnings": session.get("warnings", []),
-    }, indent=2)
+        phase = session.get("current_phase", "UNKNOWN")
+        return json.dumps({
+            "active": True,
+            "session_id": session.get("session_id"),
+            "organ": session.get("organ"),
+            "repo": session.get("repo"),
+            "scope": session.get("scope"),
+            "current_phase": phase,
+            "ai_role": PHASE_ROLES.get(phase, "Unknown"),
+            "active_clusters": get_phase_clusters().get(phase, []),
+            "warnings": session.get("warnings", []),
+        }, indent=2)
+    except Exception as e:
+        return json.dumps({"error": str(e)})
 
 
 def patch(organ: str | None = None) -> str:

@@ -37,21 +37,39 @@ class Patchbay:
         self.wq = WorkQueue(self.gov)
 
     def briefing(self, organ_filter: str | None = None) -> dict:
-        """Full system briefing. Returns structured data."""
-        return {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "session": self._session_section(),
-            "pulse": self._pulse_section(organ_filter),
-            "queue": self._queue_section(organ_filter),
-            "stats": self._stats_section(),
-            "suggested_action": self._suggest_next(organ_filter),
-        }
+        """Full system briefing. Returns structured data.
+
+        Each section degrades gracefully — a single section failure
+        does not prevent other sections from rendering.
+        """
+        result: dict = {"timestamp": datetime.now(timezone.utc).isoformat()}
+
+        for key, fn in [
+            ("session", lambda: self._session_section()),
+            ("pulse", lambda: self._pulse_section(organ_filter)),
+            ("queue", lambda: self._queue_section(organ_filter)),
+            ("stats", lambda: self._stats_section()),
+        ]:
+            try:
+                result[key] = fn()
+            except Exception as e:
+                result[key] = {"error": str(e)}
+
+        try:
+            result["suggested_action"] = self._suggest_next(organ_filter)
+        except Exception:
+            result["suggested_action"] = ""
+
+        return result
 
     # ----- Sections -----
 
     def _session_section(self) -> dict:
         """Active session or last closed."""
-        session = self.engine._load_session()
+        try:
+            session = self.engine._load_session()
+        except Exception:
+            session = None
         if session:
             phase_clusters = get_phase_clusters()
             phase_history = []
@@ -218,6 +236,87 @@ class Patchbay:
 
     # ----- Formatters -----
 
+    def format_section_text(self, data: dict) -> str:
+        """Human-readable text for a single-section view.
+
+        Falls back to JSON for unrecognized section keys.
+        """
+        lines: list[str] = []
+        now_str = data.get("timestamp", "")[:19].replace("T", " ") + " UTC"
+        lines.append(f"  PATCHBAY{' ' * 50}{now_str}")
+        lines.append("  " + "=" * 70)
+
+        if "pulse" in data:
+            pulse = data["pulse"]
+            organs = pulse.get("organs", {})
+            lines.append("")
+            lines.append("  PULSE")
+            lines.append("  " + "-" * 68)
+            if organs:
+                lines.append(f"  {'ORGAN':<14} {'REPOS':>5} {'CAND':>5} {'PUB':>5} {'GRAD':>5} {'ARCH':>5}   FLAGS")
+                for organ_key in sorted(organs.keys()):
+                    o = organs[organ_key]
+                    short = o.get("short", organ_key)
+                    organ_names = {
+                        "I": "Theoria", "II": "Poiesis", "III": "Ergon",
+                        "IV": "Taxis", "V": "Logos", "VI": "Koinonia",
+                        "VII": "Kerygma", "META": "Meta",
+                    }
+                    label = f"{short} {organ_names.get(short, '')}"
+                    flags = ", ".join(o.get("flags", []))
+                    lines.append(
+                        f"  {label:<14} {o['total']:>5} {o['candidate']:>5} "
+                        f"{o['public_process']:>5} {o['graduated']:>5} "
+                        f"{o['archived']:>5}   {flags}"
+                    )
+            viols = pulse.get("violations_count", 0)
+            total_cand = pulse.get("total_candidate", 0)
+            lines.append("  " + "-" * 68)
+            if viols:
+                lines.append(f"  {viols} organs over WIP limit | {total_cand} CANDIDATE system-wide")
+            else:
+                lines.append(f"  No WIP violations | {total_cand} CANDIDATE system-wide")
+
+        elif "queue" in data:
+            queue = data["queue"]
+            queue_items = queue.get("items", [])
+            total_q = queue.get("total", 0)
+            lines.append("")
+            lines.append(f"  QUEUE ({total_q} items)")
+            lines.append("  " + "-" * 68)
+            for item in queue_items:
+                icon = "!!" if item["priority"] == "CRITICAL" else "!" if item["priority"] == "HIGH" else "."
+                if item.get("repo"):
+                    lines.append(f"  {icon:<3} {item['repo']}: {item['description']}")
+                else:
+                    lines.append(f"  {icon:<3} {organ_short(item['organ'])}: {item['description']}")
+                lines.append(f"      -> {item['suggested_command']}")
+            lines.append("  " + "-" * 68)
+
+        elif "stats" in data:
+            stats = data["stats"]
+            lines.append("")
+            lines.append("  STATS")
+            lines.append("  " + "-" * 68)
+            lines.append(
+                f"  Sessions: {stats.get('total_sessions', 0)} | "
+                f"Hours: {stats.get('total_hours', 0)} | "
+                f"Ship rate: {stats.get('ship_rate', 0)}% | "
+                f"Streak: {stats.get('streak', 0)}"
+            )
+            recent = stats.get("recent_sessions", [])
+            if recent:
+                lines.append("")
+                lines.append("  Recent sessions:")
+                for s in recent:
+                    lines.append(f"    {s.get('session_id', '?')} ({s.get('result', '?')}, {s.get('duration_minutes', 0)}m)")
+
+        else:
+            return json.dumps(data, indent=2)
+
+        lines.append("")
+        return "\n".join(lines)
+
     def format_json(self, data: dict) -> str:
         """Machine-readable JSON output."""
         return json.dumps(data, indent=2)
@@ -250,7 +349,7 @@ class Patchbay:
                 history_parts.append(f"{ph['phase']}({ph['duration_minutes']}m{marker})")
             if history_parts:
                 lines.append(f"  {' -> '.join(history_parts)}")
-            lines.append(f"  -> Next: conductor session phase {self._next_phase(phase)}")
+            lines.append(f"  -> Next: {self._next_command(phase)}")
         else:
             lines.append("")
             lines.append("  SESSION: none active")
@@ -332,9 +431,9 @@ class Patchbay:
                 f"Streak: {stats.get('streak', 0)}"
             )
 
-        # Suggested action
+        # Suggested action (shown for both active and inactive sessions)
         suggested = data.get("suggested_action", "")
-        if suggested and not sess.get("active"):
+        if suggested:
             lines.append("")
             lines.append("  NEXT ACTION")
             lines.append("  " + "-" * 68)
@@ -345,12 +444,13 @@ class Patchbay:
         return "\n".join(lines)
 
     @staticmethod
-    def _next_phase(current: str) -> str:
-        """Suggest the next phase name for the session context."""
-        phase_map = {
-            "FRAME": "shape",
-            "SHAPE": "build",
-            "BUILD": "prove",
-            "PROVE": "done",
+    def _next_command(current: str) -> str:
+        """Suggest the next conductor command for the session context."""
+        command_map = {
+            "FRAME": "conductor session phase shape",
+            "SHAPE": "conductor session phase build",
+            "BUILD": "conductor session phase prove",
+            "PROVE": "conductor session phase done",
+            "DONE": "conductor session close",
         }
-        return phase_map.get(current, "close")
+        return command_map.get(current, "conductor session close")

@@ -84,7 +84,10 @@ def _load_stats() -> dict:
             return json.loads(STATS_FILE.read_text())
         except (json.JSONDecodeError, OSError):
             pass
-    return {"total_sessions": 0, "total_minutes": 0, "shipped": 0, "closed": 0, "by_organ": {}}
+    return {
+        "total_sessions": 0, "total_minutes": 0, "shipped": 0, "closed": 0,
+        "by_organ": {}, "streak": 0, "last_session_id": "", "recent_sessions": [],
+    }
 
 
 def _save_stats(stats: dict) -> None:
