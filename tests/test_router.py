@@ -378,6 +378,56 @@ class TestWorkflowValidator:
         issues = validator.validate(path)
         assert any("No steps" in i for i in issues)
 
+    def test_catches_unknown_dependency(self, validator, tmp_path):
+        bad_dep_wf = {
+            "name": "bad-dep",
+            "steps": [
+                {"name": "step1", "cluster": "claude_code_core", "depends_on": ["missing_step"]},
+            ],
+        }
+        path = tmp_path / "bad_dep.yaml"
+        path.write_text(yaml.dump(bad_dep_wf))
+        issues = validator.validate(path)
+        assert any("Unknown dependency: missing_step" in i for i in issues)
+
+    def test_catches_unknown_parallel_dependency(self, validator, tmp_path):
+        bad_parallel_dep_wf = {
+            "name": "bad-parallel-dep",
+            "steps": [
+                {
+                    "name": "parent",
+                    "cluster": "claude_code_core",
+                    "parallel": [
+                        {"name": "child", "cluster": "web_search", "depends_on": ["missing_parallel_dep"]},
+                    ],
+                },
+            ],
+        }
+        path = tmp_path / "bad_parallel_dep.yaml"
+        path.write_text(yaml.dump(bad_parallel_dep_wf))
+        issues = validator.validate(path)
+        assert any("Unknown dependency: missing_parallel_dep" in i for i in issues)
+
+    def test_forward_dependency_is_warning(self, validator, tmp_path):
+        forward_dep_wf = {
+            "name": "forward-dep",
+            "steps": [
+                {"name": "build", "cluster": "claude_code_core", "depends_on": ["plan"]},
+                {"name": "plan", "cluster": "sequential_thinking"},
+            ],
+        }
+        path = tmp_path / "forward_dep.yaml"
+        path.write_text(yaml.dump(forward_dep_wf))
+
+        report = validator.validate_report(path)
+        assert report.errors == []
+        assert any("Forward dependency" in warning for warning in report.warnings)
+
+        non_strict = validator.validate(path)
+        strict = validator.validate(path, strict=True)
+        assert non_strict == []
+        assert any("Forward dependency" in issue for issue in strict)
+
 
 # ===========================================================================
 # TestCLICommands
@@ -416,6 +466,21 @@ class TestCLICommands:
     def test_validate_command(self):
         r = self._run("validate", str(WORKFLOW_PATH))
         assert r.returncode == 0
+
+    def test_validate_strict_fails_on_warnings(self, tmp_path):
+        wf = {
+            "name": "strict-warning",
+            "steps": [
+                {"name": "build", "cluster": "claude_code_core", "depends_on": ["plan"]},
+                {"name": "plan", "cluster": "sequential_thinking"},
+            ],
+        }
+        path = tmp_path / "strict_warning.yaml"
+        path.write_text(yaml.dump(wf))
+
+        r = self._run("validate", str(path), "--strict")
+        assert r.returncode == 1
+        assert "STRICT-WARNING" in r.stdout
 
     def test_alternatives_command(self):
         r = self._run("alternatives", "web_search")

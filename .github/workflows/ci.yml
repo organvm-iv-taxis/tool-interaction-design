@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test-and-quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[dev]
+
+      - name: Prepare doctor corpus
+        run: |
+          mkdir -p .ci-corpus
+          cat > .ci-corpus/registry-v2.json <<'JSON'
+          {
+            "version": "2.0",
+            "schema_version": "1",
+            "organs": {
+              "ORGAN-III": {
+                "name": "Commerce",
+                "repositories": [
+                  {
+                    "name": "demo-repo",
+                    "promotion_status": "LOCAL",
+                    "dependencies": [],
+                    "ci_workflow": "ci.yml",
+                    "last_validated": "2026-03-04"
+                  }
+                ]
+              }
+            }
+          }
+          JSON
+          cat > .ci-corpus/governance-rules.json <<'JSON'
+          {
+            "version": "1.0",
+            "schema_version": "1",
+            "organ_requirements": {
+              "ORGAN-III": {
+                "requires_tests": true,
+                "requires_revenue_fields": false
+              }
+            }
+          }
+          JSON
+
+      - name: Run tests
+        run: pytest -q
+
+      - name: Validate schemas
+        run: python tools/validate_schemas.py
+
+      - name: Run mypy strict baseline
+        run: mypy --config-file mypy.ini
+
+      - name: Run release guardrails
+        run: python tools/release_guardrails.py
+
+      - name: Run doctor strict
+        env:
+          ORGANVM_CORPUS_DIR: ${{ github.workspace }}/.ci-corpus
+        run: python -m conductor doctor --workflow workflow-dsl.yaml --strict
+
+      - name: Run routing benchmark SLA
+        run: python benchmarks/benchmark_routing.py --enforce --repeat 30

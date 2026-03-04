@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import subprocess
 import sys
 import tempfile
 import time
@@ -331,6 +333,28 @@ class TestGovernanceRuntime:
         repos = gov._all_repos()
         assert len(repos) == 5
 
+    def test_invalid_registry_schema_raises(self, tmp_path):
+        reg_path = tmp_path / "registry.json"
+        reg_path.write_text(json.dumps({"version": "2.0", "organs": []}))
+        gov_path = tmp_path / "governance.json"
+        gov_path.write_text(json.dumps({"version": "1.0"}))
+
+        with patch.object(conductor.governance, "REGISTRY_PATH", reg_path), \
+             patch.object(conductor.governance, "GOVERNANCE_PATH", gov_path):
+            with pytest.raises(GovernanceError, match="Registry schema"):
+                GovernanceRuntime()
+
+    def test_invalid_governance_schema_raises(self, tmp_path):
+        reg_path = tmp_path / "registry.json"
+        reg_path.write_text(json.dumps({"version": "2.0", "organs": {}}))
+        gov_path = tmp_path / "governance.json"
+        gov_path.write_text(json.dumps({"version": "1.0", "organ_requirements": []}))
+
+        with patch.object(conductor.governance, "REGISTRY_PATH", reg_path), \
+             patch.object(conductor.governance, "GOVERNANCE_PATH", gov_path):
+            with pytest.raises(GovernanceError, match="Governance schema"):
+                GovernanceRuntime()
+
     def test_wip_check_counts(self, mini_registry, capsys):
         gov = self._make_gov(mini_registry)
         gov.wip_check()
@@ -513,6 +537,34 @@ class TestTemplateScaffolding:
         spec = (session_dir / "spec.md").read_text()
         # The {{ organ }} inside the scope gets replaced with the actual organ
         assert "Fix ORGAN-III bug" in spec
+
+
+class TestScopeSlugHardening:
+    def test_scope_slug_is_sanitized_for_session_id_and_paths(self, engine, tmp_dir):
+        session = engine.start("III", "repo", "../../Escape ??? name", git_branch=False)
+        session_dir = tmp_dir / "sessions" / session.session_id
+
+        assert session_dir.exists()
+        assert ".." not in session.session_id
+        assert "/" not in session.session_id
+        assert session_dir.resolve().is_relative_to((tmp_dir / "sessions").resolve())
+
+    def test_scope_with_no_slug_chars_falls_back_to_session(self, engine, tmp_dir):
+        session = engine.start("III", "repo", "!!!", git_branch=False)
+        assert re.search(r"-session-[0-9a-f]{6}$", session.session_id)
+
+    def test_create_branch_sanitizes_slug_argument(self, engine, tmp_dir):
+        results = [
+            MagicMock(returncode=0, stdout="true", stderr=""),  # rev-parse
+            MagicMock(returncode=0, stdout="", stderr=""),      # branch --list
+            MagicMock(returncode=0, stdout="", stderr=""),      # checkout -b
+        ]
+        with patch("conductor.session.subprocess.run", side_effect=results) as mock_run:
+            engine._create_branch("ORGAN-III", "../Bad Scope@@")
+
+        checkout_call = mock_run.call_args_list[2]
+        checkout_cmd = checkout_call[0][0]
+        assert checkout_cmd[-1] == "feat/iii/bad-scope"
 
 
 # ===========================================================================
@@ -900,6 +952,39 @@ class TestWipCheckPublicProcess:
 
         with pytest.raises(GovernanceError, match="PUBLIC_PROCESS"):
             gov.wip_promote("candidate-repo", "PUBLIC_PROCESS")
+
+
+class TestConductorCliValidate:
+    def _run(self, *args):
+        result = subprocess.run(
+            [sys.executable, "-m", "conductor", *args],
+            cwd=str(Path(__file__).parent.parent),
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+        return result
+
+    def test_validate_command(self):
+        workflow_path = Path(__file__).parent.parent / "workflow-dsl.yaml"
+        result = self._run("validate", str(workflow_path))
+        assert result.returncode == 0
+        assert "valid" in result.stdout.lower()
+
+    def test_validate_strict_fails_on_warning(self, tmp_path):
+        wf = {
+            "name": "strict-warning",
+            "steps": [
+                {"name": "build", "cluster": "claude_code_core", "depends_on": ["plan"]},
+                {"name": "plan", "cluster": "sequential_thinking"},
+            ],
+        }
+        path = tmp_path / "strict_warning.yaml"
+        path.write_text(yaml.dump(wf))
+
+        result = self._run("validate", str(path), "--strict")
+        assert result.returncode == 1
+        assert "STRICT-WARNING" in result.stdout
 
 
 # ===========================================================================
