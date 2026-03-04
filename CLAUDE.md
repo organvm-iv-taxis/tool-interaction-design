@@ -77,6 +77,9 @@ python3 router.py graph                                    # Export cluster grap
 
 # Validate all YAML files parse correctly
 python3 -c "import yaml; [yaml.safe_load(open(f)) for f in ['ontology.yaml','routing-matrix.yaml','workflow-dsl.yaml']]"
+
+# Validate process operating-system assets
+python3 tools/validate_process_assets.py
 ```
 
 ## Research Pipeline

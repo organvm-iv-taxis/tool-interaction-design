@@ -4,6 +4,7 @@
 - `conductor/`: core runtime (`cli.py`, `governance.py`, `doctor.py`, `plugins.py`, `observability.py`).
 - `router.py`, `mcp_server.py`: top-level entrypoints packaged by `pyproject.toml`.
 - `schemas/v1/`: JSON Schemas for domain docs and output/plugin contracts.
+- `process/`: canonical delivery operating system (`contracts/`, `templates/`, `playbooks/`, `risk/`, `scorecards/`).
 - `policies/`: policy bundles (`default.yaml`, `strict.yaml`, `relaxed.yaml`).
 - `tests/`: pytest suite (`test_*.py`) for CLI, patchbay, plugins, policy, migrations, and contracts.
 - `tools/`: maintenance scripts (`validate_schemas.py`, `release_guardrails.py`, `release.py`).
@@ -15,6 +16,8 @@
 - `mypy --config-file mypy.ini`: run strict type checks on scoped modules.
 - `python tools/release_guardrails.py`: enforce version/changelog consistency.
 - `python tools/validate_schemas.py`: validate corpus/workflow docs against schemas.
+- `python tools/validate_process_assets.py`: validate process templates, scorecards, and SOP assets.
+- `./tools/run_quality_gate.sh`: run one-shot quality gate (tests, schemas, process assets, mypy, doctor, policy, observability).
 - `python -m conductor doctor --workflow workflow-dsl.yaml --strict --apply`: diagnose and apply safe schema fixes.
 - `python -m conductor plugins doctor --format json`: validate plugin manifests/provider loadability.
 - `python -m conductor policy simulate --bundle strict --format json`: preview policy impact.
