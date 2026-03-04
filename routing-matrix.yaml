@@ -445,15 +445,17 @@ routes:
 
   - id: skill_dispatch
     from: claude_code_core
-    to: "*"
+    to: mcp_meta
     data_flow: TEXT → TEXT
     protocol: MCP → MCP
     automatable: true
-    description: "Skills are meta-tools that compose multiple clusters"
+    description: "Skill orchestration dispatches through MCP meta-management"
     exemplars:
       - source: Skill
-        target: "[any cluster via Skill workflow]"
-    note: "Skills have their own internal routing — see skills section"
+        target: mcp-exec
+      - source: Skill
+        target: mcp-find
+    note: "Skills may call multiple clusters internally after MCP meta resolution"
 
   # ===========================================================================
   # INTRA-DOMAIN COMPLETION

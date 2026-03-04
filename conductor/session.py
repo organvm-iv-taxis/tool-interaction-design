@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import subprocess
 import time
 from dataclasses import dataclass, field
@@ -136,6 +137,22 @@ def _update_stats(session_log: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Slug utilities
+# ---------------------------------------------------------------------------
+
+_SLUG_INVALID_CHARS = re.compile(r"[^a-z0-9]+")
+
+
+def _slugify_scope(value: str, max_length: int = 40) -> str:
+    """Return a filesystem- and branch-safe slug for scope-derived identifiers."""
+    collapsed = _SLUG_INVALID_CHARS.sub("-", value.lower()).strip("-")
+    if not collapsed:
+        return "session"
+    trimmed = collapsed[:max_length].rstrip("-")
+    return trimmed or "session"
+
+
+# ---------------------------------------------------------------------------
 # Session Engine
 # ---------------------------------------------------------------------------
 
@@ -174,7 +191,7 @@ class SessionEngine:
         organ_key = resolve_organ_key(organ)
         now = time.time()
         date_str = datetime.now().strftime("%Y-%m-%d")
-        slug = scope.lower().replace(" ", "-")[:40]
+        slug = _slugify_scope(scope, max_length=40)
         # Short hash for uniqueness when same scope is used twice in one day
         short_hash = hashlib.sha256(f"{now}{organ_key}{repo}{scope}".encode()).hexdigest()[:6]
         session_id = f"{date_str}-{organ_short(organ_key)}-{slug}-{short_hash}"
@@ -214,7 +231,8 @@ class SessionEngine:
 
     def _create_branch(self, organ_key: str, slug: str) -> None:
         """Create a feature branch if we're in a git repo."""
-        branch = f"feat/{organ_short(organ_key).lower()}/{slug}"
+        safe_slug = _slugify_scope(slug, max_length=80)
+        branch = f"feat/{organ_short(organ_key).lower()}/{safe_slug}"
         try:
             # Check if in a git repo
             result = subprocess.run(

@@ -303,12 +303,12 @@ TOOLS = [
 ]
 
 DISPATCH = {
-    "conductor_route_to": lambda args: route_to(args["from_cluster"], args["to_cluster"]),
-    "conductor_capability": lambda args: capability(args["capability"]),
+    "conductor_route_to": lambda args: route_to((args or {})["from_cluster"], (args or {})["to_cluster"]),
+    "conductor_capability": lambda args: capability((args or {})["capability"]),
     "conductor_wip_status": lambda args: wip_status(),
     "conductor_session_phase": lambda args: session_phase(),
-    "conductor_suggest": lambda args: suggest(args["task_description"]),
-    "conductor_patch": lambda args: patch(args.get("organ")),
+    "conductor_suggest": lambda args: suggest((args or {})["task_description"]),
+    "conductor_patch": lambda args: patch((args or {}).get("organ")),
 }
 
 
@@ -320,7 +320,7 @@ async def run_server():
         return TOOLS
 
     @server.call_tool()
-    async def call_tool(name: str, arguments: dict):
+    async def call_tool(name: str, arguments: dict | None):
         handler = DISPATCH.get(name)
         if not handler:
             return [TextContent(type="text", text=json.dumps({"error": f"Unknown tool: {name}"}))]

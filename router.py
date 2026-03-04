@@ -37,6 +37,15 @@ except ImportError:
     print("PyYAML required: pip install pyyaml", file=sys.stderr)
     sys.exit(1)
 
+try:
+    from conductor.plugins import load_plugin_clusters
+    from conductor.policy import load_policy
+    from conductor.schemas import validate_document
+except Exception:  # pragma: no cover - router can run standalone
+    load_plugin_clusters = lambda: []  # type: ignore[assignment]
+    load_policy = lambda: None  # type: ignore[assignment]
+    validate_document = lambda *_args, **_kwargs: []  # type: ignore[assignment]
+
 
 # =============================================================================
 # DATA MODELS
@@ -73,6 +82,50 @@ class Alternative:
     tools_ranked: list[str]
 
 
+@dataclass
+class ValidationMessage:
+    code: str
+    severity: str  # error | warning
+    message: str
+    hint: str = ""
+
+    def render(self) -> str:
+        text = f"[{self.code}] {self.message}"
+        if self.hint:
+            text += f" | Hint: {self.hint}"
+        return text
+
+
+@dataclass
+class WorkflowValidationReport:
+    messages: list[ValidationMessage] = field(default_factory=list)
+
+    def add_error(self, code: str, message: str, hint: str = "") -> None:
+        self.messages.append(ValidationMessage(code=code, severity="error", message=message, hint=hint))
+
+    def add_warning(self, code: str, message: str, hint: str = "") -> None:
+        self.messages.append(ValidationMessage(code=code, severity="warning", message=message, hint=hint))
+
+    @property
+    def errors(self) -> list[str]:
+        return [msg.render() for msg in self.messages if msg.severity == "error"]
+
+    @property
+    def warnings(self) -> list[str]:
+        return [msg.render() for msg in self.messages if msg.severity == "warning"]
+
+    @property
+    def is_valid(self) -> bool:
+        return not any(msg.severity == "error" for msg in self.messages)
+
+    def to_dict(self) -> dict:
+        return {
+            "ok": self.is_valid,
+            "errors": [msg.__dict__ for msg in self.messages if msg.severity == "error"],
+            "warnings": [msg.__dict__ for msg in self.messages if msg.severity == "warning"],
+        }
+
+
 # =============================================================================
 # ONTOLOGY LOADER
 # =============================================================================
@@ -84,6 +137,14 @@ class Ontology:
     def __init__(self, ontology_path: Path):
         with open(ontology_path) as f:
             data = yaml.safe_load(f)
+
+        plugin_clusters = load_plugin_clusters()
+        if plugin_clusters:
+            data = dict(data)
+            base_clusters = data.get("clusters", [])
+            if not isinstance(base_clusters, list):
+                base_clusters = []
+            data["clusters"] = [*base_clusters, *plugin_clusters]
 
         self.taxonomy = data.get("taxonomy", {})
         self.clusters: dict[str, Cluster] = {}
@@ -194,6 +255,10 @@ class RoutingEngine:
             )
 
         self.capability_routing = data.get("capability_routing", {})
+        policy = load_policy()
+        self._max_path_depth = getattr(policy, "max_path_depth", 5)
+        self._max_paths_returned = getattr(policy, "max_paths_returned", 5)
+        self._path_cache: dict[tuple[str, str], list[list[str]]] = {}
 
         # Build adjacency graph
         self._adj: dict[str, list[str]] = defaultdict(list)
@@ -209,6 +274,10 @@ class RoutingEngine:
 
     def find_path(self, from_domain: str, to_domain: str) -> list[list[str]]:
         """BFS to find shortest paths between domains via cluster graph."""
+        cache_key = (from_domain.upper(), to_domain.upper())
+        if cache_key in self._path_cache:
+            return [list(path) for path in self._path_cache[cache_key]]
+
         from_clusters = [c.id for c in self.ontology.by_domain(from_domain)]
         to_clusters = set(c.id for c in self.ontology.by_domain(to_domain))
 
@@ -229,7 +298,7 @@ class RoutingEngine:
                     paths.append(path)
                     continue
 
-                if len(path) > 5:  # Max depth
+                if len(path) > self._max_path_depth:
                     continue
 
                 for neighbor in self._adj.get(current, []):
@@ -239,7 +308,9 @@ class RoutingEngine:
 
         # Sort by length
         paths.sort(key=len)
-        return paths[:5]  # Top 5 shortest
+        trimmed = paths[: self._max_paths_returned]
+        self._path_cache[cache_key] = [list(path) for path in trimmed]
+        return trimmed
 
     def get_alternatives(self, cluster_id: str) -> Optional[Alternative]:
         for alt in self.alternatives:
@@ -263,12 +334,19 @@ class WorkflowValidator:
         self.ontology = ontology
         self.engine = engine
 
-    def validate(self, workflow_path: Path) -> list[str]:
-        """Validate a workflow file, return list of issues."""
+    def validate_report(self, workflow_path: Path) -> WorkflowValidationReport:
+        """Validate a workflow file and return structured warnings/errors."""
         with open(workflow_path) as f:
             data = yaml.safe_load(f)
 
-        issues = []
+        report = WorkflowValidationReport()
+        schema_issues = validate_document("workflow", data)
+        for issue in schema_issues:
+            report.add_error(
+                issue.code,
+                f"{issue.path}: {issue.message}",
+                "Fix YAML shape to satisfy workflow schema v1.",
+            )
 
         # Handle file with examples section
         workflows = data.get("examples", [data]) if "examples" in data else [data]
@@ -278,39 +356,147 @@ class WorkflowValidator:
             steps = wf.get("steps", [])
 
             if not steps:
-                issues.append(f"[{name}] No steps defined")
+                report.add_error("WF-E000", f"[{name}] No steps defined", "Add at least one step under `steps`.")
                 continue
 
-            step_names = set()
-            for step in steps:
-                sname = step.get("name", "<unnamed>")
+            step_names: set[str] = set()
+            parallel_step_names: set[str] = set()
+            top_level_index: dict[str, int] = {}
+            parallel_name_counts: dict[str, int] = defaultdict(int)
 
-                # Check uniqueness
+            # First pass: collect names for dependency validation.
+            for idx, step in enumerate(steps):
+                sname = step.get("name", "<unnamed>")
                 if sname in step_names:
-                    issues.append(f"[{name}] Duplicate step name: {sname}")
+                    report.add_error("WF-E001", f"[{name}] Duplicate step name: {sname}", "Use unique step names.")
                 step_names.add(sname)
+                top_level_index.setdefault(sname, idx)
+
+                local_parallel_names: set[str] = set()
+                for psub in step.get("parallel", []):
+                    pname = psub.get("name", "<unnamed>")
+                    if pname in local_parallel_names:
+                        report.add_error(
+                            "WF-E002",
+                            f"[{name}/{sname}] Duplicate parallel step name: {pname}",
+                            "Rename parallel steps to unique names within the branch.",
+                        )
+                    local_parallel_names.add(pname)
+                    parallel_step_names.add(pname)
+                    parallel_name_counts[pname] += 1
+
+            known_dependencies = step_names | parallel_step_names
+
+            # Second pass: validate references.
+            for idx, step in enumerate(steps):
+                sname = step.get("name", "<unnamed>")
 
                 # Check cluster reference
                 cluster = step.get("cluster")
                 if cluster and cluster not in self.ontology.clusters and cluster != "*":
-                    issues.append(f"[{name}/{sname}] Unknown cluster: {cluster}")
+                    report.add_error(
+                        "WF-E003",
+                        f"[{name}/{sname}] Unknown cluster: {cluster}",
+                        "Use `router.py clusters` to list valid cluster IDs.",
+                    )
+                elif cluster == "*":
+                    report.add_warning(
+                        "WF-W001",
+                        f"[{name}/{sname}] Wildcard cluster '*' reduces routing precision",
+                        "Replace '*' with explicit cluster IDs for deterministic routing.",
+                    )
 
                 # Check dependencies
                 deps = step.get("depends_on", [])
+                if not isinstance(deps, list):
+                    report.add_error(
+                        "WF-E004",
+                        f"[{name}/{sname}] depends_on must be a list",
+                        "Set depends_on to an array of step names.",
+                    )
+                    deps = []
                 for dep in deps:
-                    if dep not in step_names:
-                        # Could be forward reference — just warn
-                        pass
+                    if dep not in known_dependencies:
+                        report.add_error(
+                            "WF-E005",
+                            f"[{name}/{sname}] Unknown dependency: {dep}",
+                            "Define the missing dependency step or remove it from depends_on.",
+                        )
+                    elif dep in top_level_index and top_level_index[dep] > idx:
+                        report.add_warning(
+                            "WF-W002",
+                            f"[{name}/{sname}] Forward dependency on later step: {dep}",
+                            "Consider reordering steps so dependencies appear earlier.",
+                        )
 
                 # Check parallel sub-steps
                 parallel = step.get("parallel", [])
                 for psub in parallel:
                     pname = psub.get("name", "<unnamed>")
                     pcluster = psub.get("cluster")
-                    if pcluster and pcluster not in self.ontology.clusters:
-                        issues.append(f"[{name}/{sname}/{pname}] Unknown cluster: {pcluster}")
+                    if pcluster and pcluster not in self.ontology.clusters and pcluster != "*":
+                        report.add_error(
+                            "WF-E006",
+                            f"[{name}/{sname}/{pname}] Unknown cluster: {pcluster}",
+                            "Use a valid cluster ID from ontology.",
+                        )
+                    elif pcluster == "*":
+                        report.add_warning(
+                            "WF-W001",
+                            f"[{name}/{sname}/{pname}] Wildcard cluster '*' reduces routing precision",
+                            "Replace '*' with explicit cluster IDs for deterministic routing.",
+                        )
 
-        return issues
+                    if pname in step_names:
+                        report.add_warning(
+                            "WF-W003",
+                            f"[{name}/{sname}/{pname}] Name collides with top-level step; dependency resolution may be ambiguous",
+                            "Rename one of the steps to avoid ambiguous dependency references.",
+                        )
+                    if parallel_name_counts.get(pname, 0) > 1:
+                        report.add_warning(
+                            "WF-W004",
+                            f"[{name}/{sname}/{pname}] Parallel step name reused across branches; dependency references may be ambiguous",
+                            "Use globally unique parallel step names when they are dependency targets.",
+                        )
+
+                    pdeps = psub.get("depends_on", [])
+                    if not isinstance(pdeps, list):
+                        report.add_error(
+                            "WF-E004",
+                            f"[{name}/{sname}/{pname}] depends_on must be a list",
+                            "Set depends_on to an array of step names.",
+                        )
+                        pdeps = []
+                    for dep in pdeps:
+                        if dep not in known_dependencies:
+                            report.add_error(
+                                "WF-E005",
+                                f"[{name}/{sname}/{pname}] Unknown dependency: {dep}",
+                                "Define the missing dependency step or remove it from depends_on.",
+                            )
+                        elif dep in top_level_index and top_level_index[dep] > idx:
+                            report.add_warning(
+                                "WF-W002",
+                                f"[{name}/{sname}/{pname}] Forward dependency on later top-level step: {dep}",
+                                "Consider reordering steps so dependencies appear earlier.",
+                            )
+
+        dedup: dict[tuple[str, str, str], ValidationMessage] = {}
+        for msg in report.messages:
+            dedup[(msg.code, msg.severity, msg.message)] = msg
+        report.messages = sorted(
+            dedup.values(),
+            key=lambda m: (m.severity, m.code, m.message),
+        )
+        return report
+
+    def validate(self, workflow_path: Path, strict: bool = False) -> list[str]:
+        """Validate a workflow file, returning errors (and warnings in strict mode)."""
+        report = self.validate_report(workflow_path)
+        if strict:
+            return report.errors + report.warnings
+        return report.errors
 
 
 # =============================================================================
@@ -416,21 +602,46 @@ def cmd_validate(args, ontology: Ontology, engine: RoutingEngine):
     """Validate workflow DSL file."""
     validator = WorkflowValidator(ontology, engine)
     path = Path(args.file)
+    policy = load_policy()
+    strict_mode = bool(args.strict or getattr(policy, "strict_validation_default", False))
 
     if not path.exists():
         print(f"  File not found: {path}", file=sys.stderr)
         sys.exit(1)
 
-    issues = validator.validate(path)
+    report = validator.validate_report(path)
+    should_fail = bool(report.errors or (strict_mode and report.warnings))
 
-    if issues:
+    if args.format == "json":
+        print(json.dumps({
+            "file": str(path),
+            "strict": strict_mode,
+            "ok": not should_fail,
+            **report.to_dict(),
+        }, indent=2))
+        if should_fail:
+            sys.exit(1)
+        return
+
+    if report.errors or report.warnings:
         print(f"\n  Validation issues in {path}:\n")
-        for issue in issues:
-            print(f"    ⚠  {issue}")
-        print(f"\n  {len(issues)} issue(s) found.\n")
+        for issue in report.errors:
+            print(f"    ERROR   {issue}")
+        for warning in report.warnings:
+            marker = "WARNING" if not strict_mode else "STRICT-WARNING"
+            print(f"    {marker:<7} {warning}")
+
+        total = len(report.errors) + len(report.warnings)
+        strict_note = " (strict mode)" if strict_mode else ""
+        print(f"\n  {total} issue(s) found{strict_note}.")
+        if report.warnings and not strict_mode:
+            print("  Note: warnings do not fail validation unless --strict is enabled.")
+        print()
+
+    if should_fail:
         sys.exit(1)
-    else:
-        print(f"\n  ✓ {path} is valid.\n")
+
+    print(f"\n  ✓ {path} is valid.\n")
 
 
 def cmd_alternatives(args, ontology: Ontology, engine: RoutingEngine):
@@ -549,6 +760,8 @@ def main():
     # validate
     p_val = sub.add_parser("validate", help="Validate a workflow DSL file")
     p_val.add_argument("file", type=str)
+    p_val.add_argument("--strict", action="store_true", help="Treat warnings as validation failures")
+    p_val.add_argument("--format", choices=["text", "json"], default="text", help="Output format")
 
     # alternatives
     p_alt = sub.add_parser("alternatives", help="Show alternative tools")
