@@ -19,3 +19,9 @@ Thumbs.db
 # Environment
 .env
 .env.local
+
+# Conductor runtime
+.conductor-session.json
+sessions/
+generated/
+exports/
