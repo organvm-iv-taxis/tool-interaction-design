@@ -1,0 +1,33 @@
+# .conductor.yaml — Override default phase-cluster mappings
+#
+# Copy this file to .conductor.yaml and customize.
+# Any phase listed here replaces the default cluster list for that phase.
+# Phases not listed here keep the built-in defaults.
+
+phases:
+  FRAME:
+    - sequential_thinking
+    - web_search
+    - academic_research
+    - documentation
+    - knowledge_graph
+    - knowledge_apps
+  SHAPE:
+    - sequential_thinking
+    - code_analysis_mcp
+    - diagramming
+    - neon_database
+  BUILD:
+    - claude_code_core
+    - code_execution
+    - code_quality_cli
+    - git_core
+    - jupyter_notebooks
+  PROVE:
+    - code_quality_cli
+    - security_scanning
+    - browser_playwright
+    - browser_chrome
+    - github_platform
+    - vercel_platform
+    - sentry_monitoring

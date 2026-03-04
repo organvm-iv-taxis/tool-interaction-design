@@ -26,6 +26,8 @@ from conductor import (
     resolve_organ_key,
     organ_short,
 )
+import conductor.constants
+import conductor.session
 from router import Ontology
 
 
@@ -47,16 +49,13 @@ def tmp_dir(tmp_path):
 
     state_file = tmp_path / ".conductor-session.json"
 
-    patches = {
-        "conductor.SESSIONS_DIR": sessions,
-        "conductor.TEMPLATES_DIR": templates,
-        "conductor.SESSION_STATE_FILE": state_file,
-    }
-    with patch.dict("conductor.__dict__", {
-        "SESSIONS_DIR": sessions,
-        "TEMPLATES_DIR": templates,
-        "SESSION_STATE_FILE": state_file,
-    }):
+    with patch.object(conductor.constants, "SESSIONS_DIR", sessions), \
+         patch.object(conductor.constants, "TEMPLATES_DIR", templates), \
+         patch.object(conductor.constants, "SESSION_STATE_FILE", state_file), \
+         patch.object(conductor.session, "SESSIONS_DIR", sessions), \
+         patch.object(conductor.session, "TEMPLATES_DIR", templates), \
+         patch.object(conductor.session, "SESSION_STATE_FILE", state_file), \
+         patch.object(conductor.session, "STATS_FILE", tmp_path / ".conductor-stats.json"):
         yield tmp_path
 
 
@@ -307,8 +306,9 @@ class TestStateTransitions:
 class TestGovernanceRuntime:
     def _make_gov(self, mini_registry):
         reg_path, gov_path, _ = mini_registry
-        with patch("conductor.REGISTRY_PATH", reg_path), \
-             patch("conductor.GOVERNANCE_PATH", gov_path):
+        import conductor.governance
+        with patch.object(conductor.governance, "REGISTRY_PATH", reg_path), \
+             patch.object(conductor.governance, "GOVERNANCE_PATH", gov_path):
             return GovernanceRuntime()
 
     def test_loads_registry(self, mini_registry):

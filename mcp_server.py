@@ -39,16 +39,16 @@ BASE = Path(__file__).parent
 sys.path.insert(0, str(BASE))
 
 from router import Ontology, RoutingEngine
-from conductor import (
+from conductor.constants import (
     ONTOLOGY_PATH,
     ROUTING_PATH,
     PHASE_CLUSTERS,
     PHASE_ROLES,
     PHASES,
     SESSION_STATE_FILE,
-    GovernanceRuntime,
-    Session,
 )
+from conductor.governance import GovernanceRuntime
+from conductor.session import Session
 
 # ---------------------------------------------------------------------------
 # Lazy globals
