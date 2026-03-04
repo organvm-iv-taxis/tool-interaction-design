@@ -25,3 +25,4 @@ Thumbs.db
 sessions/
 generated/
 exports/
+.pytest_cache/

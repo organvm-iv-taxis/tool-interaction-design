@@ -3,17 +3,10 @@
 **Organ:** {{ organ }} | **Repo:** {{ repo }}
 **Session:** {{ session_id }}
 **Date:** {{ date }}
-**Duration:** {{ duration_minutes }} minutes
-**Result:** {{ result }}
 
 ## Phase Summary
 
-| Phase | Duration | Commits | Tools Used |
-|-------|----------|---------|------------|
-| FRAME | {{ frame_duration }} | {{ frame_commits }} | {{ frame_tools }} |
-| SHAPE | {{ shape_duration }} | {{ shape_commits }} | {{ shape_tools }} |
-| BUILD | {{ build_duration }} | {{ build_commits }} | {{ build_tools }} |
-| PROVE | {{ prove_duration }} | {{ prove_commits }} | {{ prove_tools }} |
+<!-- Filled automatically by `conductor session close` — see session-log.yaml -->
 
 ## Decisions Made
 

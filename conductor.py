@@ -36,9 +36,10 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from collections import Counter, defaultdict
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -99,6 +100,18 @@ def resolve_organ_key(organ: str) -> str:
     return organ
 
 
+def atomic_write(path: Path, content: str) -> None:
+    """Write to a temp file then rename — prevents corruption on interrupt."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    try:
+        tmp.write_text(content)
+        os.replace(tmp, path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+
+
 def organ_short(registry_key: str) -> str:
     """ORGAN-III → III, META-ORGANVM → META."""
     for k, v in ORGANS.items():
@@ -150,20 +163,6 @@ VALID_TRANSITIONS: dict[str, list[str]] = {
 
 
 @dataclass
-class PhaseLog:
-    name: str
-    start_time: float
-    end_time: float = 0.0
-    tools_used: list[str] = field(default_factory=list)
-    commits: int = 0
-
-    @property
-    def duration_minutes(self) -> int:
-        end = self.end_time or time.time()
-        return int((end - self.start_time) / 60)
-
-
-@dataclass
 class Session:
     session_id: str
     organ: str
@@ -212,12 +211,22 @@ class SessionEngine:
 
     def _load_session(self) -> Optional[Session]:
         if SESSION_STATE_FILE.exists():
-            data = json.loads(SESSION_STATE_FILE.read_text())
-            return Session.from_dict(data)
+            try:
+                data = json.loads(SESSION_STATE_FILE.read_text())
+                return Session.from_dict(data)
+            except (json.JSONDecodeError, TypeError, KeyError) as e:
+                print(f"  WARNING: Session state corrupted ({e}).")
+                answer = input("  Reset session state? [y/N] ")
+                if answer.lower() in ("y", "yes"):
+                    self._clear_session()
+                    print("  Session state cleared.")
+                else:
+                    print("  Aborting. Fix or delete .conductor-session.json manually.")
+                    sys.exit(1)
         return None
 
     def _save_session(self, session: Session) -> None:
-        SESSION_STATE_FILE.write_text(json.dumps(session.to_dict(), indent=2))
+        atomic_write(SESSION_STATE_FILE, json.dumps(session.to_dict(), indent=2))
 
     def _clear_session(self) -> None:
         if SESSION_STATE_FILE.exists():
@@ -389,11 +398,19 @@ class SessionEngine:
         self._save_session(session)
 
     def _find_tool_cluster(self, tool_name: str) -> Optional[str]:
-        """Find which cluster a tool belongs to."""
+        """Find which cluster a tool belongs to (exact match, case-insensitive)."""
+        tool_lower = tool_name.lower()
         for cid, cluster in self.ontology.clusters.items():
             for t in cluster.tools:
-                name = t if isinstance(t, str) else str(t)
-                if tool_name.lower() in name.lower():
+                # Normalize: handle bare strings, dicts like {mcp: name}, etc.
+                if isinstance(t, str):
+                    name = t
+                elif isinstance(t, dict):
+                    name = str(list(t.values())[0]) if t else ""
+                else:
+                    name = str(t)
+                # Exact match on the tool name portion
+                if tool_lower == name.lower():
                     return cid
         return None
 
@@ -414,15 +431,25 @@ class SessionEngine:
         if session.result == "IN_PROGRESS":
             session.result = "CLOSED"
 
-        # Build YAML log
-        phase_summary = {}
+        # Build YAML log — merge duplicate phases (e.g., FRAME→SHAPE→FRAME reshape)
+        phase_summary: dict[str, dict] = {}
         for pl in session.phase_logs:
             dur = int((pl["end_time"] - pl["start_time"]) / 60)
-            phase_summary[pl["name"]] = {
-                "duration": dur,
-                "tools_used": pl.get("tools_used", []),
-                "commits": pl.get("commits", 0),
-            }
+            name = pl["name"]
+            if name in phase_summary:
+                phase_summary[name]["duration"] += dur
+                for t in pl.get("tools_used", []):
+                    if t not in phase_summary[name]["tools_used"]:
+                        phase_summary[name]["tools_used"].append(t)
+                phase_summary[name]["commits"] += pl.get("commits", 0)
+                phase_summary[name]["visits"] += 1
+            else:
+                phase_summary[name] = {
+                    "duration": dur,
+                    "tools_used": list(pl.get("tools_used", [])),
+                    "commits": pl.get("commits", 0),
+                    "visits": 1,
+                }
 
         log = {
             "session_id": session.session_id,
@@ -636,28 +663,48 @@ class GovernanceRuntime:
             sys.exit(1)
 
         # Check WIP limits for target state
+        all_repos = self._all_repos()
+
         if target_state == "CANDIDATE":
             cand_count = sum(
-                1 for ok, r in self._all_repos()
+                1 for ok, r in all_repos
                 if ok == organ_key and r.get("promotion_status") == "CANDIDATE"
             )
             if cand_count >= MAX_CANDIDATE_PER_ORGAN:
                 print(f"  BLOCKED: {organ_key} already has {cand_count} CANDIDATE repos (limit {MAX_CANDIDATE_PER_ORGAN}).")
                 print(f"  Promote or archive existing CANDIDATE repos first.")
-
-                # Show current candidates
                 print(f"\n  Current CANDIDATE repos in {organ_key}:")
-                for ok, r in self._all_repos():
+                for ok, r in all_repos:
                     if ok == organ_key and r.get("promotion_status") == "CANDIDATE":
                         print(f"    - {r['name']}")
                 sys.exit(1)
+
+        if target_state == "PUBLIC_PROCESS":
+            pub_count = sum(
+                1 for ok, r in all_repos
+                if ok == organ_key and r.get("promotion_status") == "PUBLIC_PROCESS"
+            )
+            if pub_count >= MAX_PUBLIC_PROCESS_PER_ORGAN:
+                print(f"  BLOCKED: {organ_key} already has {pub_count} PUBLIC_PROCESS repos (limit {MAX_PUBLIC_PROCESS_PER_ORGAN}).")
+                print(f"  Graduate or archive existing PUBLIC_PROCESS repos first.")
+                sys.exit(1)
+
+        # Confirm
+        if not getattr(self, '_skip_confirm', False):
+            answer = input(f"  Promote {repo_name}: {current} → {target_state}? [y/N] ")
+            if answer.lower() not in ("y", "yes"):
+                print("  Aborted.")
+                return
 
         # Apply promotion
         repo["promotion_status"] = target_state
         repo["last_validated"] = datetime.now().strftime("%Y-%m-%d")
 
-        # Save registry
-        REGISTRY_PATH.write_text(json.dumps(self.registry, indent=2) + "\n")
+        # Save registry with backup
+        if REGISTRY_PATH.exists():
+            backup = REGISTRY_PATH.with_suffix(".json.bak")
+            shutil.copy2(REGISTRY_PATH, backup)
+        atomic_write(REGISTRY_PATH, json.dumps(self.registry, indent=2) + "\n")
 
         print(f"\n  Promoted: {repo_name}")
         print(f"  {current} → {target_state}")
@@ -1189,6 +1236,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_promote = wip_sub.add_parser("promote", help="Promote repo with WIP enforcement")
     p_promote.add_argument("repo", help="Repository name")
     p_promote.add_argument("state", help="Target state (CANDIDATE, PUBLIC_PROCESS, etc.)")
+    p_promote.add_argument("--yes", "-y", action="store_true", help="Skip confirmation prompt")
 
     p_enforce = sub.add_parser("enforce", help="Generate enforcement artifacts")
     enforce_sub = p_enforce.add_subparsers(dest="enforce_command", required=True)
@@ -1257,6 +1305,8 @@ def main():
         if args.wip_command == "check":
             gov.wip_check()
         elif args.wip_command == "promote":
+            if args.yes:
+                gov._skip_confirm = True
             gov.wip_promote(args.repo, args.state)
 
     elif args.command == "enforce":
