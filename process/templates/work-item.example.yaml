@@ -1,0 +1,28 @@
+id: WI-0001
+title: "Add process asset validation to CI"
+phase: verify
+owner:
+  name: "Platform Engineer"
+  role: "runtime-owner"
+status: done
+risk_level: medium
+estimate_points: 3
+acceptance_criteria:
+  - "Validation script exits 0 when templates are valid"
+  - "CI fails when process contracts are broken"
+dependencies:
+  - WI-0000
+definition_of_done:
+  tests_passed: true
+  docs_updated: true
+  changelog_updated: true
+  demo_recorded: true
+  evidence:
+    pr_url: "https://github.com/meta-organvm/tool-interaction-design/pull/123"
+    ci_url: "https://github.com/meta-organvm/tool-interaction-design/actions/runs/123"
+    demo_url: "https://example.com/demos/process-validation"
+created_at: "2026-03-04"
+due_date: "2026-03-07"
+tags:
+  - process
+  - ci

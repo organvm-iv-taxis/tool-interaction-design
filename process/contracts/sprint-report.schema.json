@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Sprint Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "sprint_id",
+    "window",
+    "goals",
+    "delivered_items",
+    "metrics",
+    "retrospective",
+    "demo_artifacts",
+    "signoff"
+  ],
+  "properties": {
+    "sprint_id": {
+      "type": "string",
+      "pattern": "^SPRINT-[0-9]{4}-W[0-9]{2}$"
+    },
+    "window": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["start_date", "end_date"],
+      "properties": {
+        "start_date": {"type": "string", "format": "date"},
+        "end_date": {"type": "string", "format": "date"}
+      }
+    },
+    "goals": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"type": "string", "minLength": 6}
+    },
+    "delivered_items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "outcome"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^WI-[0-9]{4}$"},
+          "outcome": {
+            "type": "string",
+            "enum": ["shipped", "partial", "deferred"]
+          },
+          "notes": {"type": "string"}
+        }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["throughput", "lead_time_days", "escaped_defects", "carry_over_ratio"],
+      "properties": {
+        "throughput": {"type": "integer", "minimum": 0},
+        "lead_time_days": {"type": "number", "minimum": 0},
+        "escaped_defects": {"type": "integer", "minimum": 0},
+        "carry_over_ratio": {"type": "number", "minimum": 0, "maximum": 1}
+      }
+    },
+    "risks_open": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "retrospective": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["wins", "misses", "actions"],
+      "properties": {
+        "wins": {"type": "array", "items": {"type": "string"}},
+        "misses": {"type": "array", "items": {"type": "string"}},
+        "actions": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "demo_artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"type": "string", "format": "uri"}
+    },
+    "signoff": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["prepared_by", "reviewed_by", "reviewed_at"],
+      "properties": {
+        "prepared_by": {"type": "string"},
+        "reviewed_by": {"type": "string"},
+        "reviewed_at": {"type": "string", "format": "date"}
+      }
+    }
+  }
+}

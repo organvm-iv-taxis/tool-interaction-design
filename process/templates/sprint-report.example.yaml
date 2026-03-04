@@ -1,0 +1,31 @@
+sprint_id: SPRINT-2026-W10
+window:
+  start_date: "2026-03-02"
+  end_date: "2026-03-08"
+goals:
+  - "Ship process contracts and templates"
+  - "Enforce DoD with evidence links"
+delivered_items:
+  - id: WI-0001
+    outcome: shipped
+    notes: "Validated in CI"
+metrics:
+  throughput: 8
+  lead_time_days: 2.1
+  escaped_defects: 0
+  carry_over_ratio: 0.12
+risks_open:
+  - "Adoption friction for new process templates"
+retrospective:
+  wins:
+    - "Contracts removed ambiguity in delivery artifacts"
+  misses:
+    - "Initial playbook language was too verbose"
+  actions:
+    - "Shorten each SOP to one screen"
+demo_artifacts:
+  - "https://example.com/demos/sprint-2026-w10"
+signoff:
+  prepared_by: "Platform Engineer"
+  reviewed_by: "Tech Lead"
+  reviewed_at: "2026-03-08"

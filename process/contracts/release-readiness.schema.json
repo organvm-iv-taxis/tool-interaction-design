@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Release Readiness",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "release_id",
+    "candidate_branch",
+    "target_environment",
+    "gates",
+    "documentation",
+    "rollback",
+    "demo",
+    "decision"
+  ],
+  "properties": {
+    "release_id": {
+      "type": "string",
+      "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "candidate_branch": {"type": "string", "minLength": 2},
+    "target_environment": {
+      "type": "string",
+      "enum": ["staging", "production"]
+    },
+    "gates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tests", "schema_validation", "policy_simulation", "observability_check", "migration_check"],
+      "properties": {
+        "tests": {"$ref": "#/$defs/gate"},
+        "schema_validation": {"$ref": "#/$defs/gate"},
+        "policy_simulation": {"$ref": "#/$defs/gate"},
+        "observability_check": {"$ref": "#/$defs/gate"},
+        "migration_check": {"$ref": "#/$defs/gate"}
+      }
+    },
+    "documentation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["runbook_updated", "changelog_updated", "rollout_plan_updated"],
+      "properties": {
+        "runbook_updated": {"type": "boolean"},
+        "changelog_updated": {"type": "boolean"},
+        "rollout_plan_updated": {"type": "boolean"}
+      }
+    },
+    "rollback": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["strategy", "owner", "validated"],
+      "properties": {
+        "strategy": {"type": "string", "minLength": 10},
+        "owner": {"type": "string"},
+        "validated": {"type": "boolean"}
+      }
+    },
+    "demo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provided", "url"],
+      "properties": {
+        "provided": {"type": "boolean"},
+        "url": {"type": "string", "format": "uri"}
+      }
+    },
+    "decision": {
+      "type": "string",
+      "enum": ["approved", "blocked", "deferred"]
+    },
+    "blocking_issues": {
+      "type": "array",
+      "items": {"type": "string"}
+    }
+  },
+  "$defs": {
+    "gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["passed", "evidence"],
+      "properties": {
+        "passed": {"type": "boolean"},
+        "evidence": {"type": "string", "format": "uri"}
+      }
+    }
+  }
+}

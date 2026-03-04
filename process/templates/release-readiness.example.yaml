@@ -1,0 +1,32 @@
+release_id: v0.6.0
+candidate_branch: release/v0.6.0
+target_environment: staging
+gates:
+  tests:
+    passed: true
+    evidence: "https://github.com/meta-organvm/tool-interaction-design/actions/runs/101"
+  schema_validation:
+    passed: true
+    evidence: "https://github.com/meta-organvm/tool-interaction-design/actions/runs/101"
+  policy_simulation:
+    passed: true
+    evidence: "https://example.com/reports/policy-v060"
+  observability_check:
+    passed: true
+    evidence: "https://example.com/reports/observability-v060"
+  migration_check:
+    passed: true
+    evidence: "https://example.com/reports/migration-v060"
+documentation:
+  runbook_updated: true
+  changelog_updated: true
+  rollout_plan_updated: true
+rollback:
+  strategy: "Revert to previous tag and restore state snapshot from backup."
+  owner: "Release Captain"
+  validated: true
+demo:
+  provided: true
+  url: "https://example.com/demos/v0.6.0"
+decision: approved
+blocking_issues: []

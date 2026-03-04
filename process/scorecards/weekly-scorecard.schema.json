@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Weekly Scorecard",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "week_of",
+    "delivery",
+    "quality",
+    "operations",
+    "learning",
+    "monetization",
+    "score"
+  ],
+  "properties": {
+    "week_of": {"type": "string", "format": "date"},
+    "delivery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["planned_items", "shipped_items", "carry_over_ratio", "lead_time_days"],
+      "properties": {
+        "planned_items": {"type": "integer", "minimum": 0},
+        "shipped_items": {"type": "integer", "minimum": 0},
+        "carry_over_ratio": {"type": "number", "minimum": 0, "maximum": 1},
+        "lead_time_days": {"type": "number", "minimum": 0}
+      }
+    },
+    "quality": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["test_pass_rate", "escaped_defects", "regressions"],
+      "properties": {
+        "test_pass_rate": {"type": "number", "minimum": 0, "maximum": 1},
+        "escaped_defects": {"type": "integer", "minimum": 0},
+        "regressions": {"type": "integer", "minimum": 0}
+      }
+    },
+    "operations": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["policy_violations", "observability_warnings", "incident_count"],
+      "properties": {
+        "policy_violations": {"type": "integer", "minimum": 0},
+        "observability_warnings": {"type": "integer", "minimum": 0},
+        "incident_count": {"type": "integer", "minimum": 0}
+      }
+    },
+    "learning": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["retros_actions_closed", "new_playbook_updates"],
+      "properties": {
+        "retros_actions_closed": {"type": "integer", "minimum": 0},
+        "new_playbook_updates": {"type": "integer", "minimum": 0}
+      }
+    },
+    "monetization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["services_pipeline_count", "products_shipped_count", "advisory_sessions_count"],
+      "properties": {
+        "services_pipeline_count": {"type": "integer", "minimum": 0},
+        "products_shipped_count": {"type": "integer", "minimum": 0},
+        "advisory_sessions_count": {"type": "integer", "minimum": 0}
+      }
+    },
+    "score": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["total", "rationale"],
+      "properties": {
+        "total": {"type": "integer", "minimum": 0, "maximum": 100},
+        "rationale": {"type": "string", "minLength": 12}
+      }
+    }
+  }
+}

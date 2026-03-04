@@ -1,0 +1,24 @@
+week_of: "2026-03-09"
+delivery:
+  planned_items: 10
+  shipped_items: 8
+  carry_over_ratio: 0.20
+  lead_time_days: 2.4
+quality:
+  test_pass_rate: 0.98
+  escaped_defects: 0
+  regressions: 1
+operations:
+  policy_violations: 0
+  observability_warnings: 1
+  incident_count: 0
+learning:
+  retros_actions_closed: 3
+  new_playbook_updates: 1
+monetization:
+  services_pipeline_count: 4
+  products_shipped_count: 1
+  advisory_sessions_count: 2
+score:
+  total: 84
+  rationale: "Strong delivery and quality; improve carry-over and warning cleanup."
