@@ -50,10 +50,6 @@ def test_workflow_validator_handles_random_file_text(random_text):
         wf_path = Path(tmp_dir) / "fuzz-workflow.yaml"
         wf_path.write_text(random_text)
 
-        try:
-            report = validator.validate_report(wf_path)
-            assert isinstance(report.errors, list)
-            assert isinstance(report.warnings, list)
-        except Exception as exc:
-            # Parser errors from malformed YAML are acceptable, but they must be deterministic and explicit.
-            assert isinstance(exc, Exception)
+        report = validator.validate_report(wf_path)
+        assert isinstance(report.errors, list)
+        assert isinstance(report.warnings, list)

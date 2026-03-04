@@ -23,17 +23,26 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
+MCP_IMPORT_ERROR: ImportError | None = None
 try:
     from mcp.server import Server
     from mcp.server.stdio import stdio_server
     from mcp.types import TextContent, Tool
-except ImportError:
-    print(
-        "MCP SDK required: pip install mcp",
-        file=sys.stderr,
-    )
-    sys.exit(1)
+except ImportError as exc:
+    MCP_IMPORT_ERROR = exc
+    Server = None  # type: ignore[assignment]
+    stdio_server = None  # type: ignore[assignment]
+
+    class TextContent:  # type: ignore[no-redef]
+        def __init__(self, *, type: str, text: str):
+            self.type = type
+            self.text = text
+
+    class Tool:  # type: ignore[no-redef]
+        def __init__(self, **kwargs: Any):
+            self.kwargs = kwargs
 
 BASE = Path(__file__).parent
 sys.path.insert(0, str(BASE))
@@ -50,6 +59,11 @@ from conductor.constants import (
 from conductor.governance import GovernanceRuntime
 from conductor.patchbay import Patchbay
 from conductor.session import Session, SessionEngine
+
+
+def _ensure_mcp_available() -> None:
+    if MCP_IMPORT_ERROR is not None:
+        raise RuntimeError("MCP SDK required: pip install mcp")
 
 # ---------------------------------------------------------------------------
 # Lazy globals
@@ -313,6 +327,9 @@ DISPATCH = {
 
 
 async def run_server():
+    _ensure_mcp_available()
+    assert Server is not None
+    assert stdio_server is not None
     server = Server("conductor")
 
     @server.list_tools()
@@ -337,8 +354,13 @@ async def run_server():
 
 def main():
     import asyncio
-    asyncio.run(run_server())
+    try:
+        asyncio.run(run_server())
+        return 0
+    except RuntimeError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

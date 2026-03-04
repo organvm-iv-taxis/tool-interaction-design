@@ -428,6 +428,30 @@ class TestWorkflowValidator:
         assert non_strict == []
         assert any("Forward dependency" in issue for issue in strict)
 
+    def test_empty_file_returns_structured_error(self, validator, tmp_path):
+        path = tmp_path / "empty_file.yaml"
+        path.write_text("")
+
+        report = validator.validate_report(path)
+        assert report.is_valid is False
+        assert any("[WF-E008]" in issue for issue in report.errors)
+
+    def test_scalar_top_level_returns_structured_error(self, validator, tmp_path):
+        path = tmp_path / "scalar_top_level.yaml"
+        path.write_text("42")
+
+        report = validator.validate_report(path)
+        assert report.is_valid is False
+        assert any("[WF-E009]" in issue for issue in report.errors)
+
+    def test_malformed_yaml_returns_structured_error(self, validator, tmp_path):
+        path = tmp_path / "malformed.yaml"
+        path.write_text("steps: [")
+
+        report = validator.validate_report(path)
+        assert report.is_valid is False
+        assert any("[WF-E007]" in issue for issue in report.errors)
+
 
 # ===========================================================================
 # TestCLICommands
@@ -481,6 +505,16 @@ class TestCLICommands:
         r = self._run("validate", str(path), "--strict")
         assert r.returncode == 1
         assert "STRICT-WARNING" in r.stdout
+
+    def test_validate_malformed_yaml_json_contract(self, tmp_path):
+        path = tmp_path / "malformed_cli.yaml"
+        path.write_text("steps: [")
+
+        r = self._run("validate", str(path), "--format", "json")
+        assert r.returncode == 1
+        payload = json.loads(r.stdout)
+        assert payload["ok"] is False
+        assert payload["errors"]
 
     def test_alternatives_command(self):
         r = self._run("alternatives", "web_search")

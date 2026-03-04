@@ -25,3 +25,8 @@ def test_conductor_patch_dispatch_forwards_organ_argument():
 
     assert result == '{"ok": true}'
     mock_patch.assert_called_once_with("III")
+
+
+def test_main_returns_one_when_mcp_unavailable():
+    with patch.object(mcp_server, "MCP_IMPORT_ERROR", ImportError("missing mcp")):
+        assert mcp_server.main() == 1

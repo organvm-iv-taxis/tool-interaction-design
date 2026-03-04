@@ -336,10 +336,34 @@ class WorkflowValidator:
 
     def validate_report(self, workflow_path: Path) -> WorkflowValidationReport:
         """Validate a workflow file and return structured warnings/errors."""
-        with open(workflow_path) as f:
-            data = yaml.safe_load(f)
-
         report = WorkflowValidationReport()
+        try:
+            with open(workflow_path) as f:
+                data = yaml.safe_load(f)
+        except yaml.YAMLError as exc:
+            report.add_error(
+                "WF-E007",
+                f"Invalid YAML syntax: {exc}",
+                "Fix YAML syntax so the workflow file can be parsed.",
+            )
+            return report
+
+        if data is None:
+            report.add_error(
+                "WF-E008",
+                "Workflow file is empty",
+                "Define a workflow object with a `steps` array.",
+            )
+            return report
+
+        if not isinstance(data, dict):
+            report.add_error(
+                "WF-E009",
+                f"Top-level workflow document must be an object, got {type(data).__name__}",
+                "Wrap workflow fields in a top-level mapping/object.",
+            )
+            return report
+
         schema_issues = validate_document("workflow", data)
         for issue in schema_issues:
             report.add_error(
@@ -351,9 +375,24 @@ class WorkflowValidator:
         # Handle file with examples section
         workflows = data.get("examples", [data]) if "examples" in data else [data]
 
-        for wf in workflows:
+        for wf_index, wf in enumerate(workflows):
+            if not isinstance(wf, dict):
+                report.add_error(
+                    "WF-E010",
+                    f"Workflow entry at index {wf_index} must be an object",
+                    "Ensure every workflow entry in `examples` is a mapping/object.",
+                )
+                continue
             name = wf.get("name", "<unnamed>")
             steps = wf.get("steps", [])
+
+            if not isinstance(steps, list):
+                report.add_error(
+                    "WF-E011",
+                    f"[{name}] steps must be a list",
+                    "Set `steps` to an array of step objects.",
+                )
+                continue
 
             if not steps:
                 report.add_error("WF-E000", f"[{name}] No steps defined", "Add at least one step under `steps`.")
@@ -366,6 +405,13 @@ class WorkflowValidator:
 
             # First pass: collect names for dependency validation.
             for idx, step in enumerate(steps):
+                if not isinstance(step, dict):
+                    report.add_error(
+                        "WF-E012",
+                        f"[{name}] Step at index {idx} must be an object",
+                        "Each `steps` entry must be a mapping/object.",
+                    )
+                    continue
                 sname = step.get("name", "<unnamed>")
                 if sname in step_names:
                     report.add_error("WF-E001", f"[{name}] Duplicate step name: {sname}", "Use unique step names.")
@@ -373,7 +419,22 @@ class WorkflowValidator:
                 top_level_index.setdefault(sname, idx)
 
                 local_parallel_names: set[str] = set()
-                for psub in step.get("parallel", []):
+                parallel_steps = step.get("parallel", [])
+                if not isinstance(parallel_steps, list):
+                    report.add_error(
+                        "WF-E013",
+                        f"[{name}/{sname}] parallel must be a list",
+                        "Set `parallel` to an array of step objects.",
+                    )
+                    parallel_steps = []
+                for psub in parallel_steps:
+                    if not isinstance(psub, dict):
+                        report.add_error(
+                            "WF-E014",
+                            f"[{name}/{sname}] parallel step entry must be an object",
+                            "Each `parallel` entry must be a mapping/object.",
+                        )
+                        continue
                     pname = psub.get("name", "<unnamed>")
                     if pname in local_parallel_names:
                         report.add_error(
@@ -389,6 +450,8 @@ class WorkflowValidator:
 
             # Second pass: validate references.
             for idx, step in enumerate(steps):
+                if not isinstance(step, dict):
+                    continue
                 sname = step.get("name", "<unnamed>")
 
                 # Check cluster reference
@@ -431,7 +494,21 @@ class WorkflowValidator:
 
                 # Check parallel sub-steps
                 parallel = step.get("parallel", [])
+                if not isinstance(parallel, list):
+                    report.add_error(
+                        "WF-E013",
+                        f"[{name}/{sname}] parallel must be a list",
+                        "Set `parallel` to an array of step objects.",
+                    )
+                    parallel = []
                 for psub in parallel:
+                    if not isinstance(psub, dict):
+                        report.add_error(
+                            "WF-E014",
+                            f"[{name}/{sname}] parallel step entry must be an object",
+                            "Each `parallel` entry must be a mapping/object.",
+                        )
+                        continue
                     pname = psub.get("name", "<unnamed>")
                     pcluster = psub.get("cluster")
                     if pcluster and pcluster not in self.ontology.clusters and pcluster != "*":
