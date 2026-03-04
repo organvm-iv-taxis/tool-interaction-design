@@ -24,6 +24,7 @@ Thumbs.db
 .conductor-session.json
 .conductor-observability.jsonl
 .conductor-observability-metrics.json
+.conductor-observability-report*.json
 .conductor-handoffs.jsonl
 .conductor-traces.jsonl
 .conductor-route-decisions.jsonl

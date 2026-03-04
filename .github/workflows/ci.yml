@@ -66,6 +66,9 @@ jobs:
       - name: Validate schemas
         run: python tools/validate_schemas.py
 
+      - name: Validate process assets
+        run: python tools/validate_process_assets.py
+
       - name: Run mypy strict baseline
         run: mypy --config-file mypy.ini
 
