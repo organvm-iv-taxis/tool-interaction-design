@@ -10,6 +10,7 @@ from typing import Optional
 import yaml
 
 from .constants import (
+    ConductorError,
     EXPORTS_DIR,
     GENERATED_DIR,
     PHASES,
@@ -25,9 +26,19 @@ class ProductExtractor:
     def __init__(self, governance: GovernanceRuntime) -> None:
         self.governance = governance
 
-    def export_process_kit(self, output_dir: Optional[Path] = None) -> None:
+    def export_process_kit(self, output_dir: Optional[Path] = None, force: bool = False) -> None:
         """Export templates, CI artifacts, and a standalone conductor as a reusable kit."""
         output = output_dir or EXPORTS_DIR / "process-kit"
+
+        if output.exists() and not output.is_dir():
+            raise ConductorError(f"Output path exists and is not a directory: {output}")
+
+        if output.is_dir() and any(output.iterdir()) and not force:
+            raise ConductorError(
+                f"Output directory already exists and is not empty: {output}\n"
+                f"  Use --force to overwrite."
+            )
+
         output.mkdir(parents=True, exist_ok=True)
 
         print(f"\n  Exporting Process Kit -> {output}")
@@ -231,8 +242,10 @@ $defs:
 
         # Named patterns
         patterns = []
-        avg_frame = sum(phase_durations.get("FRAME", [0])) / max(len(phase_durations.get("FRAME", [1])), 1)
-        avg_build = sum(phase_durations.get("BUILD", [0])) / max(len(phase_durations.get("BUILD", [1])), 1)
+        frame_durs = phase_durations.get("FRAME", [])
+        build_durs = phase_durations.get("BUILD", [])
+        avg_frame = sum(frame_durs) / len(frame_durs) if frame_durs else 0
+        avg_build = sum(build_durs) / len(build_durs) if build_durs else 0
 
         if avg_frame > 20:
             patterns.append(("DEEP_RESEARCH", f"FRAME phase averages {avg_frame:.0f}m -- research-heavy workflow"))

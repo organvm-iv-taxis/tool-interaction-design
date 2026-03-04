@@ -84,9 +84,36 @@ VALID_TRANSITIONS: dict[str, list[str]] = {
     "PROVE": ["DONE", "BUILD"],
 }
 
+PROMOTION_TRANSITIONS: dict[str, list[str]] = {
+    "LOCAL": ["CANDIDATE", "ARCHIVED"],
+    "CANDIDATE": ["PUBLIC_PROCESS", "LOCAL", "ARCHIVED"],
+    "PUBLIC_PROCESS": ["GRADUATED", "CANDIDATE", "ARCHIVED"],
+    "GRADUATED": ["ARCHIVED"],
+    "ARCHIVED": [],
+}
+
+PROMOTION_STATES = {"LOCAL", "CANDIDATE", "PUBLIC_PROCESS", "GRADUATED", "ARCHIVED"}
+
 # WIP limits
 MAX_CANDIDATE_PER_ORGAN = 3
 MAX_PUBLIC_PROCESS_PER_ORGAN = 1
+
+
+# ---------------------------------------------------------------------------
+# Exceptions
+# ---------------------------------------------------------------------------
+
+
+class ConductorError(Exception):
+    """Base exception for conductor errors."""
+
+
+class SessionError(ConductorError):
+    """Session lifecycle errors (no active session, invalid transition, etc.)."""
+
+
+class GovernanceError(ConductorError):
+    """Governance/registry errors (WIP blocked, repo not found, etc.)."""
 
 # ---------------------------------------------------------------------------
 # Helpers

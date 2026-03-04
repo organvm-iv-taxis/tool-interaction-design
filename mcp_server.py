@@ -42,13 +42,14 @@ from router import Ontology, RoutingEngine
 from conductor.constants import (
     ONTOLOGY_PATH,
     ROUTING_PATH,
-    PHASE_CLUSTERS,
     PHASE_ROLES,
     PHASES,
     SESSION_STATE_FILE,
+    get_phase_clusters,
 )
 from conductor.governance import GovernanceRuntime
-from conductor.session import Session
+from conductor.patchbay import Patchbay
+from conductor.session import Session, SessionEngine
 
 # ---------------------------------------------------------------------------
 # Lazy globals
@@ -152,9 +153,25 @@ def session_phase() -> str:
         "scope": session.get("scope"),
         "current_phase": phase,
         "ai_role": PHASE_ROLES.get(phase, "Unknown"),
-        "active_clusters": PHASE_CLUSTERS.get(phase, []),
+        "active_clusters": get_phase_clusters().get(phase, []),
         "warnings": session.get("warnings", []),
     }, indent=2)
+
+
+def patch(organ: str | None = None) -> str:
+    """Full system briefing from the patchbay."""
+    try:
+        ontology = get_ontology()
+        engine = SessionEngine(ontology)
+        pb = Patchbay(ontology=ontology, engine=engine)
+        organ_filter = None
+        if organ:
+            from conductor.constants import resolve_organ_key
+            organ_filter = resolve_organ_key(organ)
+        data = pb.briefing(organ_filter=organ_filter)
+        return json.dumps(data, indent=2)
+    except Exception as e:
+        return json.dumps({"error": str(e)})
 
 
 def suggest(task_description: str) -> str:
@@ -206,7 +223,7 @@ def suggest(task_description: str) -> str:
     phase_note = None
     if session:
         phase = session.get("current_phase", "UNKNOWN")
-        phase_clusters = set(PHASE_CLUSTERS.get(phase, []))
+        phase_clusters = set(get_phase_clusters().get(phase, []))
         for s in suggestions:
             s["in_current_phase"] = s["cluster"] in phase_clusters
         phase_note = f"Current phase: {phase}. Prefer tools from active clusters."
@@ -267,6 +284,16 @@ TOOLS = [
             "required": ["task_description"],
         },
     ),
+    Tool(
+        name="conductor_patch",
+        description="Full system briefing — session state, system pulse, work queue, stats, and suggested action.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "organ": {"type": "string", "description": "Optional organ filter (e.g., III, META)"},
+            },
+        },
+    ),
 ]
 
 DISPATCH = {
@@ -275,6 +302,7 @@ DISPATCH = {
     "conductor_wip_status": lambda args: wip_status(),
     "conductor_session_phase": lambda args: session_phase(),
     "conductor_suggest": lambda args: suggest(args["task_description"]),
+    "conductor_patch": lambda args: patch(args.get("organ")),
 }
 
 

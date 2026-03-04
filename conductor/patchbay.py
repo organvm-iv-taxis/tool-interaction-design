@@ -1,0 +1,356 @@
+"""The Patchbay — Conductor's Command Center.
+
+Composes all layers into a structured briefing: session state, system pulse,
+work queue, lifetime stats, and suggested next action. Read-only, no mutations.
+"""
+
+from __future__ import annotations
+
+import json
+import time
+from collections import Counter
+from datetime import datetime, timezone
+from typing import Optional
+
+from .constants import (
+    MAX_CANDIDATE_PER_ORGAN,
+    MAX_PUBLIC_PROCESS_PER_ORGAN,
+    ORGANS,
+    PHASE_ROLES,
+    SESSION_STATE_FILE,
+    STATS_FILE,
+    organ_short,
+    get_phase_clusters,
+)
+from .governance import GovernanceRuntime
+from .session import Session, SessionEngine, _load_stats
+from .workqueue import WorkItem, WorkQueue
+
+
+class Patchbay:
+    """The command center. One read, all strings visible."""
+
+    def __init__(self, ontology=None, engine: SessionEngine | None = None) -> None:
+        self.ontology = ontology
+        self.engine = engine or SessionEngine(ontology)
+        self.gov = GovernanceRuntime()
+        self.wq = WorkQueue(self.gov)
+
+    def briefing(self, organ_filter: str | None = None) -> dict:
+        """Full system briefing. Returns structured data."""
+        return {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "session": self._session_section(),
+            "pulse": self._pulse_section(organ_filter),
+            "queue": self._queue_section(organ_filter),
+            "stats": self._stats_section(),
+            "suggested_action": self._suggest_next(organ_filter),
+        }
+
+    # ----- Sections -----
+
+    def _session_section(self) -> dict:
+        """Active session or last closed."""
+        session = self.engine._load_session()
+        if session:
+            phase_clusters = get_phase_clusters()
+            phase_history = []
+            for pl in session.phase_logs:
+                dur = int(((pl.get("end_time") or time.time()) - pl["start_time"]) / 60)
+                phase_history.append({
+                    "phase": pl["name"],
+                    "duration_minutes": dur,
+                    "active": pl.get("end_time", 0) == 0,
+                })
+
+            return {
+                "active": True,
+                "session_id": session.session_id,
+                "organ": session.organ,
+                "repo": session.repo,
+                "scope": session.scope,
+                "current_phase": session.current_phase,
+                "duration_minutes": session.duration_minutes,
+                "ai_role": PHASE_ROLES.get(session.current_phase, "N/A"),
+                "clusters": phase_clusters.get(session.current_phase, []),
+                "phase_history": phase_history,
+                "warnings": session.warnings,
+            }
+
+        # No active session — show last closed from stats
+        stats = _load_stats()
+        last = stats.get("last_session_id")
+        recent = stats.get("recent_sessions", [])
+        last_info = recent[-1] if recent else None
+
+        return {
+            "active": False,
+            "last_session_id": last,
+            "last_result": last_info.get("result") if last_info else None,
+            "last_duration": last_info.get("duration_minutes") if last_info else None,
+            "last_organ": last_info.get("organ") if last_info else None,
+        }
+
+    def _pulse_section(self, organ_filter: str | None = None) -> dict:
+        """System pulse — repo counts and promotion status per organ."""
+        organs_data = {}
+        total_repos = 0
+        total_candidate = 0
+        violations = []
+
+        for organ_key, organ_data in self.gov.registry.get("organs", {}).items():
+            if organ_filter and organ_key != organ_filter:
+                continue
+
+            repos = organ_data.get("repositories", [])
+            counts = Counter(r.get("promotion_status", "UNKNOWN") for r in repos)
+
+            cand = counts.get("CANDIDATE", 0)
+            pub = counts.get("PUBLIC_PROCESS", 0)
+            total_repos += len(repos)
+            total_candidate += cand
+
+            flags = []
+            if cand > MAX_CANDIDATE_PER_ORGAN:
+                flags.append(f"CAND>{MAX_CANDIDATE_PER_ORGAN}")
+                violations.append(organ_key)
+            if pub > MAX_PUBLIC_PROCESS_PER_ORGAN:
+                flags.append(f"PUB>{MAX_PUBLIC_PROCESS_PER_ORGAN}")
+                if organ_key not in violations:
+                    violations.append(organ_key)
+
+            short = organ_short(organ_key)
+            organs_data[organ_key] = {
+                "short": short,
+                "total": len(repos),
+                "local": counts.get("LOCAL", 0),
+                "candidate": cand,
+                "public_process": pub,
+                "graduated": counts.get("GRADUATED", 0),
+                "archived": counts.get("ARCHIVED", 0),
+                "flags": flags,
+            }
+
+        return {
+            "organs": organs_data,
+            "total_repos": total_repos,
+            "total_candidate": total_candidate,
+            "violations_count": len(violations),
+        }
+
+    def _queue_section(self, organ_filter: str | None = None) -> dict:
+        """Work queue — top items."""
+        items = self.wq.compute(organ_filter)
+        return {
+            "total": len(items),
+            "items": [
+                {
+                    "priority": item.priority,
+                    "category": item.category,
+                    "organ": item.organ,
+                    "repo": item.repo,
+                    "description": item.description,
+                    "suggested_command": item.suggested_command,
+                    "score": item.score,
+                }
+                for item in items[:10]
+            ],
+        }
+
+    def _stats_section(self) -> dict:
+        """Lifetime stats from cumulative stats file."""
+        stats = _load_stats()
+        total = stats.get("total_sessions", 0)
+        shipped = stats.get("shipped", 0)
+        total_minutes = stats.get("total_minutes", 0)
+        streak = stats.get("streak", 0)
+
+        return {
+            "total_sessions": total,
+            "total_hours": round(total_minutes / 60, 1) if total_minutes else 0,
+            "shipped": shipped,
+            "closed": stats.get("closed", 0),
+            "ship_rate": round(shipped / total * 100) if total else 0,
+            "streak": streak,
+            "recent_sessions": stats.get("recent_sessions", [])[-5:],
+        }
+
+    def _suggest_next(self, organ_filter: str | None = None) -> str:
+        """Suggest the single most impactful next action."""
+        session = self.engine._load_session()
+        if session:
+            # Active session — suggest next phase
+            phase = session.current_phase
+            if phase == "FRAME":
+                return f"Continue FRAME research, then: conductor session phase shape"
+            elif phase == "SHAPE":
+                return f"Finalize plan, then: conductor session phase build"
+            elif phase == "BUILD":
+                return f"Complete implementation, then: conductor session phase prove"
+            elif phase == "PROVE":
+                return f"Verify quality, then: conductor session phase done"
+            elif phase == "DONE":
+                return f"Session complete. Run: conductor session close"
+            return f"Current phase: {phase}"
+
+        # No session — suggest from work queue
+        items = self.wq.compute(organ_filter)
+        if not items:
+            return "System is clean. Start a new session."
+
+        top = items[0]
+        if top.category == "wip_violation":
+            short = organ_short(top.organ)
+            return (
+                f"Triage {short} CANDIDATE backlog ({top.description}).\n"
+                f"  -> {top.suggested_command}"
+            )
+        elif top.category == "stale":
+            return (
+                f"{top.repo}: {top.description}.\n"
+                f"  -> {top.suggested_command}"
+            )
+        else:
+            return (
+                f"{top.repo or top.organ}: {top.description}.\n"
+                f"  -> {top.suggested_command}"
+            )
+
+    # ----- Formatters -----
+
+    def format_json(self, data: dict) -> str:
+        """Machine-readable JSON output."""
+        return json.dumps(data, indent=2)
+
+    def format_text(self, data: dict) -> str:
+        """Human-readable plain text briefing."""
+        lines: list[str] = []
+        now_str = data.get("timestamp", "")[:19].replace("T", " ") + " UTC"
+
+        lines.append(f"  PATCHBAY{' ' * 50}{now_str}")
+        lines.append("  " + "=" * 70)
+
+        # Session
+        sess = data.get("session", {})
+        if sess.get("active"):
+            lines.append("")
+            lines.append("  SESSION: ACTIVE")
+            lines.append("  " + "-" * 68)
+            lines.append(f"  {sess['session_id']}")
+            lines.append(f"  {organ_short(sess['organ'])} | {sess['repo']} | \"{sess['scope']}\"")
+            phase = sess["current_phase"]
+            lines.append(f"  Phase: {phase} ({sess['duration_minutes']}m) | Role: {sess.get('ai_role', 'N/A')}")
+            clusters = sess.get("clusters", [])
+            if clusters:
+                lines.append(f"  Clusters: {', '.join(clusters)}")
+            # Phase history
+            history_parts = []
+            for ph in sess.get("phase_history", []):
+                marker = "*" if ph["active"] else ""
+                history_parts.append(f"{ph['phase']}({ph['duration_minutes']}m{marker})")
+            if history_parts:
+                lines.append(f"  {' -> '.join(history_parts)}")
+            lines.append(f"  -> Next: conductor session phase {self._next_phase(phase)}")
+        else:
+            lines.append("")
+            lines.append("  SESSION: none active")
+            last_id = sess.get("last_session_id")
+            if last_id:
+                result = sess.get("last_result", "?")
+                dur = sess.get("last_duration", "?")
+                lines.append(f"  Last closed: {last_id} ({result}, {dur}m)")
+
+        # Pulse
+        pulse = data.get("pulse", {})
+        organs = pulse.get("organs", {})
+        if organs:
+            lines.append("")
+            if sess.get("active"):
+                lines.append("  PULSE (abbreviated)")
+                lines.append("  " + "-" * 68)
+                total = pulse.get("total_repos", 0)
+                viols = pulse.get("violations_count", 0)
+                lines.append(f"  System: {total} repos | {viols} organs over WIP")
+            else:
+                lines.append("  PULSE")
+                lines.append("  " + "-" * 68)
+                lines.append(f"  {'ORGAN':<14} {'REPOS':>5} {'CAND':>5} {'PUB':>5} {'GRAD':>5} {'ARCH':>5}   FLAGS")
+                for organ_key in sorted(organs.keys()):
+                    o = organs[organ_key]
+                    short = o.get("short", organ_key)
+                    # Build organ label
+                    organ_names = {
+                        "I": "Theoria", "II": "Poiesis", "III": "Ergon",
+                        "IV": "Taxis", "V": "Logos", "VI": "Koinonia",
+                        "VII": "Kerygma", "META": "Meta",
+                    }
+                    label = f"{short} {organ_names.get(short, '')}"
+                    flags = ", ".join(o.get("flags", []))
+                    lines.append(
+                        f"  {label:<14} {o['total']:>5} {o['candidate']:>5} "
+                        f"{o['public_process']:>5} {o['graduated']:>5} "
+                        f"{o['archived']:>5}   {flags}"
+                    )
+                lines.append("  " + "-" * 68)
+                viols = pulse.get("violations_count", 0)
+                total_cand = pulse.get("total_candidate", 0)
+                if viols:
+                    lines.append(f"  {viols} organs over WIP limit | {total_cand} CANDIDATE system-wide")
+                else:
+                    lines.append(f"  No WIP violations | {total_cand} CANDIDATE system-wide")
+
+        # Queue
+        queue = data.get("queue", {})
+        queue_items = queue.get("items", [])
+        if queue_items and not sess.get("active"):
+            total_q = queue.get("total", 0)
+            shown = min(len(queue_items), 5)
+            lines.append("")
+            lines.append(f"  QUEUE (top {shown} of {total_q})")
+            lines.append("  " + "-" * 68)
+            for item in queue_items[:5]:
+                icon = "!!" if item["priority"] == "CRITICAL" else "!" if item["priority"] == "HIGH" else "."
+                organ_short_name = organ_short(item["organ"])
+                if item.get("repo"):
+                    lines.append(f"  {icon:<3} {item['repo']}: {item['description']}")
+                else:
+                    lines.append(f"  {icon:<3} {organ_short_name}: {item['description']}")
+                lines.append(f"      -> {item['suggested_command']}")
+            lines.append("  " + "-" * 68)
+
+        # Stats
+        stats = data.get("stats", {})
+        total_sessions = stats.get("total_sessions", 0)
+        if total_sessions > 0:
+            lines.append("")
+            lines.append("  STATS")
+            lines.append("  " + "-" * 68)
+            lines.append(
+                f"  Sessions: {total_sessions} | "
+                f"Hours: {stats.get('total_hours', 0)} | "
+                f"Ship rate: {stats.get('ship_rate', 0)}% | "
+                f"Streak: {stats.get('streak', 0)}"
+            )
+
+        # Suggested action
+        suggested = data.get("suggested_action", "")
+        if suggested and not sess.get("active"):
+            lines.append("")
+            lines.append("  NEXT ACTION")
+            lines.append("  " + "-" * 68)
+            for line in suggested.split("\n"):
+                lines.append(f"  {line}")
+
+        lines.append("")
+        return "\n".join(lines)
+
+    @staticmethod
+    def _next_phase(current: str) -> str:
+        """Suggest the next phase name for the session context."""
+        phase_map = {
+            "FRAME": "shape",
+            "SHAPE": "build",
+            "BUILD": "prove",
+            "PROVE": "done",
+        }
+        return phase_map.get(current, "close")

@@ -41,11 +41,29 @@ Top-level keys: `routes` (list of directed edges), `alternatives` (ranked fallba
 
 Seven primitives: `pipe` (|>), `fan_out` (=>), `fan_in` (<=), `gate` (?>), `loop` (@>), `fallback` (!>), `checkpoint` (||). Steps reference clusters from the ontology. Expression language supports `${step.field}` references and transforms (`| json`, `| text`, `| count`, etc.).
 
+## Session Start Protocol
+
+Before beginning any work session, run `conductor patch` to see system state:
+
+```bash
+python3 -m conductor patch                  # Full briefing
+python3 -m conductor patch --json           # Machine-readable output
+python3 -m conductor patch queue --organ III # Queue for one organ
+```
+
 ## Commands
 
 ```bash
 # Only dependency is PyYAML
 pip install pyyaml
+
+# Patchbay — command center
+python3 -m conductor patch                                 # Full system briefing
+python3 -m conductor patch --json                          # JSON output
+python3 -m conductor patch pulse                           # System pulse only
+python3 -m conductor patch queue                           # Work queue only
+python3 -m conductor patch stats                           # Lifetime stats only
+python3 -m conductor patch --organ III                     # Filter to one organ
 
 # Router CLI — all commands
 python3 router.py route --from <cluster> --to <cluster>   # Find routes between clusters

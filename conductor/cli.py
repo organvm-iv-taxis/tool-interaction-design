@@ -6,13 +6,16 @@ import argparse
 import sys
 from pathlib import Path
 
-from .constants import ONTOLOGY_PATH, ROUTING_PATH
+from .constants import ONTOLOGY_PATH, ROUTING_PATH, ConductorError, resolve_organ_key
 from .governance import GovernanceRuntime
+from .patchbay import Patchbay
 from .product import ProductExtractor
 from .session import SessionEngine
 
 try:
-    sys.path.insert(0, str(Path(__file__).parent.parent))
+    _router_dir = str(Path(__file__).parent.parent)
+    if _router_dir not in sys.path:
+        sys.path.insert(0, _router_dir)
     from router import Ontology, RoutingEngine
 except ImportError:
     Ontology = None  # type: ignore[assignment,misc]
@@ -52,6 +55,7 @@ def build_parser() -> argparse.ArgumentParser:
     registry_sub = p_registry.add_subparsers(dest="registry_command", required=True)
     p_sync = registry_sub.add_parser("sync", help="Sync registry with GitHub")
     p_sync.add_argument("--fix", action="store_true", help="Auto-add missing repos")
+    p_sync.add_argument("--dry-run", action="store_true", help="Show what --fix would do without writing")
 
     p_wip = sub.add_parser("wip", help="WIP limit management")
     wip_sub = p_wip.add_subparsers(dest="wip_command", required=True)
@@ -78,6 +82,7 @@ def build_parser() -> argparse.ArgumentParser:
     export_sub = p_export.add_subparsers(dest="export_command", required=True)
     p_kit = export_sub.add_parser("process-kit", help="Export process kit")
     p_kit.add_argument("--output", type=Path, help="Output directory")
+    p_kit.add_argument("--force", action="store_true", help="Overwrite existing output")
     p_report = export_sub.add_parser("audit-report", help="Export audit report")
     p_report.add_argument("--organ", help="Organ key (default: full system)")
 
@@ -92,8 +97,17 @@ def build_parser() -> argparse.ArgumentParser:
     p_cap = sub.add_parser("capability", help="Find clusters by capability")
     p_cap.add_argument("cap", type=str)
 
+    # ----- Patchbay command -----
+    p_patch = sub.add_parser("patch", help="Patchbay — command center briefing")
+    p_patch.add_argument("section", nargs="?", choices=["pulse", "queue", "stats"],
+                         help="Show only one section (default: full briefing)")
+    p_patch.add_argument("--json", action="store_true", dest="json_output",
+                         help="Machine-readable JSON output")
+    p_patch.add_argument("--organ", help="Filter to one organ (e.g., III, META)")
+
     sub.add_parser("clusters", help="List all clusters")
     sub.add_parser("domains", help="List all domains")
+    sub.add_parser("version", help="Show conductor version")
 
     return parser
 
@@ -102,6 +116,14 @@ def main():
     parser = build_parser()
     args = parser.parse_args()
 
+    try:
+        _dispatch(args)
+    except ConductorError as e:
+        print(f"  ERROR: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def _dispatch(args):
     # Load ontology for session and router commands
     ontology = None
     engine = None
@@ -127,15 +149,14 @@ def main():
     elif args.command == "registry":
         gov = GovernanceRuntime()
         if args.registry_command == "sync":
-            gov.registry_sync(fix=args.fix)
+            gov.registry_sync(fix=args.fix, dry_run=args.dry_run)
 
     elif args.command == "wip":
-        gov = GovernanceRuntime()
+        confirm_fn = (lambda _: True) if getattr(args, "yes", False) else None
+        gov = GovernanceRuntime(confirm_fn=confirm_fn)
         if args.wip_command == "check":
             gov.wip_check()
         elif args.wip_command == "promote":
-            if args.yes:
-                gov._skip_confirm = True
             gov.wip_promote(args.repo, args.state)
 
     elif args.command == "enforce":
@@ -155,7 +176,7 @@ def main():
         gov = GovernanceRuntime()
         pe = ProductExtractor(gov)
         if args.export_command == "process-kit":
-            pe.export_process_kit(output_dir=args.output)
+            pe.export_process_kit(output_dir=args.output, force=args.force)
         elif args.export_command == "audit-report":
             pe.export_audit_report(organ=args.organ)
 
@@ -163,6 +184,26 @@ def main():
         gov = GovernanceRuntime()
         pe = ProductExtractor(gov)
         pe.mine_patterns(export_essay=args.export_essay)
+
+    elif args.command == "patch":
+        organ_filter = resolve_organ_key(args.organ) if args.organ else None
+        pb = Patchbay(ontology=ontology, engine=SessionEngine(ontology))
+        data = pb.briefing(organ_filter=organ_filter)
+
+        # Filter to one section if requested
+        if args.section:
+            data = {
+                "timestamp": data["timestamp"],
+                args.section: data.get(args.section, {}),
+            }
+
+        if args.json_output:
+            print(pb.format_json(data))
+        else:
+            if args.section:
+                print(pb.format_json(data))
+            else:
+                print(pb.format_text(data))
 
     elif args.command == "route":
         if not engine:
@@ -192,3 +233,7 @@ def main():
             sys.exit(1)
         from router import cmd_domains
         cmd_domains(args, ontology, engine)
+
+    elif args.command == "version":
+        from conductor import __version__
+        print(f"  conductor {__version__}")

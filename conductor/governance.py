@@ -5,11 +5,10 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
-import sys
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 import yaml
 
@@ -19,7 +18,10 @@ from .constants import (
     MAX_CANDIDATE_PER_ORGAN,
     MAX_PUBLIC_PROCESS_PER_ORGAN,
     ORGANS,
+    PROMOTION_STATES,
+    PROMOTION_TRANSITIONS,
     REGISTRY_PATH,
+    GovernanceError,
     atomic_write,
     organ_short,
     resolve_organ_key,
@@ -29,22 +31,23 @@ from .constants import (
 class GovernanceRuntime:
     """Layer 2: Registry sync, WIP enforcement, staleness, audit."""
 
-    def __init__(self) -> None:
+    def __init__(self, confirm_fn: Optional[Callable[[str], bool]] = None) -> None:
         self.registry: dict = {}
         self.governance: dict = {}
-        self._skip_confirm: bool = False
+        self.confirm_fn: Callable[[str], bool] = confirm_fn or self._default_confirm
         self._load()
+
+    @staticmethod
+    def _default_confirm(prompt: str) -> bool:
+        answer = input(f"  {prompt} [y/N] ")
+        return answer.lower() in ("y", "yes")
 
     def _load(self) -> None:
         if REGISTRY_PATH.exists():
             self.registry = json.loads(REGISTRY_PATH.read_text())
-        else:
-            print(f"  WARNING: Registry not found at {REGISTRY_PATH}")
 
         if GOVERNANCE_PATH.exists():
             self.governance = json.loads(GOVERNANCE_PATH.read_text())
-        else:
-            print(f"  WARNING: Governance rules not found at {GOVERNANCE_PATH}")
 
     def _all_repos(self) -> list[tuple[str, dict]]:
         """Return (organ_key, repo_dict) for every repo in registry."""
@@ -56,7 +59,7 @@ class GovernanceRuntime:
 
     # ----- Registry Sync -----
 
-    def registry_sync(self, fix: bool = False) -> None:
+    def registry_sync(self, fix: bool = False, dry_run: bool = False) -> None:
         """Compare GitHub API repos vs registry, report delta. With --fix, auto-add missing."""
         print("\n  Registry Sync")
         print("  " + "=" * 50)
@@ -105,7 +108,11 @@ class GovernanceRuntime:
             for organ_key, name in missing_from_registry:
                 print(f"    + [{organ_key}] {name}")
 
-            if fix:
+            if fix and dry_run:
+                print(f"\n  DRY RUN: Would add {len(missing_from_registry)} repos to registry:")
+                for organ_key, name in missing_from_registry:
+                    print(f"    + [{organ_key}] {name}")
+            elif fix:
                 print(f"\n  Auto-adding {len(missing_from_registry)} repos to registry...")
                 for organ_key, name in missing_from_registry:
                     org_name = ""
@@ -182,6 +189,9 @@ class GovernanceRuntime:
             if cand > MAX_CANDIDATE_PER_ORGAN:
                 flags.append(f"CAND>{MAX_CANDIDATE_PER_ORGAN}")
                 violations.append(f"{organ_key}: {cand} CANDIDATE (limit {MAX_CANDIDATE_PER_ORGAN})")
+            if pub > MAX_PUBLIC_PROCESS_PER_ORGAN:
+                flags.append(f"PUB>{MAX_PUBLIC_PROCESS_PER_ORGAN}")
+                violations.append(f"{organ_key}: {pub} PUBLIC_PROCESS (limit {MAX_PUBLIC_PROCESS_PER_ORGAN})")
 
             flag_str = ", ".join(flags) if flags else ""
             short = organ_short(organ_key)
@@ -203,37 +213,31 @@ class GovernanceRuntime:
         """Promote a repo with WIP limit enforcement."""
         target_state = target_state.upper()
 
-        valid_states = {"LOCAL", "CANDIDATE", "PUBLIC_PROCESS", "GRADUATED", "ARCHIVED"}
-        if target_state not in valid_states:
-            print(f"  ERROR: Invalid state '{target_state}'. Valid: {', '.join(sorted(valid_states))}")
-            sys.exit(1)
+        if target_state not in PROMOTION_STATES:
+            raise GovernanceError(
+                f"Invalid state '{target_state}'. Valid: {', '.join(sorted(PROMOTION_STATES))}"
+            )
+
+        all_repos = self._all_repos()
 
         found = None
-        for organ_key, repo in self._all_repos():
+        for organ_key, repo in all_repos:
             if repo["name"] == repo_name:
                 found = (organ_key, repo)
                 break
 
         if not found:
-            print(f"  ERROR: Repo '{repo_name}' not found in registry.")
-            sys.exit(1)
+            raise GovernanceError(f"Repo '{repo_name}' not found in registry.")
 
         organ_key, repo = found
         current = repo.get("promotion_status", "LOCAL")
 
-        transitions = {
-            "LOCAL": ["CANDIDATE", "ARCHIVED"],
-            "CANDIDATE": ["PUBLIC_PROCESS", "LOCAL", "ARCHIVED"],
-            "PUBLIC_PROCESS": ["GRADUATED", "CANDIDATE", "ARCHIVED"],
-            "GRADUATED": ["ARCHIVED"],
-            "ARCHIVED": [],
-        }
-        if target_state not in transitions.get(current, []):
-            print(f"  ERROR: Cannot transition {current} -> {target_state}.")
-            print(f"  Valid transitions: {', '.join(transitions.get(current, ['none']))}")
-            sys.exit(1)
-
-        all_repos = self._all_repos()
+        if target_state not in PROMOTION_TRANSITIONS.get(current, []):
+            valid = PROMOTION_TRANSITIONS.get(current, [])
+            raise GovernanceError(
+                f"Cannot transition {current} -> {target_state}. "
+                f"Valid transitions: {', '.join(valid or ['none'])}"
+            )
 
         if target_state == "CANDIDATE":
             cand_count = sum(
@@ -241,13 +245,10 @@ class GovernanceRuntime:
                 if ok == organ_key and r.get("promotion_status") == "CANDIDATE"
             )
             if cand_count >= MAX_CANDIDATE_PER_ORGAN:
-                print(f"  BLOCKED: {organ_key} already has {cand_count} CANDIDATE repos (limit {MAX_CANDIDATE_PER_ORGAN}).")
-                print(f"  Promote or archive existing CANDIDATE repos first.")
-                print(f"\n  Current CANDIDATE repos in {organ_key}:")
-                for ok, r in all_repos:
-                    if ok == organ_key and r.get("promotion_status") == "CANDIDATE":
-                        print(f"    - {r['name']}")
-                sys.exit(1)
+                raise GovernanceError(
+                    f"{organ_key} already has {cand_count} CANDIDATE repos "
+                    f"(limit {MAX_CANDIDATE_PER_ORGAN}). Promote or archive existing CANDIDATE repos first."
+                )
 
         if target_state == "PUBLIC_PROCESS":
             pub_count = sum(
@@ -255,15 +256,14 @@ class GovernanceRuntime:
                 if ok == organ_key and r.get("promotion_status") == "PUBLIC_PROCESS"
             )
             if pub_count >= MAX_PUBLIC_PROCESS_PER_ORGAN:
-                print(f"  BLOCKED: {organ_key} already has {pub_count} PUBLIC_PROCESS repos (limit {MAX_PUBLIC_PROCESS_PER_ORGAN}).")
-                print(f"  Graduate or archive existing PUBLIC_PROCESS repos first.")
-                sys.exit(1)
+                raise GovernanceError(
+                    f"{organ_key} already has {pub_count} PUBLIC_PROCESS repos "
+                    f"(limit {MAX_PUBLIC_PROCESS_PER_ORGAN}). Graduate or archive existing PUBLIC_PROCESS repos first."
+                )
 
-        if not self._skip_confirm:
-            answer = input(f"  Promote {repo_name}: {current} -> {target_state}? [y/N] ")
-            if answer.lower() not in ("y", "yes"):
-                print("  Aborted.")
-                return
+        if not self.confirm_fn(f"Promote {repo_name}: {current} -> {target_state}?"):
+            print("  Aborted.")
+            return
 
         repo["promotion_status"] = target_state
         repo["last_validated"] = datetime.now().strftime("%Y-%m-%d")
@@ -346,8 +346,7 @@ class GovernanceRuntime:
         print("  " + "=" * 50)
 
         if not self.governance:
-            print("  ERROR: No governance rules loaded.")
-            sys.exit(1)
+            raise GovernanceError("No governance rules loaded.")
 
         output_dir = GENERATED_DIR
         if not dry_run:
@@ -512,8 +511,7 @@ class GovernanceRuntime:
             if organ_data:
                 organs_to_check[key] = organ_data
             else:
-                print(f"  ERROR: Organ '{organ}' not found in registry.")
-                sys.exit(1)
+                raise GovernanceError(f"Organ '{organ}' not found in registry.")
         else:
             organs_to_check = self.registry.get("organs", {})
 
@@ -569,7 +567,7 @@ class GovernanceRuntime:
         print()
 
     def _create_audit_issues(self, organ_key: str, recommendations: list[str]) -> None:
-        """Create GitHub issues from audit recommendations."""
+        """Create GitHub issues from audit recommendations, skipping duplicates."""
         org = ""
         for meta in ORGANS.values():
             if meta["registry_key"] == organ_key:
@@ -578,11 +576,28 @@ class GovernanceRuntime:
         if not org:
             return
 
-        # Find a repo to file the issue against (prefer .github or first repo)
         target_repo = f"{org}/.github"
+
+        # Fetch existing audit issues to avoid duplicates
+        existing_titles: set[str] = set()
+        try:
+            result = subprocess.run(
+                ["gh", "issue", "list", "--repo", target_repo,
+                 "--label", "conductor-audit", "--json", "title", "--limit", "100"],
+                capture_output=True, text=True, timeout=15,
+            )
+            if result.returncode == 0:
+                for issue in json.loads(result.stdout):
+                    existing_titles.add(issue.get("title", ""))
+        except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError):
+            pass  # If we can't check, proceed with creation
 
         for rec in recommendations:
             title = f"[conductor audit] {rec[:80]}"
+            if title in existing_titles:
+                print(f"    Skipped (duplicate): {title[:60]}...")
+                continue
+
             body = (
                 f"## Audit Finding\n\n"
                 f"**Organ:** {organ_key}\n"

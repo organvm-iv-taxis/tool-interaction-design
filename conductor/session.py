@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
-import sys
+import subprocess
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -20,6 +21,7 @@ from .constants import (
     STATS_FILE,
     TEMPLATES_DIR,
     VALID_TRANSITIONS,
+    SessionError,
     atomic_write,
     get_phase_clusters,
     organ_short,
@@ -52,12 +54,6 @@ class Session:
     @property
     def duration_minutes(self) -> int:
         return int((time.time() - self.start_time) / 60)
-
-    def current_phase_log(self) -> dict:
-        for pl in self.phase_logs:
-            if pl["name"] == self.current_phase and pl["end_time"] == 0:
-                return pl
-        return {}
 
     def to_dict(self) -> dict:
         return {
@@ -104,13 +100,33 @@ def _update_stats(session_log: dict) -> dict:
     result = session_log.get("result", "CLOSED")
     if result == "SHIPPED":
         stats["shipped"] += 1
-    else:
+    elif result == "CLOSED":
         stats["closed"] += 1
+    # IN_PROGRESS or other values are counted in total but not shipped/closed
 
     organ = session_log.get("organ", "UNKNOWN")
     organ_stats = stats.setdefault("by_organ", {}).setdefault(organ, {"sessions": 0, "minutes": 0})
     organ_stats["sessions"] += 1
     organ_stats["minutes"] += session_log.get("duration_minutes", 0)
+
+    # Streak: consecutive SHIPPED sessions (resets on non-SHIPPED)
+    if result == "SHIPPED":
+        stats["streak"] = stats.get("streak", 0) + 1
+    else:
+        stats["streak"] = 0
+
+    # Last session ID
+    stats["last_session_id"] = session_log.get("session_id", "")
+
+    # Recent sessions (last 10)
+    recent = stats.get("recent_sessions", [])
+    recent.append({
+        "session_id": session_log.get("session_id", ""),
+        "result": result,
+        "organ": organ,
+        "duration_minutes": session_log.get("duration_minutes", 0),
+    })
+    stats["recent_sessions"] = recent[-10:]
 
     _save_stats(stats)
     return stats
@@ -135,14 +151,9 @@ class SessionEngine:
                 data = json.loads(SESSION_STATE_FILE.read_text())
                 return Session.from_dict(data)
             except (json.JSONDecodeError, TypeError, KeyError) as e:
-                print(f"  WARNING: Session state corrupted ({e}).")
-                answer = input("  Reset session state? [y/N] ")
-                if answer.lower() in ("y", "yes"):
-                    self._clear_session()
-                    print("  Session state cleared.")
-                else:
-                    print("  Aborting. Fix or delete .conductor-session.json manually.")
-                    sys.exit(1)
+                raise SessionError(
+                    f"Session state corrupted ({e}). Fix or delete .conductor-session.json manually."
+                ) from e
         return None
 
     def _save_session(self, session: Session) -> None:
@@ -155,14 +166,15 @@ class SessionEngine:
     def start(self, organ: str, repo: str, scope: str, git_branch: bool = True) -> Session:
         """Start a new session."""
         if self._load_session():
-            print("  ERROR: Session already active. Close it first with `conductor session close`.")
-            sys.exit(1)
+            raise SessionError("Session already active. Close it first with `conductor session close`.")
 
         organ_key = resolve_organ_key(organ)
         now = time.time()
         date_str = datetime.now().strftime("%Y-%m-%d")
         slug = scope.lower().replace(" ", "-")[:40]
-        session_id = f"{date_str}-{organ_short(organ_key)}-{slug}"
+        # Short hash for uniqueness when same scope is used twice in one day
+        short_hash = hashlib.sha256(f"{now}{organ_key}{repo}{scope}".encode()).hexdigest()[:6]
+        session_id = f"{date_str}-{organ_short(organ_key)}-{slug}-{short_hash}"
 
         session = Session(
             session_id=session_id,
@@ -191,7 +203,7 @@ class SessionEngine:
         # Show cumulative stats
         stats = _load_stats()
         if stats["total_sessions"] > 0:
-            ship_rate = stats["shipped"] / stats["total_sessions"] * 100 if stats["total_sessions"] else 0
+            ship_rate = stats["shipped"] / stats["total_sessions"] * 100
             print(f"  Lifetime: {stats['total_sessions']} sessions, {stats['total_minutes']}m, {ship_rate:.0f}% ship rate")
         print()
 
@@ -199,7 +211,6 @@ class SessionEngine:
 
     def _create_branch(self, organ_key: str, slug: str) -> None:
         """Create a feature branch if we're in a git repo."""
-        import subprocess
         branch = f"feat/{organ_short(organ_key).lower()}/{slug}"
         try:
             # Check if in a git repo
@@ -219,13 +230,16 @@ class SessionEngine:
                 print(f"  Branch exists: {branch}")
                 return
 
-            subprocess.run(
+            result = subprocess.run(
                 ["git", "checkout", "-b", branch],
                 capture_output=True, text=True, timeout=5,
             )
-            print(f"  Branch created: {branch}")
+            if result.returncode == 0:
+                print(f"  Branch created: {branch}")
+            else:
+                print(f"  WARNING: Could not create branch: {result.stderr.strip()}")
         except (subprocess.TimeoutExpired, FileNotFoundError):
-            pass  # No git, no branch — that's fine
+            pass  # No git — that's fine
 
     def _scaffold_templates(self, session: Session) -> None:
         """Copy and fill templates for this session."""
@@ -253,17 +267,17 @@ class SessionEngine:
         """Transition to a new phase."""
         session = self._load_session()
         if not session:
-            print("  ERROR: No active session. Start one with `conductor session start`.")
-            sys.exit(1)
+            raise SessionError("No active session. Start one with `conductor session start`.")
 
         target = target_phase.upper()
         current = session.current_phase
 
         if target not in VALID_TRANSITIONS.get(current, []):
             valid = VALID_TRANSITIONS.get(current, [])
-            print(f"  ERROR: Cannot transition {current} -> {target}.")
-            print(f"  Valid transitions from {current}: {', '.join(valid)}")
-            sys.exit(1)
+            raise SessionError(
+                f"Cannot transition {current} -> {target}. "
+                f"Valid transitions from {current}: {', '.join(valid)}"
+            )
 
         now = time.time()
         for pl in session.phase_logs:
@@ -372,8 +386,7 @@ class SessionEngine:
         """Close the session and generate the session log."""
         session = self._load_session()
         if not session:
-            print("  ERROR: No active session to close.")
-            sys.exit(1)
+            raise SessionError("No active session to close.")
 
         now = time.time()
         for pl in session.phase_logs:
@@ -447,7 +460,6 @@ class SessionEngine:
 
     def _commit_breadcrumb(self, session: Session) -> None:
         """Commit session artifacts as a breadcrumb if in a git repo."""
-        import subprocess
         try:
             result = subprocess.run(
                 ["git", "rev-parse", "--is-inside-work-tree"],
@@ -457,14 +469,20 @@ class SessionEngine:
                 return
 
             session_dir = SESSIONS_DIR / session.session_id
-            subprocess.run(
+            result = subprocess.run(
                 ["git", "add", str(session_dir)],
                 capture_output=True, text=True, timeout=5,
             )
+            if result.returncode != 0:
+                print(f"  WARNING: git add failed: {result.stderr.strip()}")
+                return
+
             msg = f"session: close {session.session_id} [{session.result}]"
-            subprocess.run(
+            result = subprocess.run(
                 ["git", "commit", "-m", msg, "--allow-empty"],
                 capture_output=True, text=True, timeout=10,
             )
+            if result.returncode != 0:
+                print(f"  WARNING: git commit failed: {result.stderr.strip()}")
         except (subprocess.TimeoutExpired, FileNotFoundError):
             pass
