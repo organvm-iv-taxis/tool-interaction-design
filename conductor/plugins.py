@@ -12,6 +12,8 @@ from typing import Any, Protocol, cast
 import yaml
 
 from .constants import load_config
+from .observability import log_event
+from .policy import load_policy
 
 
 class ClusterProvider(Protocol):
@@ -52,10 +54,18 @@ def _load_provider_from_spec(spec: str) -> ClusterProvider:
     return cast(ClusterProvider, provider)
 
 
+def _strict_plugin_failures() -> bool:
+    try:
+        return bool(load_policy().fail_on_warnings)
+    except Exception:
+        return False
+
+
 def load_cluster_plugins() -> list[ClusterProvider]:
     """Load plugin providers from config/env in deterministic order."""
     config = load_config()
     plugin_cfg = config.get("plugins", {}) if isinstance(config, dict) else {}
+    strict_failures = _strict_plugin_failures()
 
     providers: list[ClusterProvider] = []
 
@@ -68,7 +78,17 @@ def load_cluster_plugins() -> list[ClusterProvider]:
 
     for spec in plugin_cfg.get("cluster_providers", []) if isinstance(plugin_cfg, dict) else []:
         if isinstance(spec, str) and spec.strip():
-            providers.append(_load_provider_from_spec(spec.strip()))
+            try:
+                providers.append(_load_provider_from_spec(spec.strip()))
+            except Exception as exc:
+                log_event(
+                    "plugins.provider_load",
+                    {"provider_spec": spec.strip(), "error": str(exc)},
+                    failed=True,
+                    failure_bucket="plugin_provider_load_error",
+                )
+                if strict_failures:
+                    raise
 
     return providers
 
@@ -76,9 +96,17 @@ def load_cluster_plugins() -> list[ClusterProvider]:
 def load_plugin_clusters() -> list[dict[str, Any]]:
     """Return all cluster definitions contributed by plugins."""
     clusters: list[dict[str, Any]] = []
+    strict_failures = _strict_plugin_failures()
     for provider in load_cluster_plugins():
         try:
             clusters.extend(provider.clusters())
-        except Exception:
-            continue
+        except Exception as exc:
+            log_event(
+                "plugins.provider_clusters",
+                {"provider": provider.__class__.__name__, "error": str(exc)},
+                failed=True,
+                failure_bucket="plugin_provider_clusters_error",
+            )
+            if strict_failures:
+                raise
     return clusters
