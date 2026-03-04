@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ToolExecutionTraceV1",
+  "type": "object",
+  "required": [
+    "trace_id",
+    "handoff_id",
+    "status",
+    "latency_ms",
+    "schema_pass",
+    "failure_bucket",
+    "retry_count",
+    "fallback_used",
+    "timestamp"
+  ],
+  "properties": {
+    "trace_id": { "type": "string", "minLength": 1 },
+    "handoff_id": { "type": "string", "minLength": 1 },
+    "status": { "type": "string", "enum": ["ok", "retry", "fallback", "fail"] },
+    "latency_ms": { "type": "number", "minimum": 0 },
+    "schema_pass": { "type": "boolean" },
+    "failure_bucket": { "type": "string" },
+    "retry_count": { "type": "integer", "minimum": 0 },
+    "fallback_used": { "type": "boolean" },
+    "context_loss": { "type": "boolean" },
+    "timestamp": { "type": "string", "format": "date-time" }
+  },
+  "additionalProperties": true
+}

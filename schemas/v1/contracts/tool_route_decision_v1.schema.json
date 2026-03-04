@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ToolRouteDecisionV1",
+  "type": "object",
+  "required": [
+    "trace_id",
+    "handoff_id",
+    "decision",
+    "selected_path",
+    "candidate_paths",
+    "reason",
+    "timestamp"
+  ],
+  "properties": {
+    "trace_id": { "type": "string", "minLength": 1 },
+    "handoff_id": { "type": "string", "minLength": 1 },
+    "decision": { "type": "string", "enum": ["direct", "fallback", "fail"] },
+    "selected_path": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "candidate_paths": {
+      "type": "array",
+      "items": {
+        "type": "array",
+        "items": { "type": "string" }
+      }
+    },
+    "reason": { "type": "string", "minLength": 1 },
+    "timestamp": { "type": "string", "format": "date-time" }
+  },
+  "additionalProperties": true
+}

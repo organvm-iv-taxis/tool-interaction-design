@@ -35,6 +35,7 @@ from .constants import (
 )
 from .doctor import run_doctor
 from .governance import GovernanceRuntime
+from .handoff import create_handoff_envelope, edge_health_report, get_trace_bundle, simulate_route_handoff, validate_handoff_payload
 from .integrity import IntegrityIssue, IntegrityReport, run_integrity_checks
 from .migrate import migrate_governance, migrate_registry
 from .observability import log_event
@@ -83,6 +84,11 @@ __all__ = [
     "resolve_organ_key",
     # Classes
     "GovernanceRuntime",
+    "create_handoff_envelope",
+    "simulate_route_handoff",
+    "validate_handoff_payload",
+    "edge_health_report",
+    "get_trace_bundle",
     "Patchbay",
     "ProductExtractor",
     "Session",

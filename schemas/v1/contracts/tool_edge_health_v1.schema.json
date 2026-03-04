@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ToolEdgeHealthV1",
+  "type": "object",
+  "required": [
+    "window",
+    "generated_at",
+    "total_traces",
+    "handoff_success_rate",
+    "schema_pass_rate",
+    "fallback_rate",
+    "p95_edge_latency_ms",
+    "context_loss_rate"
+  ],
+  "properties": {
+    "window": { "type": "integer", "minimum": 1 },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "total_traces": { "type": "integer", "minimum": 0 },
+    "handoff_success_rate": { "type": "number", "minimum": 0, "maximum": 1 },
+    "schema_pass_rate": { "type": "number", "minimum": 0, "maximum": 1 },
+    "fallback_rate": { "type": "number", "minimum": 0, "maximum": 1 },
+    "p95_edge_latency_ms": { "type": "number", "minimum": 0 },
+    "context_loss_rate": { "type": "number", "minimum": 0, "maximum": 1 },
+    "failure_buckets": {
+      "type": "object",
+      "additionalProperties": { "type": "integer", "minimum": 0 }
+    }
+  },
+  "additionalProperties": true
+}

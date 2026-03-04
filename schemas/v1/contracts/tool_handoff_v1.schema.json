@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ToolHandoffV1",
+  "type": "object",
+  "required": [
+    "handoff_id",
+    "trace_id",
+    "source_cluster",
+    "target_cluster",
+    "objective",
+    "input_artifacts",
+    "constraints",
+    "expected_output_contract",
+    "policy_context",
+    "deadline_ms",
+    "priority",
+    "created_at"
+  ],
+  "properties": {
+    "handoff_id": { "type": "string", "minLength": 1 },
+    "trace_id": { "type": "string", "minLength": 1 },
+    "source_cluster": { "type": "string", "minLength": 1 },
+    "target_cluster": { "type": "string", "minLength": 1 },
+    "objective": { "type": "string", "minLength": 1 },
+    "input_artifacts": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "constraints": { "type": "object" },
+    "expected_output_contract": { "type": "string", "minLength": 1 },
+    "policy_context": { "type": "object" },
+    "deadline_ms": { "type": "integer", "minimum": 1 },
+    "priority": { "type": "string", "enum": ["low", "medium", "high", "critical"] },
+    "created_at": { "type": "string", "format": "date-time" }
+  },
+  "additionalProperties": true
+}

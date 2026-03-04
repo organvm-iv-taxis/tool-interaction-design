@@ -108,3 +108,53 @@ def test_plugins_doctor_json_contract_shape() -> None:
     assert result.returncode == 0
     payload = json.loads(result.stdout)
     assert set(payload.keys()) >= {"ok", "summary", "providers"}
+
+
+def test_handoff_validate_cli_json(tmp_path) -> None:
+    payload_file = tmp_path / "handoff.json"
+    payload_file.write_text(
+        json.dumps(
+            {
+                "handoff_id": "h-1",
+                "trace_id": "t-1",
+                "source_cluster": "web_search",
+                "target_cluster": "knowledge_graph",
+                "objective": "Fetch and store facts",
+                "input_artifacts": ["query:x"],
+                "constraints": {},
+                "expected_output_contract": "mcp_tool_response",
+                "policy_context": {"mode": "test"},
+                "deadline_ms": 5000,
+                "priority": "high",
+                "created_at": "2026-03-04T00:00:00+00:00",
+            }
+        )
+    )
+    result = run("handoff", "validate", "--input", str(payload_file), "--format", "json")
+    assert result.returncode == 0
+    report = json.loads(result.stdout)
+    assert report["valid"] is True
+
+
+def test_route_simulate_and_edge_health_cli_json() -> None:
+    route_result = run(
+        "route",
+        "simulate",
+        "--from",
+        "web_search",
+        "--to",
+        "knowledge_graph",
+        "--objective",
+        "CLI route simulation",
+        "--format",
+        "json",
+    )
+    assert route_result.returncode == 0
+    route_payload = json.loads(route_result.stdout)
+    assert set(route_payload.keys()) >= {"ok", "handoff", "route_decision", "trace"}
+    assert route_payload["handoff"]["trace_id"]
+
+    health_result = run("edge", "health", "--format", "json")
+    assert health_result.returncode == 0
+    health_payload = json.loads(health_result.stdout)
+    assert set(health_payload.keys()) >= {"total_traces", "handoff_success_rate", "schema_pass_rate"}

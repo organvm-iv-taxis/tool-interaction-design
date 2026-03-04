@@ -11,6 +11,7 @@ from unittest.mock import patch
 import conductor.governance
 from conductor.contracts import validate_contract
 from conductor.doctor import run_doctor
+from conductor.handoff import create_handoff_envelope, edge_health_report
 from conductor.patchbay import Patchbay
 from conductor.session import SessionEngine
 
@@ -53,4 +54,39 @@ def test_patchbay_briefing_matches_contract(tmp_path) -> None:
         pb = Patchbay(engine=SessionEngine())
         payload = pb.briefing()
     issues = validate_contract("patchbay_briefing", payload)
+    assert not issues
+
+
+def test_handoff_envelope_matches_contract() -> None:
+    payload = create_handoff_envelope(
+        source_cluster="web_search",
+        target_cluster="knowledge_graph",
+        objective="Contract check",
+    )
+    issues = validate_contract("tool_handoff_v1", payload)
+    assert not issues
+
+
+def test_edge_health_matches_contract(tmp_path) -> None:
+    trace_file = tmp_path / "traces.jsonl"
+    trace_file.write_text(
+        json.dumps(
+            {
+                "trace_id": "t1",
+                "handoff_id": "h1",
+                "status": "ok",
+                "latency_ms": 1.0,
+                "schema_pass": True,
+                "failure_bucket": "",
+                "retry_count": 0,
+                "fallback_used": False,
+                "context_loss": False,
+                "timestamp": "2026-03-04T00:00:00+00:00",
+            }
+        )
+        + "\n"
+    )
+    with patch("conductor.handoff.TRACE_LOG_FILE", trace_file):
+        payload = edge_health_report(window=200)
+    issues = validate_contract("tool_edge_health_v1", payload)
     assert not issues

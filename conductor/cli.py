@@ -8,9 +8,12 @@ import os
 import sys
 from pathlib import Path
 
+import yaml
+
 from .constants import ONTOLOGY_PATH, ROUTING_PATH, ConductorError, resolve_organ_key
 from .doctor import assert_doctor_ok, render_doctor_text, run_doctor
 from .governance import GovernanceRuntime
+from .handoff import edge_health_report, get_trace_bundle, simulate_route_handoff, validate_handoff_payload
 from .migrate import migrate_governance, migrate_registry, write_migration_output
 from .observability import export_metrics_report
 from .patchbay import Patchbay
@@ -99,8 +102,16 @@ def build_parser() -> argparse.ArgumentParser:
 
     # ----- Router commands (inherited) -----
     p_route = sub.add_parser("route", help="Find routes between clusters")
-    p_route.add_argument("--from", dest="from_cluster", required=True)
-    p_route.add_argument("--to", dest="to_cluster", required=True)
+    route_sub = p_route.add_subparsers(dest="route_command")
+    p_route.add_argument("--from", dest="from_cluster")
+    p_route.add_argument("--to", dest="to_cluster")
+    p_route_sim = route_sub.add_parser("simulate", help="Simulate a routed handoff with repair/fallback behavior")
+    p_route_sim.add_argument("--from", dest="from_cluster", required=True)
+    p_route_sim.add_argument("--to", dest="to_cluster", required=True)
+    p_route_sim.add_argument("--objective", required=True, help="Objective for the simulated handoff")
+    p_route_sim.add_argument("--deadline-ms", type=int, default=5000, help="Deadline budget for simulation")
+    p_route_sim.add_argument("--priority", choices=["low", "medium", "high", "critical"], default="high")
+    p_route_sim.add_argument("--format", choices=["text", "json"], default="text", help="Output format")
 
     p_cap = sub.add_parser("capability", help="Find clusters by capability")
     p_cap.add_argument("cap", type=str)
@@ -135,6 +146,21 @@ def build_parser() -> argparse.ArgumentParser:
     p_obs_report.add_argument("--output", type=Path, help="Optional output path for JSON report")
     p_obs_report.add_argument("--format", choices=["text", "json"], default="text", help="Output format")
     p_obs_report.add_argument("--check", action="store_true", help="Exit non-zero when trend status is warn/critical")
+
+    p_handoff = sub.add_parser("handoff", help="Canonical handoff envelope commands")
+    handoff_sub = p_handoff.add_subparsers(dest="handoff_command", required=True)
+    p_handoff_validate = handoff_sub.add_parser("validate", help="Validate a handoff payload file")
+    p_handoff_validate.add_argument("--input", type=Path, required=True, help="Path to JSON or YAML payload file")
+    p_handoff_validate.add_argument("--format", choices=["text", "json"], default="text", help="Output format")
+
+    p_edge = sub.add_parser("edge", help="Edge telemetry and trace inspection")
+    edge_sub = p_edge.add_subparsers(dest="edge_command", required=True)
+    p_edge_health = edge_sub.add_parser("health", help="Compute edge health metrics from trace logs")
+    p_edge_health.add_argument("--window", type=int, default=200, help="Window size (last N traces)")
+    p_edge_health.add_argument("--format", choices=["text", "json"], default="text", help="Output format")
+    p_edge_trace = edge_sub.add_parser("trace", help="Fetch a trace bundle by trace_id")
+    p_edge_trace.add_argument("--trace-id", required=True, help="Trace identifier")
+    p_edge_trace.add_argument("--format", choices=["text", "json"], default="text", help="Output format")
 
     p_migrate = sub.add_parser("migrate", help="Migrate registry/governance to current schema")
     migrate_sub = p_migrate.add_subparsers(dest="migrate_command", required=True)
@@ -270,8 +296,35 @@ def _dispatch(args):
         if not engine:
             print("  ERROR: Ontology/routing files not found.", file=sys.stderr)
             sys.exit(1)
-        from router import cmd_route
-        cmd_route(args, ontology, engine)
+        if args.route_command == "simulate":
+            report = simulate_route_handoff(
+                ontology=ontology,
+                engine=engine,
+                source_cluster=args.from_cluster,
+                target_cluster=args.to_cluster,
+                objective=args.objective,
+                deadline_ms=args.deadline_ms,
+                priority=args.priority,
+            )
+            if args.format == "json":
+                print(json.dumps(report, indent=2))
+            else:
+                decision = report.get("route_decision", {})
+                trace = report.get("trace", {})
+                print("Route simulation")
+                print(
+                    f"  decision={decision.get('decision')} "
+                    f"status={trace.get('status')} "
+                    f"latency_ms={trace.get('latency_ms')}"
+                )
+                print(f"  selected_path={decision.get('selected_path')}")
+            if not report.get("ok"):
+                raise ConductorError("Route simulation failed to produce a valid path.")
+        else:
+            if not args.from_cluster or not args.to_cluster:
+                raise ConductorError("Route requires --from and --to when not using `route simulate`.")
+            from router import cmd_route
+            cmd_route(args, ontology, engine)
 
     elif args.command == "capability":
         if not engine:
@@ -348,6 +401,57 @@ def _dispatch(args):
                 print(f"  report_path={output_path}")
             if args.check and report.get("trends", {}).get("status") in {"warn", "critical"}:
                 raise ConductorError("Observability trend check failed threshold.")
+
+    elif args.command == "handoff":
+        if args.handoff_command == "validate":
+            if not args.input.exists():
+                raise ConductorError(f"Handoff input file not found: {args.input}")
+            if args.input.suffix.lower() == ".json":
+                payload = json.loads(args.input.read_text())
+            else:
+                payload = yaml.safe_load(args.input.read_text()) or {}
+            if not isinstance(payload, dict):
+                raise ConductorError("Handoff payload must be a JSON/YAML object.")
+            report = validate_handoff_payload(payload)
+            if args.format == "json":
+                print(json.dumps(report, indent=2))
+            else:
+                print(f"valid={report.get('valid')}")
+                for issue in report.get("issues", []):
+                    print(f"  {issue['code']} {issue['path']}: {issue['message']}")
+            if not report.get("valid"):
+                raise ConductorError("Handoff contract validation failed.")
+
+    elif args.command == "edge":
+        if args.edge_command == "health":
+            payload = edge_health_report(window=args.window)
+            if args.format == "json":
+                print(json.dumps(payload, indent=2))
+            else:
+                print("Edge health")
+                print(
+                    f"  traces={payload.get('total_traces')} "
+                    f"success_rate={payload.get('handoff_success_rate')} "
+                    f"schema_pass_rate={payload.get('schema_pass_rate')} "
+                    f"fallback_rate={payload.get('fallback_rate')} "
+                    f"p95_latency_ms={payload.get('p95_edge_latency_ms')} "
+                    f"context_loss_rate={payload.get('context_loss_rate')}"
+                )
+        elif args.edge_command == "trace":
+            payload = get_trace_bundle(args.trace_id)
+            if not any(payload.get(key) for key in ("handoff", "trace", "route_decision")):
+                raise ConductorError(f"Trace not found: {args.trace_id}")
+            if args.format == "json":
+                print(json.dumps(payload, indent=2))
+            else:
+                trace = payload.get("trace") or {}
+                decision = payload.get("route_decision") or {}
+                print(f"trace_id={payload.get('trace_id')}")
+                print(
+                    f"  status={trace.get('status')} "
+                    f"latency_ms={trace.get('latency_ms')} "
+                    f"decision={decision.get('decision')}"
+                )
 
     elif args.command == "migrate":
         if args.migrate_command == "registry":

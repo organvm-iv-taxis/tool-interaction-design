@@ -58,6 +58,7 @@ from conductor.constants import (
 )
 from conductor.contracts import assert_contract
 from conductor.governance import GovernanceRuntime
+from conductor.handoff import edge_health_report, get_trace_bundle, validate_handoff_payload
 from conductor.patchbay import Patchbay
 from conductor.session import Session, SessionEngine
 
@@ -262,6 +263,32 @@ def suggest(task_description: str) -> str:
     })
 
 
+def edge_health(window: int = 200) -> str:
+    try:
+        payload = edge_health_report(window=window)
+        return _encode_mcp_payload(payload)
+    except Exception as e:
+        return _encode_mcp_payload({"error": str(e)})
+
+
+def trace_get(trace_id: str) -> str:
+    try:
+        payload = get_trace_bundle(trace_id)
+        if not any(payload.get(key) for key in ("handoff", "trace", "route_decision")):
+            return _encode_mcp_payload({"error": f"Trace not found: {trace_id}"})
+        return _encode_mcp_payload(payload)
+    except Exception as e:
+        return _encode_mcp_payload({"error": str(e)})
+
+
+def handoff_validate(payload: dict[str, Any]) -> str:
+    try:
+        result = validate_handoff_payload(payload)
+        return _encode_mcp_payload(result)
+    except Exception as e:
+        return _encode_mcp_payload({"error": str(e)})
+
+
 # ---------------------------------------------------------------------------
 # MCP Server setup
 # ---------------------------------------------------------------------------
@@ -321,6 +348,38 @@ TOOLS = [
             },
         },
     ),
+    Tool(
+        name="conductor_edge_health",
+        description="Compute edge health metrics from recorded handoff traces.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "window": {"type": "integer", "description": "Last N traces to include (default 200)"},
+            },
+        },
+    ),
+    Tool(
+        name="conductor_trace_get",
+        description="Fetch one trace bundle by trace_id (handoff + route decision + execution trace).",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "trace_id": {"type": "string", "description": "Trace identifier"},
+            },
+            "required": ["trace_id"],
+        },
+    ),
+    Tool(
+        name="conductor_handoff_validate",
+        description="Validate a tool-handoff payload against the canonical handoff contract.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "payload": {"type": "object", "description": "Candidate handoff payload"},
+            },
+            "required": ["payload"],
+        },
+    ),
 ]
 
 DISPATCH = {
@@ -330,6 +389,9 @@ DISPATCH = {
     "conductor_session_phase": lambda args: session_phase(),
     "conductor_suggest": lambda args: suggest((args or {})["task_description"]),
     "conductor_patch": lambda args: patch((args or {}).get("organ")),
+    "conductor_edge_health": lambda args: edge_health(int((args or {}).get("window", 200))),
+    "conductor_trace_get": lambda args: trace_get((args or {})["trace_id"]),
+    "conductor_handoff_validate": lambda args: handoff_validate((args or {})["payload"]),
 }
 
 
