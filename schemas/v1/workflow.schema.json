@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://conductor.local/schemas/v1/workflow.schema.json",
+  "title": "Conductor Workflow DSL v1",
+  "type": "object",
+  "properties": {
+    "name": { "type": "string" },
+    "description": { "type": "string" },
+    "examples": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/workflow" }
+    },
+    "steps": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/step" }
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "workflow": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "steps": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/step" }
+        }
+      },
+      "required": ["steps"],
+      "additionalProperties": true
+    },
+    "step": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "cluster": { "type": "string" },
+        "depends_on": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "parallel": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/step" }
+        }
+      },
+      "required": ["name"],
+      "additionalProperties": true
+    }
+  }
+}

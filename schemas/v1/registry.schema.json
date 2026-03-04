@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://conductor.local/schemas/v1/registry.schema.json",
+  "title": "Conductor Registry v1",
+  "type": "object",
+  "required": ["organs"],
+  "properties": {
+    "schema_version": { "type": ["string", "number"] },
+    "version": { "type": ["string", "number"] },
+    "organs": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "repositories": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["name"],
+              "properties": {
+                "name": { "type": "string", "minLength": 1 },
+                "promotion_status": { "type": ["string", "null"] },
+                "dependencies": {
+                  "oneOf": [
+                    { "type": "array", "items": { "type": "string" } },
+                    { "type": "null" }
+                  ]
+                },
+                "ci_workflow": { "type": ["string", "null"] },
+                "last_validated": { "type": ["string", "null"] }
+              },
+              "additionalProperties": true
+            }
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}

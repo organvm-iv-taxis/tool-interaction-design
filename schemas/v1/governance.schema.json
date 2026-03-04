@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://conductor.local/schemas/v1/governance.schema.json",
+  "title": "Conductor Governance v1",
+  "type": "object",
+  "properties": {
+    "schema_version": { "type": ["string", "number"] },
+    "version": { "type": ["string", "number"] },
+    "organ_requirements": {
+      "type": ["object", "null"],
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "requires_tests": { "type": "boolean" },
+          "requires_revenue_fields": { "type": "boolean" }
+        },
+        "additionalProperties": true
+      }
+    },
+    "dependency_rules": { "type": ["object", "null"] },
+    "promotion_rules": { "type": ["object", "null"] }
+  },
+  "additionalProperties": true
+}

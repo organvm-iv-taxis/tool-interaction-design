@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
 from .constants import ONTOLOGY_PATH, ROUTING_PATH, ConductorError, resolve_organ_key
+from .doctor import assert_doctor_ok, render_doctor_text, run_doctor
 from .governance import GovernanceRuntime
+from .migrate import migrate_governance, migrate_registry, write_migration_output
 from .patchbay import Patchbay
 from .product import ProductExtractor
 from .session import SessionEngine
@@ -76,6 +79,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_audit = sub.add_parser("audit", help="Organ health audit")
     p_audit.add_argument("--organ", help="Organ key (default: full system)")
     p_audit.add_argument("--create-issues", action="store_true", help="File GitHub issues for findings")
+    p_audit.add_argument("--format", choices=["text", "json"], default="text", help="Output format")
 
     # ----- Product commands -----
     p_export = sub.add_parser("export", help="Export artifacts")
@@ -96,6 +100,27 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_cap = sub.add_parser("capability", help="Find clusters by capability")
     p_cap.add_argument("cap", type=str)
+
+    p_validate = sub.add_parser("validate", help="Validate a workflow DSL file")
+    p_validate.add_argument("file", type=str)
+    p_validate.add_argument("--strict", action="store_true", help="Treat warnings as validation failures")
+    p_validate.add_argument("--format", choices=["text", "json"], default="text", help="Output format")
+
+    p_doctor = sub.add_parser("doctor", help="Run conductor integrity diagnostics")
+    p_doctor.add_argument("--workflow", type=Path, default=Path("workflow-dsl.yaml"), help="Workflow file to validate")
+    p_doctor.add_argument("--format", choices=["text", "json"], default="text", help="Output format")
+    p_doctor.add_argument("--strict", action="store_true", help="Exit non-zero on any failing check")
+
+    p_migrate = sub.add_parser("migrate", help="Migrate registry/governance to current schema")
+    migrate_sub = p_migrate.add_subparsers(dest="migrate_command", required=True)
+    p_mig_registry = migrate_sub.add_parser("registry", help="Migrate registry JSON")
+    p_mig_registry.add_argument("--input", type=Path, default=None, help="Input registry path")
+    p_mig_registry.add_argument("--output", type=Path, default=None, help="Output path (defaults to input path)")
+    p_mig_registry.add_argument("--in-place", action="store_true", help="Write migration output over input file")
+    p_mig_governance = migrate_sub.add_parser("governance", help="Migrate governance JSON")
+    p_mig_governance.add_argument("--input", type=Path, default=None, help="Input governance path")
+    p_mig_governance.add_argument("--output", type=Path, default=None, help="Output path (defaults to input path)")
+    p_mig_governance.add_argument("--in-place", action="store_true", help="Write migration output over input file")
 
     # ----- Patchbay command -----
     p_patch = sub.add_parser("patch", help="Patchbay — command center briefing")
@@ -170,7 +195,10 @@ def _dispatch(args):
 
     elif args.command == "audit":
         gov = GovernanceRuntime()
-        gov.audit(organ=args.organ, create_issues=args.create_issues)
+        if args.format == "json":
+            print(json.dumps(gov.audit_report(organ=args.organ), indent=2))
+        else:
+            gov.audit(organ=args.organ, create_issues=args.create_issues)
 
     elif args.command == "export":
         gov = GovernanceRuntime()
@@ -222,6 +250,38 @@ def _dispatch(args):
         from router import cmd_capability
         args.capability = args.cap
         cmd_capability(args, ontology, engine)
+
+    elif args.command == "validate":
+        if not engine:
+            print("  ERROR: Ontology/routing files not found.", file=sys.stderr)
+            sys.exit(1)
+        from router import cmd_validate
+        cmd_validate(args, ontology, engine)
+
+    elif args.command == "doctor":
+        report = run_doctor(workflow_path=args.workflow, format_name=args.format)
+        if args.format == "json":
+            print(json.dumps(report, indent=2))
+        else:
+            print(render_doctor_text(report))
+        if args.strict:
+            assert_doctor_ok(report)
+
+    elif args.command == "migrate":
+        if args.migrate_command == "registry":
+            from .constants import REGISTRY_PATH
+            input_path = args.input or REGISTRY_PATH
+            output_path = input_path if args.in_place or args.output is None else args.output
+            payload = migrate_registry(input_path)
+            write_migration_output(payload, output_path)
+            print(f"  Migrated registry -> {output_path}")
+        elif args.migrate_command == "governance":
+            from .constants import GOVERNANCE_PATH
+            input_path = args.input or GOVERNANCE_PATH
+            output_path = input_path if args.in_place or args.output is None else args.output
+            payload = migrate_governance(input_path)
+            write_migration_output(payload, output_path)
+            print(f"  Migrated governance -> {output_path}")
 
     elif args.command == "clusters":
         if not engine:

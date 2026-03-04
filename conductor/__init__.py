@@ -33,9 +33,15 @@ from .constants import (
     organ_short,
     resolve_organ_key,
 )
+from .doctor import run_doctor
 from .governance import GovernanceRuntime
+from .integrity import IntegrityIssue, IntegrityReport, run_integrity_checks
+from .migrate import migrate_governance, migrate_registry
+from .observability import log_event
 from .patchbay import Patchbay
+from .policy import Policy, load_policy
 from .product import ProductExtractor
+from .schemas import SchemaIssue, assert_valid_document, load_schema, validate_document
 from .session import Session, SessionEngine
 from .workqueue import WorkItem, WorkQueue
 
@@ -71,6 +77,8 @@ __all__ = [
     "atomic_write",
     "get_phase_clusters",
     "load_config",
+    "load_policy",
+    "Policy",
     "organ_short",
     "resolve_organ_key",
     # Classes
@@ -81,4 +89,16 @@ __all__ = [
     "SessionEngine",
     "WorkItem",
     "WorkQueue",
+    # Validation and observability
+    "SchemaIssue",
+    "load_schema",
+    "validate_document",
+    "assert_valid_document",
+    "run_integrity_checks",
+    "IntegrityIssue",
+    "IntegrityReport",
+    "run_doctor",
+    "migrate_registry",
+    "migrate_governance",
+    "log_event",
 ]
