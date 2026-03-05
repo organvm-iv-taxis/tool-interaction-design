@@ -51,6 +51,16 @@ jobs:
       - name: Run test suite
         run: pytest -q
 
+      - name: Validate Release Readiness Contract
+        run: |
+          if [ ! -f "process/templates/release-readiness.example.yaml" ]; then
+            echo "ERROR: Release readiness contract not found. A Release Captain must sign off."
+            exit 1
+          fi
+          # In a real release, this would validate a specific release-readiness-{version}.yaml
+          # against the process/contracts/release-readiness.schema.json
+          python tools/validate_schemas.py
+
       - name: Build distributions
         run: python -m build
 

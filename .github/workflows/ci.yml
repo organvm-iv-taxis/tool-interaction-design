@@ -80,5 +80,21 @@ jobs:
           ORGANVM_CORPUS_DIR: ${{ github.workspace }}/.ci-corpus
         run: python -m conductor doctor --workflow workflow-dsl.yaml --strict
 
+      - name: Policy Simulation Gate
+        env:
+          ORGANVM_CORPUS_DIR: ${{ github.workspace }}/.ci-corpus
+        run: python -m conductor policy simulate --bundle strict
+
+      - name: Observability Trend Gate
+        run: python -m conductor observability report --check
+
+      - name: Dogfood Conductor Action (Doctor)
+        uses: ./dist/conductor-action
+        env:
+          ORGANVM_CORPUS_DIR: ${{ github.workspace }}/.ci-corpus
+        with:
+          command: 'doctor'
+          strict: 'true'
+
       - name: Run routing benchmark SLA
         run: python benchmarks/benchmark_routing.py --enforce --repeat 30

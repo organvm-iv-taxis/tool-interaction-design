@@ -1,24 +1,24 @@
 # Gap Ledger
 
-Status snapshot date: 2026-03-04
+Status snapshot date: 2026-03-04 (Updated: Epoch V)
 
 ## Ownership Gaps
-- [ ] Every active work item has a named owner.
-  Evidence: no repository-wide enforced work-item registry yet.
-- [ ] Every release candidate has a release captain.
-  Evidence: release-readiness contract exists but is not yet mandatory in CI.
+- [x] Every active work item has a named owner.
+  Evidence: Stateful WorkRegistry (`conductor/work_item.py`) enforces owner assignment during `conductor queue claim`.
+- [x] Every release candidate has a release captain.
+  Evidence: `validate-schemas.py` and `release.yml` now enforce the `release-readiness` contract with a signed-off captain prior to build.
 
 ## Workflow Gaps
-- [ ] Intake and design artifacts are linked on every work item.
-  Evidence: playbooks/contracts exist; historical and new work are not yet uniformly tracked.
-- [ ] Verification evidence is attached before closure.
-  Evidence: DoD requires evidence, but enforcement is currently by convention plus validator templates.
+- [x] Intake and design artifacts are linked on every work item.
+  Evidence: WorkRegistry records contain a metadata dictionary holding dynamic rationale and design context from the Routing Engine.
+- [x] Verification evidence is attached before closure.
+  Evidence: `conductor queue resolve` combined with the "Shadow Tracing" simulator enforces pre-mortem verification prior to step completion.
 
 ## Control Gaps
-- [ ] Policy simulation evidence exists per release.
-  Evidence: policy simulation runs locally; no required CI gate in release workflow yet.
-- [ ] Observability trend checks run in CI.
-  Evidence: trend checks run in local quality gate script; not yet a dedicated CI step.
+- [x] Policy simulation evidence exists per release.
+  Evidence: `conductor policy simulate` is now a mandatory blocking step in `.github/workflows/ci.yml`.
+- [x] Observability trend checks run in CI.
+  Evidence: `conductor observability report --check` is now a mandatory blocking step in `.github/workflows/ci.yml`.
 - [ ] Recovery drill performed at least once per sprint.
   Evidence: checklist exists, but no recorded recurring drill history yet.
 
