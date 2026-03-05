@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import shutil
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -318,6 +319,94 @@ $defs:
 
         essay_path.write_text("\n".join(lines))
         print(f"\n  Essay draft exported: {essay_path}")
+
+    def export_gemini_extension(self, output_dir: Optional[Path] = None, force: bool = False) -> None:
+        """Export the entire Conductor OS as a standalone Gemini CLI Extension."""
+        output = output_dir or EXPORTS_DIR / "conductor-extension"
+
+        if output.exists() and not output.is_dir():
+            raise ConductorError(f"Output path exists and is not a directory: {output}")
+
+        if output.is_dir() and any(output.iterdir()) and not force:
+            raise ConductorError(
+                f"Output directory already exists and is not empty: {output}\n"
+                f"  Use --force to overwrite."
+            )
+
+        output.mkdir(parents=True, exist_ok=True)
+
+        print(f"\n  Forging Gemini Extension -> {output}")
+        print("  " + "=" * 50)
+
+        # 1. Generate Manifest
+        manifest = {
+            "name": "conductor-os",
+            "version": "1.0.0",
+            "description": "The AI-Conductor's Operating System. Provides JIT Workflow Compilation, Governance, and Orchestration.",
+            "contextFileName": "GEMINI.md",
+            "mcpServers": {
+                "conductor-os": {
+                    "command": "python3",
+                    "args": ["${extensionPath}/mcp_server.py"]
+                }
+            }
+        }
+        (output / "gemini-extension.json").write_text(json.dumps(manifest, indent=2))
+        print(f"  + gemini-extension.json")
+
+        # 2. Generate System Prompt (GEMINI.md)
+        gemini_md = output / "GEMINI.md"
+        gemini_md.write_text("""# Conductor OS Extension
+
+You are augmented with the Conductor Operating System. This extension provides you with 'God Mode' orchestration capabilities.
+
+## Core Capabilities
+- **Routing:** You can use `conductor_route_to` to find the safest path between tool capabilities.
+- **Synthesis:** If you encounter a complex multi-step problem, use `conductor_compose_mission` to automatically generate a stateful execution plan.
+- **Execution:** Execute synthesized missions step-by-step using `conductor_workflow_step`.
+
+## Mandate
+You must prioritize institutional governance. Before modifying repositories, consult the `conductor_patchbay` to ensure no WIP limits are violated. If a mission path is degraded, the compiler will inject a `validation_checkpoint`—you must respect these checkpoints and run the suggested validation tools before proceeding.
+""")
+        print(f"  + GEMINI.md")
+
+        # 3. Copy Core Engine Files
+        core_files = [
+            "mcp_server.py",
+            "router.py",
+            "ontology.yaml",
+            "routing-matrix.yaml",
+            "workflow-dsl.yaml"
+        ]
+        
+        from .constants import BASE
+        for fname in core_files:
+            src = BASE / fname
+            if src.exists():
+                shutil.copy2(src, output / fname)
+                print(f"  + {fname}")
+
+        # 4. Copy Conductor Package
+        conductor_pkg = output / "conductor"
+        if conductor_pkg.exists():
+            shutil.rmtree(conductor_pkg)
+        shutil.copytree(BASE / "conductor", conductor_pkg, ignore=shutil.ignore_patterns("__pycache__"))
+        print(f"  + conductor/ (Python core)")
+
+        # 5. Provide Install Script
+        install_sh = output / "install.sh"
+        install_sh.write_text("""#!/bin/bash
+echo "Installing Conductor OS dependencies..."
+python3 -m pip install pyyaml jsonschema
+echo "Dependencies installed. You can now enable the extension in Gemini CLI."
+""")
+        install_sh.chmod(0o755)
+        print(f"  + install.sh")
+
+        print(f"\n  Forge complete. To deploy:")
+        print(f"  1. cd {output}")
+        print(f"  2. ./install.sh")
+        print(f"  3. gemini extensions install .\n")
 
     def export_audit_report(self, organ: Optional[str] = None) -> None:
         """Generate a structured audit report."""

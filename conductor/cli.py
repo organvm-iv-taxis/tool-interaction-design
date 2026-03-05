@@ -120,6 +120,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_kit = export_sub.add_parser("process-kit", help="Export process kit")
     p_kit.add_argument("--output", type=Path, help="Output directory")
     p_kit.add_argument("--force", action="store_true", help="Overwrite existing output")
+    p_ext = export_sub.add_parser("gemini-extension", help="Export Conductor OS as a Gemini CLI extension")
+    p_ext.add_argument("--output", type=Path, help="Output directory")
+    p_ext.add_argument("--force", action="store_true", help="Overwrite existing output")
     p_report = export_sub.add_parser("audit-report", help="Export audit report")
     p_report.add_argument("--organ", help="Organ key (default: full system)")
 
@@ -410,10 +413,13 @@ def _dispatch(args):
             _run_once()
 
     elif args.command == "export":
+        from .governance import GovernanceRuntime
         gov = GovernanceRuntime()
         pe = ProductExtractor(gov)
         if args.export_command == "process-kit":
             pe.export_process_kit(output_dir=args.output, force=args.force)
+        elif args.export_command == "gemini-extension":
+            pe.export_gemini_extension(output_dir=args.output, force=args.force)
         elif args.export_command == "audit-report":
             pe.export_audit_report(organ=args.organ)
 
