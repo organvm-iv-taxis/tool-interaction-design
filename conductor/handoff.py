@@ -27,6 +27,12 @@ def _append_jsonl(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a") as fh:
         fh.write(json.dumps(payload, sort_keys=True) + "\n")
+    # Rotate large log files
+    try:
+        from .observability import rotate_log
+        rotate_log(path)
+    except Exception:
+        pass
 
 
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:

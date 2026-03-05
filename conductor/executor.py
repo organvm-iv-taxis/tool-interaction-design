@@ -15,10 +15,50 @@ from typing import Any
 
 import yaml
 
-from .constants import BASE, ConductorError, atomic_write
+from .constants import BASE, ConductorError, WORKFLOW_DSL_PATH, atomic_write
+from .feedback import record_step_outcome
 from .observability import log_event
 
 _REFERENCE_PATTERN = re.compile(r"\$\{([^}]+)\}")
+
+# Maturity levels for DSL primitives — loaded once from workflow-dsl.yaml spec.
+# Primitives not listed here default to "alpha".
+_PRIMITIVE_MATURITY: dict[str, str] = {}
+
+
+def _load_primitive_maturity() -> dict[str, str]:
+    """Load maturity annotations from the workflow DSL spec section."""
+    global _PRIMITIVE_MATURITY
+    if _PRIMITIVE_MATURITY:
+        return _PRIMITIVE_MATURITY
+    try:
+        raw = yaml.safe_load(WORKFLOW_DSL_PATH.read_text()) or {}
+        primitives = raw.get("spec", {}).get("primitives", {})
+        for name, defn in primitives.items():
+            if isinstance(defn, dict):
+                _PRIMITIVE_MATURITY[name] = defn.get("maturity", "alpha")
+    except Exception:
+        pass
+    return _PRIMITIVE_MATURITY
+
+
+def _warn_if_alpha(primitive_name: str, step_name: str) -> None:
+    """Log a warning when an alpha-maturity primitive is used."""
+    maturity_map = _load_primitive_maturity()
+    maturity = maturity_map.get(primitive_name, "alpha")
+    if maturity == "alpha":
+        log_event(
+            "executor.alpha_primitive_warning",
+            {
+                "primitive": primitive_name,
+                "step": step_name,
+                "maturity": maturity,
+                "message": (
+                    f"Primitive '{primitive_name}' has alpha maturity. "
+                    f"Behavior may be incomplete or differ from specification."
+                ),
+            },
+        )
 
 
 @dataclass
@@ -59,15 +99,30 @@ class WorkflowExecutor:
         self.default_state_file = state_file or (BASE / ".conductor-workflow-state.json")
 
     def _get_state_path(self, workflow_name: str | None = None) -> Path:
-        """Return the specific path for a workflow's execution state."""
+        """Return the specific path for a workflow's execution state.
+
+        Validates that the active-workflow pointer is not stale. If the
+        pointer references a workflow whose state file no longer exists,
+        the pointer is cleaned up automatically.
+        """
         if not workflow_name:
-            # Check if there's a link to an 'active' workflow
             active_link = BASE / ".conductor-active-workflow"
             if active_link.exists():
-                workflow_name = active_link.read_text().strip()
-            else:
+                candidate = active_link.read_text().strip()
+                if candidate:
+                    candidate_path = BASE / f".conductor-workflow-{candidate}.json"
+                    if candidate_path.exists():
+                        workflow_name = candidate
+                    else:
+                        # Stale pointer — clean it up
+                        active_link.unlink(missing_ok=True)
+                        log_event(
+                            "executor.stale_pointer_cleaned",
+                            {"stale_workflow": candidate, "pointer": str(active_link)},
+                        )
+            if not workflow_name:
                 return self.default_state_file
-        
+
         return BASE / f".conductor-workflow-{workflow_name}.json"
 
     def _set_active_workflow(self, workflow_name: str) -> None:
@@ -728,6 +783,21 @@ class WorkflowExecutor:
         if not self._dependencies_satisfied(state, step_name, steps):
             raise ConductorError(f"Dependencies are not satisfied for step '{step_name}'")
 
+        # --- Oracle pre-step advisory ---
+        oracle_pre_advisories: list[dict] = []
+        try:
+            from .oracle import Oracle, OracleContext
+            _oracle = Oracle()
+            _ctx = OracleContext(
+                trigger="workflow_pre_step",
+                workflow_step=step_name,
+                workflow_name=state.workflow_name,
+            )
+            _pre_advs = _oracle.consult(_ctx, max_advisories=3)
+            oracle_pre_advisories = [a.to_dict() for a in _pre_advs]
+        except Exception:
+            pass
+
         # --- Checkpoint handling ---
         requires_checkpoint = bool(step_spec.get("checkpoint"))
         if requires_checkpoint:
@@ -786,6 +856,7 @@ class WorkflowExecutor:
 
         # --- Primitive dispatch ---
         step_type = step_spec.get("type", "pipe")
+        _warn_if_alpha(step_type, step_name)
 
         # fan_out
         if step_type == "fan_out":
@@ -892,6 +963,10 @@ class WorkflowExecutor:
 
             # Default: fail the workflow
             self._fail_step(state, step_name, error_msg)
+            record_step_outcome(
+                step_spec.get("cluster"), False,
+                workflow_name=state.workflow_name, step_name=step_name,
+            )
             state.current_step = None
             state.status = "FAILED"
             self.save_state(state)
@@ -920,6 +995,10 @@ class WorkflowExecutor:
             result = {"status": "FINISHED"}
 
         self.save_state(state)
+        record_step_outcome(
+            step_spec.get("cluster"), True,
+            workflow_name=state.workflow_name, step_name=step_name,
+        )
         log_event(
             "executor.step_completed",
             {
@@ -928,7 +1007,122 @@ class WorkflowExecutor:
                 "next_step": state.current_step,
             },
         )
+
+        # --- Oracle post-step advisory ---
+        try:
+            from .oracle import Oracle as PostOracle, OracleContext as PostCtx
+            _post_oracle = PostOracle()
+            _post_ctx = PostCtx(
+                trigger="workflow_post_step",
+                workflow_step=step_name,
+                workflow_name=state.workflow_name,
+            )
+            _post_advs = _post_oracle.consult(_post_ctx, max_advisories=2)
+            if _post_advs:
+                result["oracle_advisories"] = [a.to_dict() for a in _post_advs]
+        except Exception:
+            pass
+
+        if oracle_pre_advisories:
+            result.setdefault("oracle_pre_advisories", oracle_pre_advisories)
+
         return result
+
+    def resume_workflow(
+        self,
+        workflow_name: str | None = None,
+        from_step: str | None = None,
+    ) -> dict[str, Any]:
+        """Resume a failed/checkpoint workflow, optionally rewinding to a specific step.
+
+        If ``from_step`` is provided, all steps from that point forward are reset
+        to PENDING so the workflow can be re-executed from that point.
+        """
+        state = self.load_state(workflow_name)
+        if not state:
+            raise ConductorError("No workflow state found to resume.")
+
+        workflow = self._get_workflow(state.workflow_name)
+        if workflow is None:
+            raise ConductorError(f"Workflow spec not found: {state.workflow_name}")
+
+        steps = self._step_map(workflow)
+
+        if from_step:
+            if from_step not in state.steps:
+                raise ConductorError(
+                    f"Step '{from_step}' not found in workflow '{state.workflow_name}'"
+                )
+            # Reset from_step and all subsequent steps to PENDING
+            rewind_idx = state.step_order.index(from_step) if from_step in state.step_order else 0
+            reset_count = 0
+            for step_name in state.step_order[rewind_idx:]:
+                step = state.steps.get(step_name)
+                if step:
+                    step.status = "PENDING"
+                    step.start_time = 0.0
+                    step.end_time = 0.0
+                    step.output = None
+                    step.error = None
+                    step.iteration = 0
+                    state.bindings.pop(step_name, None)
+                    state.checkpoint_actions.pop(step_name, None)
+                    reset_count += 1
+            # Also reset dynamically-injected steps (fan_out branches etc.)
+            for step_name in list(state.steps.keys()):
+                if step_name not in state.step_order:
+                    continue
+                if state.step_order.index(step_name) >= rewind_idx:
+                    step = state.steps[step_name]
+                    step.status = "PENDING"
+                    step.start_time = 0.0
+                    step.end_time = 0.0
+                    step.output = None
+                    step.error = None
+                    step.iteration = 0
+                    state.bindings.pop(step_name, None)
+        else:
+            # Just resume from where we stopped — reset current failed/checkpoint step
+            reset_count = 0
+            if state.current_step:
+                step = state.steps.get(state.current_step)
+                if step and step.status in {"FAILED", "CHECKPOINT"}:
+                    step.status = "PENDING"
+                    step.start_time = 0.0
+                    step.end_time = 0.0
+                    step.output = None
+                    step.error = None
+                    step.iteration = 0
+                    reset_count = 1
+
+        state.status = "ACTIVE"
+        state.pending_checkpoint = None
+
+        # Find next ready step
+        state.current_step = self._find_next_ready_step(state, steps)
+        if from_step and not state.current_step:
+            # If rewinding didn't produce a ready step, point to from_step
+            state.current_step = from_step
+
+        self.save_state(state)
+        log_event(
+            "executor.workflow_resumed",
+            {
+                "workflow": state.workflow_name,
+                "from_step": from_step,
+                "current_step": state.current_step,
+                "reset_count": reset_count,
+            },
+        )
+
+        completed = sum(1 for s in state.steps.values() if s.status == "COMPLETED")
+        return {
+            "status": "RESUMED",
+            "workflow": state.workflow_name,
+            "current_step": state.current_step,
+            "from_step": from_step,
+            "progress": f"{completed}/{len(state.steps)}",
+        }
 
     def get_current_step_context(self, workflow_name: str | None = None) -> dict[str, Any]:
         state = self.load_state(workflow_name)

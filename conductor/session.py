@@ -347,6 +347,29 @@ class SessionEngine:
         print(f"\n  Phase: {current} -> {target} {direction}")
         print(f"  AI Role: {PHASE_ROLES.get(target, 'N/A')}")
         print(f"  Active clusters: {', '.join(self.phase_clusters.get(target, []))}")
+
+        # Oracle gate advisory at phase transition
+        try:
+            from .oracle import Oracle, OracleContext
+            oracle = Oracle()
+            ctx = OracleContext(
+                trigger="phase_transition",
+                session_id=session.session_id,
+                current_phase=target,
+                target_phase=target,
+                organ=session.organ,
+            )
+            advisories = oracle.consult(ctx, max_advisories=3, gate_mode=True)
+            if advisories:
+                print(f"\n  Oracle:")
+                for adv in advisories:
+                    icon = "!!" if adv.severity == "warning" else "! " if adv.severity == "caution" else "  "
+                    print(f"  {icon} {adv.message}")
+                    if adv.recommendation:
+                        print(f"     -> {adv.recommendation}")
+        except Exception:
+            pass
+
         print()
 
     def status(self) -> None:
@@ -518,6 +541,14 @@ class SessionEngine:
                 from .product import record_pattern
                 for pattern_name, _ in detected:
                     record_pattern(pattern_name, session.session_id, session.result)
+        except Exception:
+            pass
+
+        # Oracle effectiveness tracking
+        try:
+            from .oracle import Oracle as OracleForEffectiveness
+            oracle_eff = OracleForEffectiveness()
+            oracle_eff._update_effectiveness(session.session_id, session.result)
         except Exception:
             pass
 

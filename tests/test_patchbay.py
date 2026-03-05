@@ -378,8 +378,8 @@ class TestStatsExtensions:
 
 
 class TestPatchbayVersion:
-    def test_version_is_0_5_0(self):
-        assert __version__ == "0.5.0"
+    def test_version_is_0_5_1(self):
+        assert __version__ == "0.5.1"
 
     def test_version_matches_pyproject(self):
         pyproject = Path(__file__).parent.parent / "pyproject.toml"

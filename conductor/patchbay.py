@@ -24,7 +24,7 @@ from .contracts import assert_contract
 from .executor import WorkflowExecutor
 from .governance import GovernanceRuntime
 from .observability import get_metrics, log_event
-from .oracle import Oracle
+from .oracle import Oracle, OracleContext
 from .session import Session, SessionEngine, _load_stats
 from .work_item import WorkRegistry
 from .workqueue import WorkItem, WorkQueue
@@ -246,7 +246,20 @@ class Patchbay:
     def _oracle_section(self) -> dict:
         """Advisory wisdom from the Oracle."""
         oracle = Oracle()
-        advisories = oracle.consult()
+
+        # Build context from session state
+        try:
+            session = self.engine._load_session()
+        except Exception:
+            session = None
+
+        ctx = OracleContext(
+            trigger="patchbay",
+            session_id=session.session_id if session else "",
+            current_phase=session.current_phase if session else "",
+            organ=session.organ if session else "",
+        )
+        advisories = oracle.consult(ctx, include_narrative=True)
         return {
             "count": len(advisories),
             "advisories": [
@@ -255,6 +268,10 @@ class Patchbay:
                     "severity": a.severity,
                     "message": a.message,
                     "recommendation": a.recommendation,
+                    "narrative": a.narrative,
+                    "tools_suggested": a.tools_suggested,
+                    "confidence": a.confidence,
+                    "detector": a.detector,
                 }
                 for a in advisories
             ],
@@ -538,12 +555,16 @@ class Patchbay:
             lines.append("")
             lines.append("  ORACLE")
             lines.append("  " + "-" * 68)
-            severity_icons = {"warning": "!!", "caution": "! ", "info": "  "}
+            severity_icons = {"critical": "XX", "warning": "!!", "caution": "! ", "info": "  "}
             for adv in oracle_items[:5]:
                 icon = severity_icons.get(adv["severity"], "  ")
                 lines.append(f"  {icon} [{adv['category'].upper()}] {adv['message']}")
+                if adv.get("narrative"):
+                    lines.append(f"     ~ {adv['narrative']}")
                 if adv.get("recommendation"):
                     lines.append(f"     -> {adv['recommendation']}")
+                if adv.get("tools_suggested"):
+                    lines.append(f"     tools: {', '.join(adv['tools_suggested'][:4])}")
 
         # Suggested action (shown for both active and inactive sessions)
         suggested = data.get("suggested_action", "")

@@ -25,11 +25,13 @@ spec:
       description: "Sequential data flow — output of step N feeds input of step N+1"
       symbol: "|>"
       example: "search |> extract |> store"
+      maturity: stable        # Fully implemented and tested
 
     fan_out:
       description: "Parallel execution — one input spawns multiple concurrent steps"
       symbol: "=>"
       constraint: "All branches receive same input; no inter-branch data deps"
+      maturity: alpha          # Branches execute sequentially, not in parallel
 
     fan_in:
       description: "Merge parallel results into a single output"
@@ -39,6 +41,7 @@ spec:
         - first_success  # Take first non-error result
         - vote           # Majority/consensus
         - select         # Pick by predicate
+      maturity: alpha          # Only merge_all strategy implemented
 
     gate:
       description: "Conditional routing — execute step only if condition met"
@@ -49,6 +52,7 @@ spec:
         - output_matches # Output matches predicate
         - approval       # Human approved
         - timeout        # Time-based
+      maturity: stable        # All condition functions implemented
 
     loop:
       description: "Iterate until condition met"
@@ -57,11 +61,13 @@ spec:
         - for_each       # Over collection
         - until          # Until predicate
         - retry          # On failure, up to N times
+      maturity: alpha          # until/max_iterations work; for_each not yet wired
 
     fallback:
       description: "Try alternatives on failure"
       symbol: "!>"
       behavior: "Try next alternative when current fails"
+      maturity: stable        # Error strategies (retry, skip, fallback) implemented
 
     checkpoint:
       description: "Human-in-the-loop pause point"
@@ -71,6 +77,7 @@ spec:
         - modify         # User modifies data before continuing
         - abort          # User cancels workflow
         - redirect       # User picks alternative path
+      maturity: stable        # approve/modify/abort implemented; redirect planned
 
     emit:
       description: "Output data to external sink"
@@ -81,6 +88,7 @@ spec:
         - notion         # Create Notion page
         - knowledge      # Store in knowledge graph
         - stdout         # Display to user
+      maturity: alpha          # Resolves input and logs; no actual sink dispatch
 
   # ---------------------------------------------------------------------------
   # STEP SCHEMA

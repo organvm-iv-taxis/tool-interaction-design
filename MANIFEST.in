@@ -1,0 +1,5 @@
+include ontology.yaml
+include routing-matrix.yaml
+include workflow-dsl.yaml
+recursive-include schemas *.json
+recursive-include templates *

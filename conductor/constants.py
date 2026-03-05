@@ -21,6 +21,7 @@ SESSION_STATE_FILE = BASE / ".conductor-session.json"
 STATS_FILE = BASE / ".conductor-stats.json"
 WORK_REGISTRY_FILE = BASE / ".conductor-work-registry.json"
 PATTERN_HISTORY_FILE = BASE / ".conductor-pattern-history.jsonl"
+ORACLE_STATE_FILE = BASE / ".conductor-oracle-state.json"
 CONFIG_FILE = BASE / ".conductor.yaml"
 
 # Workspace paths (mirror organvm-engine conventions)
@@ -123,7 +124,14 @@ PROMOTION_TRANSITIONS: dict[str, list[str]] = {
 
 PROMOTION_STATES = {"LOCAL", "CANDIDATE", "PUBLIC_PROCESS", "GRADUATED", "ARCHIVED"}
 
-# WIP limits
+# WIP limits (defaults — lowest precedence)
+#
+# Precedence chain (highest wins):
+#   1. Policy bundle (policies/*.yaml via load_policy()) — per-bundle overrides
+#   2. governance-rules.json wip_limits section — per-organ overrides
+#   3. These constants — system-wide defaults
+#
+# GovernanceRuntime resolves limits using this chain at construction time.
 MAX_CANDIDATE_PER_ORGAN = 3
 MAX_PUBLIC_PROCESS_PER_ORGAN = 1
 

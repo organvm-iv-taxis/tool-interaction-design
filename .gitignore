@@ -32,6 +32,11 @@ Thumbs.db
 .conductor-traces.jsonl
 .conductor-route-decisions.jsonl
 .conductor-pattern-history.jsonl
+.conductor-oracle-state.json
+.conductor-cluster-health.json
+.conductor-corpus-cache/
+.conductor-observability-archive-*.jsonl
+.conductor-stats.json
 sessions/
 generated/
 exports/

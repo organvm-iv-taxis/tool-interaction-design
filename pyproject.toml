@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "conductor"
-version = "0.5.0"
+version = "0.5.1"
 description = "The AI-Conductor's Operating System — session lifecycle, governance runtime, product extractor"
 requires-python = ">=3.11"
 dependencies = ["pyyaml>=6.0", "jsonschema>=4.0"]
@@ -12,13 +12,21 @@ dependencies = ["pyyaml>=6.0", "jsonschema>=4.0"]
 [project.optional-dependencies]
 dev = ["pytest>=7.0", "hypothesis>=6.0", "mypy>=1.10", "mcp>=0.1"]
 mcp = ["mcp>=0.1"]
+# Install only the router + ontology layer (no conductor OS, no jsonschema):
+#   pip install conductor[router-only]
+# The router module requires only PyYAML.
+router-only = []
 
 [project.scripts]
 conductor = "conductor.cli:main"
+tool-router = "router:main"
 
 [tool.setuptools]
 packages = ["conductor"]
 py-modules = ["router", "mcp_server"]
+
+[tool.setuptools.package-data]
+"*" = ["ontology.yaml", "routing-matrix.yaml", "workflow-dsl.yaml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

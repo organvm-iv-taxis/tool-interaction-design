@@ -248,6 +248,8 @@ clusters:
     WRITE: 1.0
     READ: 0.8
     EXECUTE: 0.5
+  cost_tier: free
+  latency_class: instant
 - id: ai_cli_agents
   domain: AI_AGENTS
   label: AI CLI Assistants
@@ -275,6 +277,8 @@ clusters:
   output_types:
   - TEXT
   - CODE
+  cost_tier: medium
+  latency_class: slow
 - id: ai_gui_agents
   domain: AI_AGENTS
   label: AI GUI Assistants
@@ -301,6 +305,8 @@ clusters:
   - TEXT
   - IMAGE
   - CODE
+  cost_tier: medium
+  latency_class: slow
 - id: local_llm
   domain: AI_AGENTS
   label: Local LLM Infrastructure
@@ -321,6 +327,8 @@ clusters:
   - TEXT
   - CODE
   - JSON
+  cost_tier: free
+  latency_class: slow
 - id: code_editors
   domain: CODE
   label: Code Editors & IDEs
@@ -353,6 +361,8 @@ clusters:
   output_types:
   - CODE
   - TEXT
+  cost_tier: free
+  latency_class: instant
 - id: code_analysis_mcp
   domain: CODE
   label: Code Analysis (MCP Docker)
@@ -377,6 +387,8 @@ clusters:
   output_types:
   - JSON
   - TEXT
+  cost_tier: free
+  latency_class: fast
 - id: code_quality_cli
   domain: CODE
   label: Code Quality CLI
@@ -401,6 +413,8 @@ clusters:
   output_types:
   - TEXT
   - CODE
+  cost_tier: free
+  latency_class: fast
 - id: code_execution
   domain: CODE
   label: Code Execution Sandboxes
@@ -421,6 +435,8 @@ clusters:
   output_types:
   - TEXT
   - JSON
+  cost_tier: free
+  latency_class: fast
 - id: git_core
   domain: GIT_SCM
   label: Git Core Operations
@@ -452,6 +468,8 @@ clusters:
   output_types:
   - TEXT
   - CODE
+  cost_tier: free
+  latency_class: instant
 - id: git_enhanced
   domain: GIT_SCM
   label: Git Power Tools
@@ -478,6 +496,8 @@ clusters:
   output_types:
   - TEXT
   - CODE
+  cost_tier: free
+  latency_class: fast
 - id: github_platform
   domain: GIT_SCM
   label: GitHub Platform
@@ -543,6 +563,8 @@ clusters:
   - JSON
   - TEXT
   - CODE
+  cost_tier: low
+  latency_class: moderate
 - id: git_security
   domain: GIT_SCM
   label: Git Security
@@ -563,6 +585,8 @@ clusters:
   output_types:
   - TEXT
   - JSON
+  cost_tier: free
+  latency_class: fast
 - id: vercel_platform
   domain: CLOUD_DEPLOY
   label: Vercel
@@ -596,6 +620,8 @@ clusters:
   output_types:
   - JSON
   - TEXT
+  cost_tier: high
+  latency_class: moderate
 - id: cloudflare_platform
   domain: CLOUD_DEPLOY
   label: Cloudflare
@@ -631,6 +657,8 @@ clusters:
   output_types:
   - JSON
   - TEXT
+  cost_tier: high
+  latency_class: moderate
 - id: netlify_platform
   domain: CLOUD_DEPLOY
   label: Netlify
@@ -657,6 +685,8 @@ clusters:
   output_types:
   - JSON
   - TEXT
+  cost_tier: high
+  latency_class: moderate
 - id: gcp_platform
   domain: CLOUD_DEPLOY
   label: Google Cloud Platform
@@ -680,6 +710,8 @@ clusters:
   output_types:
   - JSON
   - TEXT
+  cost_tier: high
+  latency_class: moderate
 - id: container_orchestration
   domain: CLOUD_DEPLOY
   label: Containers & Kubernetes
@@ -713,6 +745,8 @@ clusters:
   - JSON
   - TEXT
   - STREAM
+  cost_tier: medium
+  latency_class: moderate
 - id: tunnel_expose
   domain: CLOUD_DEPLOY
   label: Tunnels & Exposure
@@ -729,6 +763,8 @@ clusters:
   - CONFIG
   output_types:
   - TEXT
+  cost_tier: low
+  latency_class: fast
 - id: ci_cd
   domain: CLOUD_DEPLOY
   label: CI/CD & Testing
@@ -748,6 +784,8 @@ clusters:
   output_types:
   - TEXT
   - JSON
+  cost_tier: medium
+  latency_class: slow
 - id: audio_production
   domain: CREATIVE
   label: Audio Production
@@ -770,6 +808,8 @@ clusters:
   - CODE
   output_types:
   - AUDIO
+  cost_tier: high
+  latency_class: slow
 - id: visual_design
   domain: CREATIVE
   label: Visual Design
@@ -805,6 +845,8 @@ clusters:
   - IMAGE
   - CODE
   - JSON
+  cost_tier: medium
+  latency_class: moderate
 - id: video_production
   domain: CREATIVE
   label: Video Production
@@ -828,6 +870,8 @@ clusters:
   - VIDEO
   - AUDIO
   - IMAGE
+  cost_tier: high
+  latency_class: slow
 - id: diagramming
   domain: CREATIVE
   label: Diagramming & Visualization
@@ -852,6 +896,8 @@ clusters:
   - IMAGE
   - HTML
   - DIAGRAM
+  cost_tier: low
+  latency_class: moderate
 - id: publishing
   domain: CREATIVE
   label: Publishing & Documents
@@ -886,6 +932,8 @@ clusters:
   - TEXT
   - HTML
   - IMAGE
+  cost_tier: medium
+  latency_class: moderate
 - id: unity_gamedev
   domain: CREATIVE
   label: Game Development
@@ -906,6 +954,8 @@ clusters:
   output_types:
   - BINARY
   - IMAGE
+  cost_tier: medium
+  latency_class: slow
 - id: web_search
   domain: RESEARCH
   label: Web Search
@@ -940,6 +990,8 @@ clusters:
   capability_weights:
     SEARCH: 1.0
     READ: 0.3
+  cost_tier: medium
+  latency_class: moderate
 - id: wikipedia
   domain: RESEARCH
   label: Wikipedia
@@ -963,6 +1015,8 @@ clusters:
   output_types:
   - TEXT
   - JSON
+  cost_tier: free
+  latency_class: moderate
 - id: academic_research
   domain: RESEARCH
   label: Academic & ML Research
@@ -989,6 +1043,8 @@ clusters:
   - TEXT
   - JSON
   - PDF
+  cost_tier: low
+  latency_class: moderate
 - id: documentation
   domain: RESEARCH
   label: Documentation & Libraries
@@ -1012,6 +1068,8 @@ clusters:
   - TEXT
   - JSON
   - HTML
+  cost_tier: low
+  latency_class: moderate
 - id: knowledge_graph
   domain: RESEARCH
   label: Knowledge Graph
@@ -1040,6 +1098,8 @@ clusters:
   capability_weights:
     STORE: 1.0
     ORGANIZE: 0.8
+  cost_tier: low
+  latency_class: moderate
 - id: knowledge_apps
   domain: RESEARCH
   label: Knowledge Management Apps
@@ -1074,6 +1134,8 @@ clusters:
   output_types:
   - TEXT
   - JSON
+  cost_tier: low
+  latency_class: moderate
 - id: web_content
   domain: RESEARCH
   label: Web Content Extraction
@@ -1100,6 +1162,8 @@ clusters:
   - TEXT
   - JSON
   - HTML
+  cost_tier: low
+  latency_class: moderate
 - id: media_research
   domain: RESEARCH
   label: Media Research (YouTube, etc.)
@@ -1118,6 +1182,8 @@ clusters:
   output_types:
   - TEXT
   - JSON
+  cost_tier: low
+  latency_class: moderate
 - id: neon_database
   domain: DATA
   label: Neon Postgres
@@ -1155,6 +1221,8 @@ clusters:
   output_types:
   - JSON
   - TEXT
+  cost_tier: high
+  latency_class: moderate
 - id: cloudflare_data
   domain: DATA
   label: Cloudflare Data Services
@@ -1183,6 +1251,8 @@ clusters:
   - BINARY
   output_types:
   - JSON
+  cost_tier: high
+  latency_class: moderate
 - id: data_tools
   domain: DATA
   label: Data Processing CLI
@@ -1211,6 +1281,8 @@ clusters:
   - JSON
   - YAML
   - TEXT
+  cost_tier: medium
+  latency_class: fast
 - id: jupyter_notebooks
   domain: DATA
   label: Jupyter Notebooks
@@ -1248,6 +1320,8 @@ clusters:
   - TEXT
   - JSON
   - IMAGE
+  cost_tier: free
+  latency_class: fast
 - id: security_scanning
   domain: SECURITY
   label: Security Scanning
@@ -1271,6 +1345,8 @@ clusters:
   output_types:
   - JSON
   - TEXT
+  cost_tier: free
+  latency_class: fast
 - id: sentry_monitoring
   domain: SECURITY
   label: Sentry Error Tracking
@@ -1307,6 +1383,8 @@ clusters:
   output_types:
   - JSON
   - TEXT
+  cost_tier: high
+  latency_class: moderate
 - id: auth_identity
   domain: SECURITY
   label: Authentication & Identity
@@ -1328,6 +1406,8 @@ clusters:
   output_types:
   - TEXT
   - JSON
+  cost_tier: medium
+  latency_class: moderate
 - id: browser_chrome
   domain: BROWSER
   label: Chrome Browser Automation
@@ -1368,6 +1448,8 @@ clusters:
   - HTML
   - IMAGE
   - JSON
+  cost_tier: free
+  latency_class: slow
 - id: browser_playwright
   domain: BROWSER
   label: Playwright Browser (Docker)
@@ -1412,6 +1494,8 @@ clusters:
   - HTML
   - IMAGE
   - JSON
+  cost_tier: free
+  latency_class: slow
 - id: browser_puppeteer
   domain: BROWSER
   label: Puppeteer Browser (Docker)
@@ -1438,6 +1522,8 @@ clusters:
   - TEXT
   - HTML
   - IMAGE
+  cost_tier: free
+  latency_class: slow
 - id: browsers
   domain: BROWSER
   label: Web Browsers
@@ -1457,6 +1543,8 @@ clusters:
   output_types:
   - HTML
   - IMAGE
+  cost_tier: free
+  latency_class: fast
 - id: filesystem_mcp
   domain: SYSTEM
   label: Filesystem (MCP Docker)
@@ -1491,6 +1579,8 @@ clusters:
   - TEXT
   - CODE
   - JSON
+  cost_tier: free
+  latency_class: instant
 - id: filesystem_cli
   domain: SYSTEM
   label: Filesystem CLI
@@ -1518,6 +1608,8 @@ clusters:
   - BINARY
   output_types:
   - TEXT
+  cost_tier: free
+  latency_class: instant
 - id: process_management
   domain: SYSTEM
   label: Process Management
@@ -1545,6 +1637,8 @@ clusters:
   output_types:
   - TEXT
   - STREAM
+  cost_tier: free
+  latency_class: instant
 - id: shell_environment
   domain: SYSTEM
   label: Shell & Terminal
@@ -1579,6 +1673,8 @@ clusters:
   - CODE
   output_types:
   - TEXT
+  cost_tier: free
+  latency_class: instant
 - id: system_config
   domain: SYSTEM
   label: System Configuration
@@ -1601,6 +1697,8 @@ clusters:
   output_types:
   - CONFIG
   - TEXT
+  cost_tier: free
+  latency_class: instant
 - id: link_validation
   domain: SYSTEM
   label: Link & Content Validation
@@ -1620,6 +1718,8 @@ clusters:
   output_types:
   - TEXT
   - JSON
+  cost_tier: low
+  latency_class: moderate
 - id: mcp_meta
   domain: ORCHESTRATION
   label: MCP Meta-Management
@@ -1641,6 +1741,8 @@ clusters:
   output_types:
   - JSON
   - TEXT
+  cost_tier: free
+  latency_class: fast
 - id: sequential_thinking
   domain: ORCHESTRATION
   label: Reasoning & Planning
@@ -1658,6 +1760,8 @@ clusters:
   - TEXT
   output_types:
   - TEXT
+  cost_tier: free
+  latency_class: fast
 - id: task_management
   domain: ORCHESTRATION
   label: Task Tracking
@@ -1677,6 +1781,8 @@ clusters:
   - JSON
   output_types:
   - JSON
+  cost_tier: free
+  latency_class: instant
 - id: usage_meta
   domain: ORCHESTRATION
   label: Usage & Introspection
@@ -1700,6 +1806,8 @@ clusters:
   output_types:
   - JSON
   - TEXT
+  cost_tier: free
+  latency_class: fast
 - id: time_location
   domain: ORCHESTRATION
   label: Time & Location
@@ -1717,6 +1825,8 @@ clusters:
   output_types:
   - JSON
   - TEXT
+  cost_tier: free
+  latency_class: fast
 - id: messaging_apps
   domain: COMMUNICATION
   label: Messaging
@@ -1737,6 +1847,8 @@ clusters:
   - IMAGE
   output_types:
   - TEXT
+  cost_tier: low
+  latency_class: moderate
 - id: bug_reporting
   domain: COMMUNICATION
   label: Bug Reporting (Jam)
@@ -1770,6 +1882,8 @@ clusters:
   - JSON
   - TEXT
   - IMAGE
+  cost_tier: low
+  latency_class: moderate
 - id: npm_registry
   domain: RESEARCH
   label: NPM Package Discovery
@@ -1784,6 +1898,8 @@ clusters:
   - TEXT
   output_types:
   - JSON
+  cost_tier: free
+  latency_class: moderate
 - id: job_search
   domain: COMMUNICATION
   label: Job Search (Indeed)
@@ -1802,6 +1918,8 @@ clusters:
   output_types:
   - JSON
   - TEXT
+  cost_tier: low
+  latency_class: moderate
 - id: nonprofit
   domain: COMMUNICATION
   label: Nonprofit Discovery (Benevity)
@@ -1818,6 +1936,8 @@ clusters:
   output_types:
   - JSON
   - TEXT
+  cost_tier: low
+  latency_class: moderate
 - id: learning_standards
   domain: RESEARCH
   label: Learning Standards
@@ -1835,6 +1955,8 @@ clusters:
   output_types:
   - JSON
   - TEXT
+  cost_tier: low
+  latency_class: moderate
 - id: music_playback
   domain: CREATIVE
   label: Music Playback
@@ -1853,6 +1975,8 @@ clusters:
   - AUDIO
   output_types:
   - AUDIO
+  cost_tier: low
+  latency_class: moderate
 - id: utility_apps
   domain: SYSTEM
   label: Utility Applications
@@ -1890,6 +2014,8 @@ clusters:
   - TEXT
   - PDF
   - IMAGE
+  cost_tier: free
+  latency_class: fast
 - id: observability
   domain: SYSTEM
   label: Observability Stack
@@ -1909,6 +2035,8 @@ clusters:
   output_types:
   - JSON
   - IMAGE
+  cost_tier: free
+  latency_class: instant
 - id: prompt_engineering
   domain: AI_AGENTS
   label: Prompt Architecture & Templates
@@ -1929,6 +2057,8 @@ clusters:
   output_types:
   - TEXT
   - YAML
+  cost_tier: free
+  latency_class: fast
 - id: governance_engine
   domain: ORCHESTRATION
   label: Governance & Registry
@@ -1954,6 +2084,8 @@ clusters:
   output_types:
   - JSON
   - TEXT
+  cost_tier: free
+  latency_class: fast
 - id: knowledge_management
   domain: RESEARCH
   label: Personal Knowledge Management
@@ -1977,6 +2109,8 @@ clusters:
   output_types:
   - TEXT
   - JSON
+  cost_tier: low
+  latency_class: moderate
 relationship_types:
 - id: INVOKES
   description: Tool A can call/launch Tool B

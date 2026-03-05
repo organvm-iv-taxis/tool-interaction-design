@@ -65,6 +65,8 @@ class Cluster:
     input_types: list[str]
     output_types: list[str]
     capability_weights: dict[str, float] = field(default_factory=dict)
+    cost_tier: str = "free"       # free | low | medium | high
+    latency_class: str = "instant"  # instant | fast | moderate | slow
 
 
 @dataclass
@@ -165,6 +167,8 @@ class Ontology:
                 input_types=c.get("input_types", []),
                 output_types=c.get("output_types", []),
                 capability_weights=c.get("capability_weights", {}),
+                cost_tier=c.get("cost_tier", "free"),
+                latency_class=c.get("latency_class", "instant"),
             )
             self.clusters[cluster.id] = cluster
 
@@ -394,6 +398,56 @@ class RoutingEngine:
 
     def capability_tools(self, capability: str) -> list[str]:
         return self.capability_routing.get(capability.upper(), [])
+
+    # Cost tier ordinal for comparison
+    _COST_ORD: dict[str, int] = {"free": 0, "low": 1, "medium": 2, "high": 3}
+    _LATENCY_ORD: dict[str, int] = {"instant": 0, "fast": 1, "moderate": 2, "slow": 3}
+
+    def _cluster_cost(self, cluster_id: str) -> float:
+        """Numeric cost for a cluster (0-3 scale)."""
+        c = self.ontology.clusters.get(cluster_id)
+        if not c:
+            return 2.0
+        return float(self._COST_ORD.get(c.cost_tier, 2))
+
+    def _cluster_latency(self, cluster_id: str) -> float:
+        """Numeric latency for a cluster (0-3 scale)."""
+        c = self.ontology.clusters.get(cluster_id)
+        if not c:
+            return 2.0
+        return float(self._LATENCY_ORD.get(c.latency_class, 2))
+
+    def find_cheapest_paths(
+        self,
+        from_cluster: str,
+        to_cluster: str,
+        *,
+        max_depth: int | None = None,
+        max_paths: int | None = None,
+        weight: str = "cost",
+    ) -> list[list[str]]:
+        """Find paths ranked by cost or latency instead of health.
+
+        weight: 'cost' ranks by aggregate cost_tier,
+                'latency' ranks by aggregate latency_class,
+                'balanced' uses cost + latency + hop count.
+        """
+        raw = self.find_cluster_paths(
+            from_cluster, to_cluster, max_depth=max_depth, max_paths=(max_paths or 10) * 2
+        )
+
+        def _score(path: list[str]) -> float:
+            if weight == "cost":
+                return sum(self._cluster_cost(c) for c in path) + len(path) * 0.1
+            elif weight == "latency":
+                return sum(self._cluster_latency(c) for c in path) + len(path) * 0.1
+            else:  # balanced
+                cost = sum(self._cluster_cost(c) for c in path)
+                lat = sum(self._cluster_latency(c) for c in path)
+                return cost + lat + len(path) * 0.5
+
+        raw.sort(key=_score)
+        return raw[: max_paths or self._max_paths_returned]
 
 
 # =============================================================================

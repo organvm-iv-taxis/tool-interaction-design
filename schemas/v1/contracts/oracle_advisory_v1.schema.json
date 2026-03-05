@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "oracle_advisory_v1",
+  "title": "Oracle Advisory",
+  "description": "Schema for a single Oracle advisory from the Guardian Angel engine.",
+  "type": "object",
+  "required": ["category", "severity", "message"],
+  "properties": {
+    "category": {
+      "type": "string",
+      "description": "Advisory category (process, risk, growth, history, gate, narrative)"
+    },
+    "severity": {
+      "type": "string",
+      "enum": ["critical", "warning", "caution", "info"],
+      "description": "Advisory severity level"
+    },
+    "message": {
+      "type": "string",
+      "description": "Human-readable advisory message"
+    },
+    "context": {
+      "type": "object",
+      "description": "Contextual data about the advisory"
+    },
+    "recommendation": {
+      "type": "string",
+      "description": "Actionable next step"
+    },
+    "detector": {
+      "type": "string",
+      "description": "Which detector produced this advisory"
+    },
+    "tools_suggested": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Recommended tool cluster IDs"
+    },
+    "gate_action": {
+      "type": "string",
+      "enum": ["", "block", "warn", "approve"],
+      "description": "Decision gate action"
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "description": "Confidence score for this advisory"
+    },
+    "narrative": {
+      "type": "string",
+      "maxLength": 200,
+      "description": "Rich contextual wisdom text"
+    },
+    "tags": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Tags for filtering and grouping"
+    }
+  },
+  "additionalProperties": false
+}

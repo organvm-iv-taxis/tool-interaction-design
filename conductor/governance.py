@@ -148,25 +148,100 @@ def _parse_governance_payload(payload: Any) -> dict:
 class GovernanceRuntime:
     """Layer 2: Registry sync, WIP enforcement, staleness, audit."""
 
-    def __init__(self, confirm_fn: Optional[Callable[[str], bool]] = None) -> None:
+    def __init__(self, confirm_fn: Optional[Callable[[str], bool]] = None, *, offline: bool = False) -> None:
         # Capture paths at construction time so patches during __init__
         # carry through to all subsequent method calls.
         self._registry_path: Path = REGISTRY_PATH
         self._governance_path: Path = GOVERNANCE_PATH
+        self._offline: bool = offline
         self.registry: dict = {}
         self.governance: dict = {}
         self.policy: Policy = load_policy()
+        # WIP limit precedence: policy bundle > governance-rules.json > constants.py
         self.max_candidate_per_organ = self.policy.max_candidate_per_organ
         self.max_public_process_per_organ = self.policy.max_public_process_per_organ
         self.confirm_fn: Callable[[str], bool] = confirm_fn or self._default_confirm
         self._load()
+        # After loading governance, apply per-organ overrides from governance-rules.json
+        gov_wip = self.governance.get("wip_limits", {})
+        if isinstance(gov_wip, dict):
+            # governance-rules.json can override defaults but policy bundle wins
+            if not self.policy.name or self.policy.name == "default":
+                if "max_candidate_per_organ" in gov_wip:
+                    self.max_candidate_per_organ = int(gov_wip["max_candidate_per_organ"])
+                if "max_public_process_per_organ" in gov_wip:
+                    self.max_public_process_per_organ = int(gov_wip["max_public_process_per_organ"])
 
     @staticmethod
     def _default_confirm(prompt: str) -> bool:
         answer = input(f"  {prompt} [y/N] ")
         return answer.lower() in ("y", "yes")
 
+    # Path to local cache of last-known-good corpus data
+    _CORPUS_CACHE_DIR = Path(__file__).parent.parent / ".conductor-corpus-cache"
+
+    def _cache_corpus(self) -> None:
+        """Cache current corpus data locally for offline fallback."""
+        try:
+            self._CORPUS_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+            if self.registry:
+                (self._CORPUS_CACHE_DIR / "registry-v2.json").write_text(
+                    json.dumps(self.registry, indent=2)
+                )
+            if self.governance:
+                (self._CORPUS_CACHE_DIR / "governance-rules.json").write_text(
+                    json.dumps(self.governance, indent=2)
+                )
+        except OSError:
+            pass
+
+    def _load_from_cache(self) -> bool:
+        """Load corpus from local cache. Returns True if cache was available."""
+        cache_reg = self._CORPUS_CACHE_DIR / "registry-v2.json"
+        cache_gov = self._CORPUS_CACHE_DIR / "governance-rules.json"
+        loaded = False
+        if cache_reg.exists():
+            try:
+                self.registry = _parse_registry_payload(json.loads(cache_reg.read_text()))
+                loaded = True
+            except Exception:
+                pass
+        if cache_gov.exists():
+            try:
+                self.governance = _parse_governance_payload(json.loads(cache_gov.read_text()))
+                loaded = True
+            except Exception:
+                pass
+        return loaded
+
     def _load(self) -> None:
+        corpus_available = self._registry_path.exists() or self._governance_path.exists()
+
+        if self._offline or not corpus_available:
+            # Offline mode: use cached corpus if available
+            if self._load_from_cache():
+                log_event(
+                    "governance.load",
+                    {
+                        "registry_loaded": bool(self.registry),
+                        "governance_loaded": bool(self.governance),
+                        "policy_bundle": self.policy.name,
+                        "source": "cache",
+                    },
+                )
+                return
+            # No cache either — operate with empty state
+            log_event(
+                "governance.load",
+                {
+                    "registry_loaded": False,
+                    "governance_loaded": False,
+                    "policy_bundle": self.policy.name,
+                    "source": "empty",
+                },
+            )
+            return
+
         if self._registry_path.exists():
             try:
                 raw_registry = json.loads(self._registry_path.read_text())
@@ -194,12 +269,17 @@ class GovernanceRuntime:
                 self.governance = _parse_governance_payload(raw_governance)
             except json.JSONDecodeError as e:
                 raise GovernanceError(f"Invalid JSON in governance file {self._governance_path}: {e}") from e
+
+        # Cache successfully loaded corpus for future offline use
+        self._cache_corpus()
+
         log_event(
             "governance.load",
             {
                 "registry_loaded": self._registry_path.exists(),
                 "governance_loaded": self._governance_path.exists(),
                 "policy_bundle": self.policy.name,
+                "source": "corpus",
             },
         )
 

@@ -128,6 +128,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_report = export_sub.add_parser("audit-report", help="Export audit report")
     p_report.add_argument("--organ", help="Organ key (default: full system)")
 
+    p_retro = sub.add_parser("retro", help="Generate retrospective from session and observability data")
+    p_retro.add_argument("--last", type=int, default=0, help="Analyze only the last N sessions (default: all)")
+    p_retro.add_argument("--format", choices=["text", "json"], default="text", help="Output format")
+
     p_patterns = sub.add_parser("patterns", help="Mine session logs for patterns")
     p_patterns.add_argument("--export-essay", action="store_true", help="Export pattern essay draft")
 
@@ -178,6 +182,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="Checkpoint decision when the step is gated",
     )
     p_workflow_step.add_argument("--format", choices=["text", "json"], default="text", help="Output format")
+    p_workflow_resume = workflow_sub.add_parser("resume", help="Resume a failed or paused workflow")
+    p_workflow_resume.add_argument("--from", dest="from_step", help="Step name to rewind to and re-execute from")
+    p_workflow_resume.add_argument("--format", choices=["text", "json"], default="text", help="Output format")
     workflow_sub.add_parser("clear", help="Clear persisted workflow execution state")
 
     p_doctor = sub.add_parser("doctor", help="Run conductor integrity diagnostics")
@@ -185,6 +192,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_doctor.add_argument("--format", choices=["text", "json"], default="text", help="Output format")
     p_doctor.add_argument("--strict", action="store_true", help="Exit non-zero on any failing check")
     p_doctor.add_argument("--apply", action="store_true", help="Apply available schema autofixes before reporting")
+    p_doctor.add_argument("--tools", action="store_true", help="Check which ontology tools are actually available")
 
     p_plugins = sub.add_parser("plugins", help="Plugin diagnostics")
     plugin_sub = p_plugins.add_subparsers(dest="plugins_command", required=True)
@@ -249,6 +257,26 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("domains", help="List all domains")
     sub.add_parser("version", help="Show conductor version")
 
+    # ----- Oracle commands -----
+    p_oracle = sub.add_parser("oracle", help="Guardian Angel — contextual advisory engine")
+    oracle_sub = p_oracle.add_subparsers(dest="oracle_command", required=True)
+    p_oracle_consult = oracle_sub.add_parser("consult", help="Full advisory with narratives")
+    p_oracle_consult.add_argument("--format", choices=["text", "json"], default="text", help="Output format")
+    p_oracle_gate = oracle_sub.add_parser("gate", help="Decision-gate check")
+    p_oracle_gate.add_argument("--trigger", required=True, help="Trigger type (e.g., phase_transition, promotion)")
+    p_oracle_gate.add_argument("--target", help="Target phase or state")
+    p_oracle_gate.add_argument("--repo", help="Repo for promotion gates")
+    p_oracle_gate.add_argument("--format", choices=["text", "json"], default="text", help="Output format")
+    p_oracle_wisdom = oracle_sub.add_parser("wisdom", help="Deep narrative wisdom")
+    p_oracle_wisdom.add_argument("--format", choices=["text", "json"], default="text", help="Output format")
+    p_oracle_status = oracle_sub.add_parser("status", help="Detector effectiveness scores")
+    p_oracle_status.add_argument("--format", choices=["text", "json"], default="text", help="Output format")
+    p_oracle_history = oracle_sub.add_parser("history", help="Recent advisory log")
+    p_oracle_history.add_argument("--limit", type=int, default=20, help="Number of entries to show")
+    p_oracle_history.add_argument("--format", choices=["text", "json"], default="text", help="Output format")
+    p_oracle_ack = oracle_sub.add_parser("ack", help="Acknowledge (suppress) an advisory")
+    p_oracle_ack.add_argument("advisory_hash", help="Advisory hash to acknowledge")
+
     # ----- Wiring commands -----
     p_wiring = sub.add_parser("wiring", help="Workspace-wide integration")
     wiring_sub = p_wiring.add_subparsers(dest="wiring_command", required=True)
@@ -276,6 +304,147 @@ def main():
         sys.exit(1)
 
 
+def _dispatch_oracle(args):
+    """Handle oracle subcommands."""
+    from .oracle import Oracle, OracleContext
+    from .constants import SESSION_STATE_FILE
+
+    oracle = Oracle()
+
+    # Try to get session context
+    session_id = ""
+    current_phase = ""
+    organ = ""
+    if SESSION_STATE_FILE.exists():
+        try:
+            sess = json.loads(SESSION_STATE_FILE.read_text())
+            session_id = sess.get("session_id", "")
+            current_phase = sess.get("current_phase", "")
+            organ = sess.get("organ", "")
+        except Exception:
+            pass
+
+    if args.oracle_command == "consult":
+        ctx = OracleContext(
+            trigger="manual",
+            session_id=session_id,
+            current_phase=current_phase,
+            organ=organ,
+        )
+        advisories = oracle.consult(ctx, include_narrative=True)
+        if args.format == "json":
+            print(json.dumps([a.to_dict() for a in advisories], indent=2))
+        else:
+            if not advisories:
+                print("  Oracle: No advisories at this time.")
+                return
+            severity_icons = {"critical": "XX", "warning": "!!", "caution": "! ", "info": "  "}
+            print("\n  ORACLE CONSULT")
+            print("  " + "-" * 68)
+            for adv in advisories:
+                icon = severity_icons.get(adv.severity, "  ")
+                print(f"  {icon} [{adv.category.upper()}] {adv.message}")
+                if adv.narrative:
+                    print(f"     ~ {adv.narrative}")
+                if adv.recommendation:
+                    print(f"     -> {adv.recommendation}")
+                if adv.tools_suggested:
+                    print(f"     tools: {', '.join(adv.tools_suggested[:4])}")
+                conf = f" (confidence: {adv.confidence:.0%})" if adv.confidence < 1.0 else ""
+                det = f" [{adv.detector}]" if adv.detector else ""
+                print(f"     hash: {adv.advisory_hash()}{det}{conf}")
+            print()
+
+    elif args.oracle_command == "gate":
+        ctx = OracleContext(
+            trigger=args.trigger,
+            session_id=session_id,
+            current_phase=current_phase,
+            target_phase=args.target or "",
+            promotion_repo=args.repo or "",
+            organ=organ,
+        )
+        advisories = oracle.consult(ctx, gate_mode=True)
+        gate_advisories = [a for a in advisories if a.gate_action]
+        if args.format == "json":
+            print(json.dumps([a.to_dict() for a in gate_advisories], indent=2))
+        else:
+            if not gate_advisories:
+                print("  Oracle gate: All clear — no gate advisories.")
+                return
+            print("\n  ORACLE GATE CHECK")
+            print("  " + "-" * 68)
+            for adv in gate_advisories:
+                action_icon = {"block": "BLOCK", "warn": "WARN", "approve": "OK"}.get(adv.gate_action, "?")
+                print(f"  [{action_icon}] {adv.message}")
+                if adv.recommendation:
+                    print(f"     -> {adv.recommendation}")
+            print()
+
+    elif args.oracle_command == "wisdom":
+        ctx = OracleContext(
+            trigger="manual",
+            session_id=session_id,
+            current_phase=current_phase,
+            organ=organ,
+        )
+        advisories = oracle.consult(ctx, max_advisories=3, include_narrative=True)
+        narrative_advs = [a for a in advisories if a.narrative]
+        if args.format == "json":
+            print(json.dumps([a.to_dict() for a in narrative_advs], indent=2))
+        else:
+            if not narrative_advs:
+                print("  The Oracle is silent. Wisdom emerges with practice.")
+                return
+            print("\n  ORACLE WISDOM")
+            print("  " + "-" * 68)
+            for adv in narrative_advs:
+                print(f"  ~ {adv.narrative}")
+            print()
+
+    elif args.oracle_command == "status":
+        scores = oracle.get_detector_scores()
+        if args.format == "json":
+            print(json.dumps(scores, indent=2))
+        else:
+            if not scores:
+                print("  No detector effectiveness data yet. Scores build over sessions.")
+                return
+            print("\n  DETECTOR EFFECTIVENESS")
+            print("  " + "-" * 68)
+            print(f"  {'DETECTOR':<30} {'ADVISED':>8} {'SHIPPED':>8} {'RATE':>8}")
+            for det, data in sorted(scores.items()):
+                total = data.get("total", 0)
+                shipped = data.get("shipped", 0)
+                rate = f"{shipped / total:.0%}" if total > 0 else "N/A"
+                print(f"  {det:<30} {data.get('advised', 0):>8} {shipped:>8} {rate:>8}")
+            print()
+
+    elif args.oracle_command == "history":
+        entries = oracle.get_advisory_history(limit=args.limit)
+        if args.format == "json":
+            print(json.dumps(entries, indent=2))
+        else:
+            if not entries:
+                print("  No advisory history yet.")
+                return
+            print(f"\n  ADVISORY HISTORY (last {len(entries)})")
+            print("  " + "-" * 68)
+            for entry in reversed(entries):
+                ts = entry.get("timestamp", "")[:19]
+                sev = entry.get("severity", "?")
+                msg = entry.get("message", "")
+                det = entry.get("detector", "")
+                print(f"  {ts} [{sev:<7}] {det}: {msg}")
+            print()
+
+    elif args.oracle_command == "ack":
+        if oracle.acknowledge(args.advisory_hash):
+            print(f"  Acknowledged: {args.advisory_hash} (will be suppressed)")
+        else:
+            print(f"  Already acknowledged: {args.advisory_hash}")
+
+
 def _dispatch(args):
     # Load ontology for session and router commands
     ontology = None
@@ -284,6 +453,12 @@ def _dispatch(args):
         ontology = Ontology(ONTOLOGY_PATH)
     if RoutingEngine and ontology and ROUTING_PATH.exists():
         engine = RoutingEngine(ROUTING_PATH, ontology)
+        # Inject persisted health feedback into routing engine
+        try:
+            from .feedback import inject_into_routing_engine
+            inject_into_routing_engine(engine)
+        except Exception:
+            pass
 
     # Dispatch
     if args.command == "session":
@@ -714,9 +889,29 @@ def _dispatch(args):
                     )
                 if payload.get("allowed_actions"):
                     print(f"  allowed_actions={','.join(payload.get('allowed_actions', []))}")
+        elif args.workflow_command == "resume":
+            payload = executor.resume_workflow(from_step=args.from_step)
+            if args.format == "json":
+                print(json.dumps(payload, indent=2))
+            else:
+                print(f"workflow={payload['workflow']} status={payload['status']}")
+                print(
+                    f"  current_step={payload['current_step']} "
+                    f"progress={payload['progress']}"
+                )
+                if payload.get("from_step"):
+                    print(f"  rewound from: {payload['from_step']}")
         elif args.workflow_command == "clear":
             executor.clear_state()
             print("Cleared workflow execution state.")
+
+    elif args.command == "retro":
+        from .retro import render_retro_text, run_retro
+        report = run_retro(last_n=args.last, format_name=args.format)
+        if args.format == "json":
+            print(json.dumps(report, indent=2))
+        else:
+            print(render_retro_text(report))
 
     elif args.command == "wiring":
         from .governance import GovernanceRuntime
@@ -737,7 +932,7 @@ def _dispatch(args):
                 print("  (Run with --apply to actually update settings)")
 
     elif args.command == "doctor":
-        report = run_doctor(workflow_path=args.workflow, format_name=args.format, apply=args.apply)
+        report = run_doctor(workflow_path=args.workflow, format_name=args.format, apply=args.apply, tools=args.tools)
         if args.format == "json":
             print(json.dumps(report, indent=2))
         else:
@@ -878,6 +1073,9 @@ def _dispatch(args):
             sys.exit(1)
         from router import cmd_domains
         cmd_domains(args, ontology, engine)
+
+    elif args.command == "oracle":
+        _dispatch_oracle(args)
 
     elif args.command == "version":
         from conductor import __version__

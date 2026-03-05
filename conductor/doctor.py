@@ -104,7 +104,84 @@ def _phase_config_check(ontology_path: Path) -> DoctorCheck:
     return DoctorCheck(name="phase-config", ok=not errors, errors=errors, hints=hints)
 
 
-def _collect_checks(workflow_path: Path) -> list[DoctorCheck]:
+def _tool_availability_check(ontology_path: Path) -> DoctorCheck:
+    """Check which ontology tools are actually available on this system."""
+    import shutil
+
+    ontology = _load_yaml(ontology_path)
+    clusters = ontology.get("clusters", [])
+    if not clusters:
+        return DoctorCheck(name="tool-availability", ok=True, warnings=["No clusters found in ontology."])
+
+    total_tools = 0
+    available_tools = 0
+    unavailable: list[str] = []
+    warnings: list[str] = []
+
+    for cluster in clusters:
+        if not isinstance(cluster, dict):
+            continue
+        cluster_id = cluster.get("id", "unknown")
+        protocols = cluster.get("protocols", [])
+        tools = cluster.get("tools", [])
+
+        for tool in tools:
+            total_tools += 1
+            tool_name = tool if isinstance(tool, str) else str(list(tool.values())[0]) if isinstance(tool, dict) and tool else str(tool)
+
+            # CLI tools: check if binary exists on PATH
+            if "CLI" in protocols:
+                if shutil.which(tool_name):
+                    available_tools += 1
+                    continue
+
+            # MCP tools: check if name matches known MCP pattern
+            if "MCP" in protocols:
+                # MCP tools are available if the server is configured; assume available
+                available_tools += 1
+                continue
+
+            # Built-in tools (Read, Write, Edit, etc.): always available
+            builtins = {"Read", "Write", "Edit", "Glob", "Grep", "Bash", "Agent", "WebSearch", "WebFetch"}
+            if tool_name in builtins:
+                available_tools += 1
+                continue
+
+            # GUI / BROWSER_AUTO: can't auto-check
+            if "GUI" in protocols or "BROWSER_AUTO" in protocols:
+                available_tools += 1  # assume available, can't verify
+                continue
+
+            # API / FILESYSTEM / STDIO: assume available unless explicitly a CLI binary
+            if any(p in protocols for p in ("API", "FILESYSTEM", "STDIO")):
+                available_tools += 1
+                continue
+
+            unavailable.append(f"{cluster_id}/{tool_name}")
+
+    errors: list[str] = []
+    if unavailable and len(unavailable) > total_tools * 0.5:
+        errors.append(f"{len(unavailable)}/{total_tools} tools unavailable (>50%)")
+
+    if unavailable:
+        sample = unavailable[:10]
+        suffix = f" (+{len(unavailable) - 10} more)" if len(unavailable) > 10 else ""
+        warnings.append(f"Unavailable tools: {', '.join(sample)}{suffix}")
+
+    hints: list[str] = []
+    if unavailable:
+        hints.append("Install missing CLI tools or configure MCP servers for unavailable tools.")
+
+    return DoctorCheck(
+        name="tool-availability",
+        ok=len(errors) == 0,
+        errors=errors,
+        warnings=warnings,
+        hints=hints,
+    )
+
+
+def _collect_checks(workflow_path: Path, *, include_tools: bool = False) -> list[DoctorCheck]:
     checks: list[DoctorCheck] = [
         _schema_check(REGISTRY_PATH, "registry"),
         _schema_check(GOVERNANCE_PATH, "governance"),
@@ -122,6 +199,10 @@ def _collect_checks(workflow_path: Path) -> list[DoctorCheck]:
             hints=[issue.hint for issue in integrity.issues if issue.hint],
         )
     )
+
+    if include_tools:
+        checks.append(_tool_availability_check(ONTOLOGY_PATH))
+
     return checks
 
 
@@ -144,9 +225,9 @@ def _apply_autofixes() -> list[str]:
     return fixes
 
 
-def run_doctor(workflow_path: Path, format_name: str = "text", apply: bool = False) -> dict[str, Any]:
+def run_doctor(workflow_path: Path, format_name: str = "text", apply: bool = False, tools: bool = False) -> dict[str, Any]:
     applied_fixes = _apply_autofixes() if apply else []
-    checks = _collect_checks(workflow_path)
+    checks = _collect_checks(workflow_path, include_tools=tools)
 
     ok = all(check.ok for check in checks)
     report = {

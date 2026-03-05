@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
@@ -14,6 +15,10 @@ from .policy import load_policy
 OBS_LOG_FILE = BASE / ".conductor-observability.jsonl"
 OBS_METRICS_FILE = BASE / ".conductor-observability-metrics.json"
 OBS_REPORT_FILE = BASE / ".conductor-observability-report.json"
+
+# Log rotation constants
+_MAX_LOG_LINES = 5000
+_ROTATE_KEEP_LINES = 3000
 
 
 def _safe_write_json(path: Path, payload: dict[str, Any]) -> None:
@@ -129,6 +134,34 @@ def _record_failure_bucket(metrics: dict[str, Any], bucket: str) -> None:
     metrics["failure_buckets"] = dict(failure_buckets.most_common(top_n))
 
 
+def rotate_log(log_path: Path, max_lines: int = _MAX_LOG_LINES, keep_lines: int = _ROTATE_KEEP_LINES) -> bool:
+    """Rotate a JSONL log file when it exceeds max_lines.
+
+    Keeps the most recent `keep_lines` entries and archives the rest
+    into a timestamped file in the same directory.
+    Returns True if rotation occurred.
+    """
+    if not log_path.exists():
+        return False
+    try:
+        lines = log_path.read_text().splitlines()
+        if len(lines) <= max_lines:
+            return False
+
+        # Archive the old entries
+        archive_name = log_path.stem + f"-archive-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}" + log_path.suffix
+        archive_path = log_path.parent / archive_name
+        archive_lines = lines[:-keep_lines]
+        archive_path.write_text("\n".join(archive_lines) + "\n")
+
+        # Keep only recent entries
+        recent_lines = lines[-keep_lines:]
+        log_path.write_text("\n".join(recent_lines) + "\n")
+        return True
+    except OSError:
+        return False
+
+
 def log_event(event_type: str, details: dict[str, Any] | None = None, *, failed: bool = False, failure_bucket: str | None = None) -> None:
     """Append JSONL event and maintain aggregate failure counters."""
     policy = load_policy()
@@ -147,6 +180,9 @@ def log_event(event_type: str, details: dict[str, Any] | None = None, *, failed:
         OBS_LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
         with OBS_LOG_FILE.open("a") as fh:
             fh.write(json.dumps(event, sort_keys=True) + "\n")
+
+        # Rotate if log is too large
+        rotate_log(OBS_LOG_FILE)
 
         metrics = _load_metrics()
         counts = Counter(metrics.get("event_counts", {}))

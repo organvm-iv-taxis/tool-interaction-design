@@ -1,6 +1,6 @@
 """conductor — The AI-Conductor's Operating System."""
 
-__version__ = "0.5.0"
+__version__ = "0.5.1"
 
 from .constants import (
     BASE,
@@ -11,6 +11,7 @@ from .constants import (
     MAX_CANDIDATE_PER_ORGAN,
     MAX_PUBLIC_PROCESS_PER_ORGAN,
     ONTOLOGY_PATH,
+    ORACLE_STATE_FILE,
     ORGANS,
     PATTERN_HISTORY_FILE,
     PHASE_CLUSTERS,
@@ -41,7 +42,7 @@ from .handoff import create_handoff_envelope, edge_health_report, get_trace_bund
 from .integrity import IntegrityIssue, IntegrityReport, run_integrity_checks
 from .migrate import migrate_governance, migrate_registry
 from .observability import log_event
-from .oracle import Advisory, Oracle
+from .oracle import Advisory, Oracle, OracleContext
 from .patchbay import Patchbay
 from .policy import Policy, load_policy
 from .product import ProductExtractor, correlate_patterns_with_outcomes
@@ -61,6 +62,7 @@ __all__ = [
     "MAX_PUBLIC_PROCESS_PER_ORGAN",
     "ONTOLOGY_PATH",
     "ORGANS",
+    "ORACLE_STATE_FILE",
     "PATTERN_HISTORY_FILE",
     "PHASE_CLUSTERS",
     "PHASE_ROLES",
@@ -89,6 +91,7 @@ __all__ = [
     # Classes
     "Advisory",
     "Oracle",
+    "OracleContext",
     "GovernanceRuntime",
     "correlate_patterns_with_outcomes",
     "create_handoff_envelope",

@@ -463,23 +463,66 @@ def compose_mission(goal: str, from_cluster: str, to_cluster: str) -> str:
         return _encode_mcp_payload({"error": f"Failed to compile mission: {str(e)}"})
 
 
-def oracle_consult(context: dict[str, Any] | None = None) -> str:
+def oracle_consult(context: dict[str, Any] | None = None, include_narrative: bool = False) -> str:
     """Consult the Oracle for contextual advisories."""
     try:
-        from conductor.oracle import Oracle
+        from conductor.oracle import Oracle, OracleContext
         oracle = Oracle()
-        advisories = oracle.consult(context or {})
+        ctx = OracleContext.from_dict(context) if context else OracleContext(trigger="manual")
+        advisories = oracle.consult(ctx, include_narrative=include_narrative)
         return _encode_mcp_payload({
             "count": len(advisories),
-            "advisories": [
-                {
-                    "category": a.category,
-                    "severity": a.severity,
-                    "message": a.message,
-                    "recommendation": a.recommendation,
-                    "context": a.context,
-                }
-                for a in advisories
+            "advisories": [a.to_dict() for a in advisories],
+        })
+    except Exception as e:
+        return _encode_mcp_payload({"error": str(e)})
+
+
+def oracle_gate(trigger: str, target: str = "", repo: str = "") -> str:
+    """Decision-gate advisory for phase transitions and promotions."""
+    try:
+        from conductor.oracle import Oracle, OracleContext
+        oracle = Oracle()
+        session = get_session()
+        ctx = OracleContext(
+            trigger=trigger,
+            session_id=session.get("session_id", "") if session else "",
+            current_phase=session.get("current_phase", "") if session else "",
+            target_phase=target,
+            promotion_repo=repo,
+            organ=session.get("organ", "") if session else "",
+        )
+        advisories = oracle.consult(ctx, gate_mode=True)
+        gate_advisories = [a for a in advisories if a.gate_action]
+        return _encode_mcp_payload({
+            "trigger": trigger,
+            "target": target,
+            "gate_advisories": [a.to_dict() for a in gate_advisories],
+            "all_clear": len(gate_advisories) == 0,
+        })
+    except Exception as e:
+        return _encode_mcp_payload({"error": str(e)})
+
+
+def oracle_wisdom() -> str:
+    """Rich narrative wisdom from the Oracle."""
+    try:
+        from conductor.oracle import Oracle, OracleContext
+        oracle = Oracle()
+        session = get_session()
+        ctx = OracleContext(
+            trigger="manual",
+            session_id=session.get("session_id", "") if session else "",
+            current_phase=session.get("current_phase", "") if session else "",
+            organ=session.get("organ", "") if session else "",
+        )
+        advisories = oracle.consult(ctx, max_advisories=3, include_narrative=True)
+        narrative_advs = [a for a in advisories if a.narrative]
+        return _encode_mcp_payload({
+            "count": len(narrative_advs),
+            "wisdom": [
+                {"narrative": a.narrative, "category": a.category, "detector": a.detector}
+                for a in narrative_advs
             ],
         })
     except Exception as e:
@@ -630,9 +673,28 @@ TOOLS = [
         inputSchema={
             "type": "object",
             "properties": {
-                "context": {"type": "object", "description": "Optional context (current phase, recent actions, specific question)"},
+                "context": {"type": "object", "description": "Optional context (trigger, current_phase, target_phase, organ, etc.)"},
+                "include_narrative": {"type": "boolean", "description": "Include rich narrative wisdom (default false)"},
             },
         },
+    ),
+    Tool(
+        name="conductor_oracle_gate",
+        description="Decision-gate advisory for phase transitions and promotions — checks readiness before critical transitions.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "trigger": {"type": "string", "description": "Trigger type: phase_transition or promotion"},
+                "target": {"type": "string", "description": "Target phase (SHAPE, BUILD, PROVE, DONE) or promotion state"},
+                "repo": {"type": "string", "description": "Repository name (for promotion gates)"},
+            },
+            "required": ["trigger"],
+        },
+    ),
+    Tool(
+        name="conductor_oracle_wisdom",
+        description="Rich narrative wisdom from the Oracle — milestone acknowledgments, phase metaphors, streak encouragement.",
+        inputSchema={"type": "object", "properties": {}},
     ),
     Tool(
         name="conductor_workflow_status",
@@ -664,7 +726,9 @@ DISPATCH = {
     "conductor_trace_get": lambda args: trace_get((args or {})["trace_id"]),
     "conductor_handoff_validate": lambda args: handoff_validate((args or {})["payload"]),
     "conductor_compose_mission": lambda args: compose_mission((args or {})["goal"], (args or {})["from_cluster"], (args or {})["to_cluster"]),
-    "conductor_oracle": lambda args: oracle_consult((args or {}).get("context")),
+    "conductor_oracle": lambda args: oracle_consult((args or {}).get("context"), bool((args or {}).get("include_narrative"))),
+    "conductor_oracle_gate": lambda args: oracle_gate((args or {})["trigger"], (args or {}).get("target", ""), (args or {}).get("repo", "")),
+    "conductor_oracle_wisdom": lambda args: oracle_wisdom(),
     "conductor_workflow_status": lambda args: workflow_status(),
     "conductor_workflow_step": lambda args: workflow_step((args or {}).get("tool_output"), (args or {}).get("checkpoint_action")),
 }
