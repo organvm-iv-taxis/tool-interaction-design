@@ -148,6 +148,10 @@ class GovernanceRuntime:
     """Layer 2: Registry sync, WIP enforcement, staleness, audit."""
 
     def __init__(self, confirm_fn: Optional[Callable[[str], bool]] = None) -> None:
+        # Capture paths at construction time so patches during __init__
+        # carry through to all subsequent method calls.
+        self._registry_path: Path = REGISTRY_PATH
+        self._governance_path: Path = GOVERNANCE_PATH
         self.registry: dict = {}
         self.governance: dict = {}
         self.policy: Policy = load_policy()
@@ -162,9 +166,9 @@ class GovernanceRuntime:
         return answer.lower() in ("y", "yes")
 
     def _load(self) -> None:
-        if REGISTRY_PATH.exists():
+        if self._registry_path.exists():
             try:
-                raw_registry = json.loads(REGISTRY_PATH.read_text())
+                raw_registry = json.loads(self._registry_path.read_text())
                 schema_issues = validate_document("registry", raw_registry)
                 if schema_issues:
                     summary = "; ".join(
@@ -174,11 +178,11 @@ class GovernanceRuntime:
                     raise GovernanceError(f"Registry schema validation failed: {summary}")
                 self.registry = _parse_registry_payload(raw_registry)
             except json.JSONDecodeError as e:
-                raise GovernanceError(f"Invalid JSON in registry file {REGISTRY_PATH}: {e}") from e
+                raise GovernanceError(f"Invalid JSON in registry file {self._registry_path}: {e}") from e
 
-        if GOVERNANCE_PATH.exists():
+        if self._governance_path.exists():
             try:
-                raw_governance = json.loads(GOVERNANCE_PATH.read_text())
+                raw_governance = json.loads(self._governance_path.read_text())
                 schema_issues = validate_document("governance", raw_governance)
                 if schema_issues:
                     summary = "; ".join(
@@ -188,12 +192,12 @@ class GovernanceRuntime:
                     raise GovernanceError(f"Governance schema validation failed: {summary}")
                 self.governance = _parse_governance_payload(raw_governance)
             except json.JSONDecodeError as e:
-                raise GovernanceError(f"Invalid JSON in governance file {GOVERNANCE_PATH}: {e}") from e
+                raise GovernanceError(f"Invalid JSON in governance file {self._governance_path}: {e}") from e
         log_event(
             "governance.load",
             {
-                "registry_loaded": REGISTRY_PATH.exists(),
-                "governance_loaded": GOVERNANCE_PATH.exists(),
+                "registry_loaded": self._registry_path.exists(),
+                "governance_loaded": self._governance_path.exists(),
                 "policy_bundle": self.policy.name,
             },
         )
@@ -293,10 +297,10 @@ class GovernanceRuntime:
                     print(f"    + Added [{organ_key}] {name}")
 
                 # Save
-                if REGISTRY_PATH.exists():
-                    shutil.copy2(REGISTRY_PATH, REGISTRY_PATH.with_suffix(".json.bak"))
-                atomic_write(REGISTRY_PATH, json.dumps(self.registry, indent=2) + "\n")
-                print(f"\n  Registry updated: {REGISTRY_PATH}")
+                if self._registry_path.exists():
+                    shutil.copy2(self._registry_path, self._registry_path.with_suffix(".json.bak"))
+                atomic_write(self._registry_path, json.dumps(self.registry, indent=2) + "\n")
+                print(f"\n  Registry updated: {self._registry_path}")
         else:
             print(f"\n  Registry is complete -- all GitHub repos accounted for.")
 
@@ -433,13 +437,13 @@ class GovernanceRuntime:
         repo["promotion_status"] = target_state
         repo["last_validated"] = datetime.now().strftime("%Y-%m-%d")
 
-        if REGISTRY_PATH.exists():
-            shutil.copy2(REGISTRY_PATH, REGISTRY_PATH.with_suffix(".json.bak"))
-        atomic_write(REGISTRY_PATH, json.dumps(self.registry, indent=2) + "\n")
+        if self._registry_path.exists():
+            shutil.copy2(self._registry_path, self._registry_path.with_suffix(".json.bak"))
+        atomic_write(self._registry_path, json.dumps(self.registry, indent=2) + "\n")
 
         print(f"\n  Promoted: {repo_name}")
         print(f"  {current} -> {target_state}")
-        print(f"  Registry updated: {REGISTRY_PATH}")
+        print(f"  Registry updated: {self._registry_path}")
         log_event(
             "governance.wip_promote",
             {"repo": repo_name, "current": current, "target": target_state, "aborted": False},
@@ -524,9 +528,9 @@ class GovernanceRuntime:
             promoted.append(row)
 
         if promoted and not dry_run:
-            if REGISTRY_PATH.exists():
-                shutil.copy2(REGISTRY_PATH, REGISTRY_PATH.with_suffix(".json.bak"))
-            atomic_write(REGISTRY_PATH, json.dumps(self.registry, indent=2) + "\n")
+            if self._registry_path.exists():
+                shutil.copy2(self._registry_path, self._registry_path.with_suffix(".json.bak"))
+            atomic_write(self._registry_path, json.dumps(self.registry, indent=2) + "\n")
 
         summary = {
             "dry_run": dry_run,
