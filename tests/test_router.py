@@ -289,6 +289,12 @@ class TestRoutingEngineFindPath:
         # May or may not find paths depending on routes — just check no crash
         assert isinstance(paths, list)
 
+    def test_cluster_level_paths(self, engine):
+        paths = engine.find_cluster_paths("web_search", "knowledge_graph")
+        assert paths
+        assert paths[0][0] == "web_search"
+        assert paths[0][-1] == "knowledge_graph"
+
     def test_disconnected_returns_empty(self, engine):
         paths = engine.find_path("NONEXISTENT", "ALSO_NONEXISTENT")
         assert paths == []

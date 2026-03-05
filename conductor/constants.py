@@ -12,6 +12,7 @@ from pathlib import Path
 BASE = Path(__file__).parent.parent  # tool-interaction-design/
 ONTOLOGY_PATH = BASE / "ontology.yaml"
 ROUTING_PATH = BASE / "routing-matrix.yaml"
+WORKFLOW_DSL_PATH = BASE / "workflow-dsl.yaml"
 SESSIONS_DIR = BASE / "sessions"
 TEMPLATES_DIR = BASE / "templates"
 GENERATED_DIR = BASE / "generated"
@@ -75,6 +76,32 @@ PHASE_ROLES: dict[str, str] = {
     "SHAPE": "Architect",
     "BUILD": "Implementer + Tester",
     "PROVE": "Tester + Reviewer",
+}
+
+PHASE_INSTRUMENTS: dict[str, str] = {
+    "FRAME": "Viola (Depth/Research)",
+    "SHAPE": "First Violin (Lead/Architecture)",
+    "BUILD": "Second Violin (Implementation)",
+    "PROVE": "Cello (Verification)",
+}
+
+ROLE_ACTIONS: dict[str, dict[str, list[str]]] = {
+    "FRAME": {
+        "allowed": ["Analyze requirements", "Find prior art", "Fetch documentation"],
+        "forbidden": ["Write implementation code", "Modify governance rules"],
+    },
+    "SHAPE": {
+        "allowed": ["Design architecture", "Create plan.md", "Diagram systems"],
+        "forbidden": ["Implement business logic", "Skip architectural review"],
+    },
+    "BUILD": {
+        "allowed": ["Write code bounded by plan.md", "Generate unit tests", "Refactor within scope"],
+        "forbidden": ["Add new dependencies without approval", "Change architecture"],
+    },
+    "PROVE": {
+        "allowed": ["Run test suites", "Security scanning", "E2E verification"],
+        "forbidden": ["Fix code directly (report only)", "Modify specs"],
+    },
 }
 
 VALID_TRANSITIONS: dict[str, list[str]] = {

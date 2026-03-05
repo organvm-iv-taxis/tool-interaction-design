@@ -261,6 +261,7 @@ class RoutingEngine:
         self._max_path_depth = getattr(policy, "max_path_depth", 5)
         self._max_paths_returned = getattr(policy, "max_paths_returned", 5)
         self._path_cache: dict[tuple[str, str], list[list[str]]] = {}
+        self._cluster_path_cache: dict[tuple[str, str], list[list[str]]] = {}
 
         # Build adjacency graph
         self._adj: dict[str, list[str]] = defaultdict(list)
@@ -274,6 +275,55 @@ class RoutingEngine:
             if r.from_cluster == from_cluster and r.to_cluster == to_cluster
         ]
 
+    def find_cluster_paths(
+        self,
+        from_cluster: str,
+        to_cluster: str,
+        *,
+        max_depth: int | None = None,
+        max_paths: int | None = None,
+    ) -> list[list[str]]:
+        """BFS to find cluster-level paths between two cluster IDs."""
+        cache_key = (from_cluster, to_cluster)
+        if max_depth is None and max_paths is None and cache_key in self._cluster_path_cache:
+            return [list(path) for path in self._cluster_path_cache[cache_key]]
+
+        depth_limit = max_depth if max_depth is not None else self._max_path_depth
+        path_limit = max_paths if max_paths is not None else self._max_paths_returned
+
+        if from_cluster not in self.ontology.clusters or to_cluster not in self.ontology.clusters:
+            return []
+
+        queue: deque[list[str]] = deque([[from_cluster]])
+        results: list[list[str]] = []
+        seen_path_signatures: set[tuple[str, ...]] = set()
+
+        while queue and len(results) < path_limit:
+            path = queue.popleft()
+            current = path[-1]
+            signature = tuple(path)
+            if signature in seen_path_signatures:
+                continue
+            seen_path_signatures.add(signature)
+
+            if current == to_cluster:
+                results.append(path)
+                continue
+
+            if len(path) > depth_limit:
+                continue
+
+            for neighbor in self._adj.get(current, []):
+                if neighbor in path:
+                    continue
+                queue.append(path + [neighbor])
+
+        results.sort(key=len)
+        trimmed = results[:path_limit]
+        if max_depth is None and max_paths is None:
+            self._cluster_path_cache[cache_key] = [list(path) for path in trimmed]
+        return trimmed
+
     def find_path(self, from_domain: str, to_domain: str) -> list[list[str]]:
         """BFS to find shortest paths between domains via cluster graph."""
         cache_key = (from_domain.upper(), to_domain.upper())
@@ -286,27 +336,17 @@ class RoutingEngine:
         if not from_clusters or not to_clusters:
             return []
 
-        paths = []
+        paths: list[list[str]] = []
         for start in from_clusters:
-            # BFS
-            queue: deque[list[str]] = deque([[start]])
-            visited: set[str] = {start}
-
-            while queue:
-                path = queue.popleft()
-                current = path[-1]
-
-                if current in to_clusters:
-                    paths.append(path)
-                    continue
-
-                if len(path) > self._max_path_depth:
-                    continue
-
-                for neighbor in self._adj.get(current, []):
-                    if neighbor not in visited:
-                        visited.add(neighbor)
-                        queue.append(path + [neighbor])
+            for target in to_clusters:
+                found = self.find_cluster_paths(
+                    start,
+                    target,
+                    max_depth=self._max_path_depth,
+                    max_paths=self._max_paths_returned,
+                )
+                if found:
+                    paths.extend(found)
 
         # Sort by length
         paths.sort(key=len)

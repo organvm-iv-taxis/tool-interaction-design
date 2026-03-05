@@ -32,6 +32,7 @@ def test_e2e_mcp_dispatch_path_and_patch() -> None:
     route_json = mcp_server.DISPATCH["conductor_route_to"]({"from_cluster": "web_search", "to_cluster": "knowledge_graph"})
     route_payload = json.loads(route_json)
     assert "direct_routes" in route_payload or "multi_hop_paths" in route_payload
+    assert "pathfinding" in route_payload
 
     patch_json = mcp_server.DISPATCH["conductor_patch"](None)
     patch_payload = json.loads(patch_json)

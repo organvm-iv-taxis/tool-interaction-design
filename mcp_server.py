@@ -50,17 +50,20 @@ sys.path.insert(0, str(BASE))
 from router import Ontology, RoutingEngine
 from conductor.constants import (
     ONTOLOGY_PATH,
-    ROUTING_PATH,
+    PHASE_INSTRUMENTS,
     PHASE_ROLES,
-    PHASES,
+    ROLE_ACTIONS,
+    ROUTING_PATH,
     SESSION_STATE_FILE,
+    WORKFLOW_DSL_PATH,
     get_phase_clusters,
 )
 from conductor.contracts import assert_contract
+from conductor.executor import WorkflowExecutor
 from conductor.governance import GovernanceRuntime
 from conductor.handoff import edge_health_report, get_trace_bundle, validate_handoff_payload
 from conductor.patchbay import Patchbay
-from conductor.session import Session, SessionEngine
+from conductor.session import SessionEngine
 
 
 def _ensure_mcp_available() -> None:
@@ -109,26 +112,95 @@ def _encode_mcp_payload(payload: dict[str, Any]) -> str:
 # ---------------------------------------------------------------------------
 
 
+def _route_payload(route: Any) -> dict[str, Any]:
+    return {
+        "id": route.id,
+        "from": route.from_cluster,
+        "to": route.to_cluster,
+        "data_flow": route.data_flow,
+        "protocol": route.protocol,
+        "automatable": route.automatable,
+        "description": route.description,
+    }
+
+
+def _path_legs(engine: RoutingEngine, path: list[str]) -> list[dict[str, Any]]:
+    legs: list[dict[str, Any]] = []
+    for source, target in zip(path, path[1:]):
+        matches = engine.find_routes(source, target)
+        if matches:
+            preferred = matches[0]
+            legs.append(_route_payload(preferred))
+        else:
+            legs.append(
+                {
+                    "id": "",
+                    "from": source,
+                    "to": target,
+                    "data_flow": "",
+                    "protocol": "",
+                    "automatable": False,
+                    "description": "No direct route metadata available for this hop.",
+                }
+            )
+    return legs
+
+
+def _fallback_sequence(engine: RoutingEngine, path: list[str]) -> list[dict[str, Any]]:
+    sequence: list[dict[str, Any]] = []
+    for cluster_id in path:
+        alternatives = engine.get_alternatives(cluster_id)
+        if alternatives:
+            sequence.append(
+                {
+                    "cluster": cluster_id,
+                    "tools_ranked": alternatives.tools_ranked,
+                }
+            )
+    return sequence
+
+
 def route_to(from_cluster: str, to_cluster: str) -> str:
     engine = get_engine()
     ontology = get_ontology()
+    source = ontology.clusters.get(from_cluster)
+    target = ontology.clusters.get(to_cluster)
+
+    if source is None or target is None:
+        return _encode_mcp_payload({"error": f"Unknown cluster(s): {from_cluster}, {to_cluster}"})
 
     routes = engine.find_routes(from_cluster, to_cluster)
-    if routes:
-        result = [{"id": r.id, "data_flow": r.data_flow, "protocol": r.protocol,
-                    "automatable": r.automatable, "description": r.description}
-                   for r in routes]
-        return _encode_mcp_payload({"direct_routes": result})
+    direct_routes = [_route_payload(route) for route in routes]
+    cluster_paths = engine.find_cluster_paths(from_cluster, to_cluster)
+    domain_paths = engine.find_path(source.domain, target.domain)
 
-    # Try multi-hop
-    src = ontology.clusters.get(from_cluster)
-    tgt = ontology.clusters.get(to_cluster)
-    if src and tgt:
-        paths = engine.find_path(src.domain, tgt.domain)
-        if paths:
-            return _encode_mcp_payload({"multi_hop_paths": paths})
+    if not direct_routes and not cluster_paths and not domain_paths:
+        return _encode_mcp_payload({"error": f"No route found: {from_cluster} -> {to_cluster}"})
 
-    return _encode_mcp_payload({"error": f"No route found: {from_cluster} -> {to_cluster}"})
+    path_rows = [
+        {
+            "clusters": path,
+            "hops": max(0, len(path) - 1),
+            "legs": _path_legs(engine, path),
+        }
+        for path in cluster_paths
+    ]
+
+    fallback_sequences = _fallback_sequence(engine, cluster_paths[0]) if cluster_paths else []
+
+    return _encode_mcp_payload(
+        {
+            "from_cluster": from_cluster,
+            "to_cluster": to_cluster,
+            "direct_routes": direct_routes,
+            "multi_hop_paths": [path for path in cluster_paths if len(path) > 2] or domain_paths,
+            "pathfinding": {
+                "cluster_paths": path_rows,
+                "domain_paths": domain_paths,
+            },
+            "fallback_sequences": fallback_sequences,
+        }
+    )
 
 
 def capability(cap: str) -> str:
@@ -167,8 +239,9 @@ def wip_status() -> str:
 def session_phase() -> str:
     try:
         session = get_session()
+        score = WorkflowExecutor(WORKFLOW_DSL_PATH).get_briefing()
         if not session:
-            return _encode_mcp_payload({"active": False, "message": "No active session"})
+            return _encode_mcp_payload({"active": False, "message": "No active session", "workflow_score": score})
 
         phase = session.get("current_phase", "UNKNOWN")
         return _encode_mcp_payload({
@@ -179,9 +252,47 @@ def session_phase() -> str:
             "scope": session.get("scope"),
             "current_phase": phase,
             "ai_role": PHASE_ROLES.get(phase, "Unknown"),
+            "instrument": PHASE_INSTRUMENTS.get(phase, "Unknown"),
+            "allowed_actions": ROLE_ACTIONS.get(phase, {}).get("allowed", []),
+            "forbidden_actions": ROLE_ACTIONS.get(phase, {}).get("forbidden", []),
             "active_clusters": get_phase_clusters().get(phase, []),
             "warnings": session.get("warnings", []),
+            "workflow_score": score,
         })
+    except Exception as e:
+        return _encode_mcp_payload({"error": str(e)})
+
+
+def orchestra_briefing() -> str:
+    try:
+        session = get_session()
+        score = WorkflowExecutor(WORKFLOW_DSL_PATH).get_briefing()
+        if not session:
+            return _encode_mcp_payload(
+                {
+                    "active": False,
+                    "message": "No active session",
+                    "workflow_score": score,
+                }
+            )
+
+        phase = session.get("current_phase", "UNKNOWN")
+        return _encode_mcp_payload(
+            {
+                "active": True,
+                "session_id": session.get("session_id"),
+                "organ": session.get("organ"),
+                "repo": session.get("repo"),
+                "scope": session.get("scope"),
+                "phase": phase,
+                "role": PHASE_ROLES.get(phase, "Unknown"),
+                "instrument": PHASE_INSTRUMENTS.get(phase, "Unknown"),
+                "allowed_actions": ROLE_ACTIONS.get(phase, {}).get("allowed", []),
+                "forbidden_actions": ROLE_ACTIONS.get(phase, {}).get("forbidden", []),
+                "active_clusters": get_phase_clusters().get(phase, []),
+                "workflow_score": score,
+            }
+        )
     except Exception as e:
         return _encode_mcp_payload({"error": str(e)})
 
@@ -296,7 +407,7 @@ def handoff_validate(payload: dict[str, Any]) -> str:
 TOOLS = [
     Tool(
         name="conductor_route_to",
-        description="Find routes between tool clusters in the ontology. Returns direct routes or multi-hop paths.",
+        description="Find routes between tool clusters and return pathfinding directions with fallback tool sequences.",
         inputSchema={
             "type": "object",
             "properties": {
@@ -325,6 +436,11 @@ TOOLS = [
     Tool(
         name="conductor_session_phase",
         description="Get current session phase (FRAME/SHAPE/BUILD/PROVE), active clusters, and AI role.",
+        inputSchema={"type": "object", "properties": {}},
+    ),
+    Tool(
+        name="conductor_orchestra_briefing",
+        description="Live orchestra briefing: current phase role/instrument and active workflow score.",
         inputSchema={"type": "object", "properties": {}},
     ),
     Tool(
@@ -387,6 +503,7 @@ DISPATCH = {
     "conductor_capability": lambda args: capability((args or {})["capability"]),
     "conductor_wip_status": lambda args: wip_status(),
     "conductor_session_phase": lambda args: session_phase(),
+    "conductor_orchestra_briefing": lambda args: orchestra_briefing(),
     "conductor_suggest": lambda args: suggest((args or {})["task_description"]),
     "conductor_patch": lambda args: patch((args or {}).get("organ")),
     "conductor_edge_health": lambda args: edge_health(int((args or {}).get("window", 200))),

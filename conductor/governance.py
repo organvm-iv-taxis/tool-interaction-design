@@ -448,6 +448,107 @@ class GovernanceRuntime:
 
     # ----- Staleness (batched via GraphQL) -----
 
+    @staticmethod
+    def _health_signals(repo: dict[str, Any]) -> dict[str, bool]:
+        docs_ok = str(repo.get("documentation_status", "")).upper() == "DEPLOYED"
+        ci_ok = bool(str(repo.get("ci_workflow", "")).strip())
+        impl_ok = str(repo.get("implementation_status", "")).upper() in {
+            "ACTIVE",
+            "COMPLETE",
+            "COMPLETED",
+            "READY",
+            "MATURE",
+            "STABLE",
+        }
+        return {
+            "docs_ok": docs_ok,
+            "ci_ok": ci_ok,
+            "implementation_ok": impl_ok,
+        }
+
+    def auto_promote(self, dry_run: bool = True) -> dict[str, Any]:
+        """Auto-promote healthy repos while respecting WIP limits.
+
+        Rules:
+        - LOCAL -> CANDIDATE when docs/CI/implementation all look healthy.
+        - CANDIDATE -> PUBLIC_PROCESS when docs/CI/implementation all look healthy.
+        - Never violate per-organ WIP limits.
+        """
+        all_repos = self._all_repos()
+        counts: dict[str, Counter] = defaultdict(Counter)
+        for organ_key, repo in all_repos:
+            counts[organ_key][repo.get("promotion_status", "UNKNOWN")] += 1
+
+        proposed: list[dict[str, Any]] = []
+        promoted: list[dict[str, Any]] = []
+        today = datetime.now().strftime("%Y-%m-%d")
+
+        for organ_key, repo in sorted(all_repos, key=lambda pair: (pair[0], pair[1].get("name", ""))):
+            current = str(repo.get("promotion_status", "LOCAL")).upper()
+            if current == "LOCAL":
+                target = "CANDIDATE"
+            elif current == "CANDIDATE":
+                target = "PUBLIC_PROCESS"
+            else:
+                continue
+
+            signals = self._health_signals(repo)
+            if not all(signals.values()):
+                continue
+
+            if target == "CANDIDATE" and counts[organ_key]["CANDIDATE"] >= self.max_candidate_per_organ:
+                continue
+            if (
+                target == "PUBLIC_PROCESS"
+                and counts[organ_key]["PUBLIC_PROCESS"] >= self.max_public_process_per_organ
+            ):
+                continue
+
+            row = {
+                "organ": organ_key,
+                "repo": repo.get("name"),
+                "current": current,
+                "target": target,
+                "signals": signals,
+            }
+            proposed.append(row)
+
+            counts[organ_key][current] -= 1
+            counts[organ_key][target] += 1
+
+            if dry_run:
+                continue
+
+            repo["promotion_status"] = target
+            repo["last_validated"] = today
+            promoted.append(row)
+
+        if promoted and not dry_run:
+            if REGISTRY_PATH.exists():
+                shutil.copy2(REGISTRY_PATH, REGISTRY_PATH.with_suffix(".json.bak"))
+            atomic_write(REGISTRY_PATH, json.dumps(self.registry, indent=2) + "\n")
+
+        summary = {
+            "dry_run": dry_run,
+            "policy_bundle": self.policy.name,
+            "limits": {
+                "max_candidate_per_organ": self.max_candidate_per_organ,
+                "max_public_process_per_organ": self.max_public_process_per_organ,
+            },
+            "eligible": len(proposed),
+            "promoted": len(promoted),
+        }
+
+        payload = {
+            "summary": summary,
+            "proposed": proposed,
+            "promoted": promoted,
+        }
+        log_event("governance.auto_promote", summary)
+        return payload
+
+    # ----- Staleness (batched via GraphQL) -----
+
     def stale(self, days: int = 30) -> None:
         """Find CANDIDATE repos with no recent push."""
         print(f"\n  Stale CANDIDATE repos (no push in {days}+ days)")

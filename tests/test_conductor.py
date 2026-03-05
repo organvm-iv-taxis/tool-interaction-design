@@ -386,6 +386,38 @@ class TestGovernanceRuntime:
         assert "Commerce" in out
         assert "5 repos" in out
 
+    def test_auto_promote_dry_run_proposes_healthy_repo(self, mini_registry):
+        gov = self._make_gov(mini_registry)
+        repos = gov.registry["organs"]["ORGAN-III"]["repositories"]
+        for repo in repos:
+            if repo["name"] == "repo-c":
+                repo["promotion_status"] = "LOCAL"
+                repo["documentation_status"] = "DEPLOYED"
+                repo["ci_workflow"] = "ci.yml"
+                repo["implementation_status"] = "ACTIVE"
+
+        report = gov.auto_promote(dry_run=True)
+        assert report["summary"]["dry_run"] is True
+        assert any(
+            row["repo"] == "repo-c" and row["target"] == "CANDIDATE"
+            for row in report["proposed"]
+        )
+
+    def test_auto_promote_apply_updates_registry(self, mini_registry):
+        gov = self._make_gov(mini_registry)
+        repos = gov.registry["organs"]["ORGAN-III"]["repositories"]
+        for repo in repos:
+            if repo["name"] == "repo-c":
+                repo["promotion_status"] = "LOCAL"
+                repo["documentation_status"] = "DEPLOYED"
+                repo["ci_workflow"] = "ci.yml"
+                repo["implementation_status"] = "ACTIVE"
+
+        report = gov.auto_promote(dry_run=False)
+        assert report["summary"]["promoted"] >= 1
+        updated = next(repo for repo in repos if repo["name"] == "repo-c")
+        assert updated["promotion_status"] == "CANDIDATE"
+
 
 # ===========================================================================
 # Session data model tests

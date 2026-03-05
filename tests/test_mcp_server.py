@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -50,6 +51,25 @@ def test_conductor_handoff_validate_dispatch_forwards_payload():
 
     assert result == '{"valid": false}'
     mock_validate.assert_called_once_with(payload)
+
+
+def test_conductor_orchestra_briefing_dispatch():
+    with patch.object(
+        mcp_server,
+        "orchestra_briefing",
+        return_value='{"active": true, "role": "Architect"}',
+    ) as mock_orchestra:
+        result = mcp_server.DISPATCH["conductor_orchestra_briefing"](None)
+
+    assert result == '{"active": true, "role": "Architect"}'
+    mock_orchestra.assert_called_once_with()
+
+
+def test_route_to_returns_pathfinding_shape():
+    payload = json.loads(mcp_server.route_to("web_search", "knowledge_graph"))
+    assert "pathfinding" in payload
+    assert "fallback_sequences" in payload
+    assert "direct_routes" in payload
 
 
 def test_main_returns_one_when_mcp_unavailable():
