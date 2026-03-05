@@ -10,13 +10,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from .constants import BASE, ConductorError
+from .constants import ConductorError, STATE_DIR
 from .contracts import assert_contract, validate_contract
 from .observability import log_event
 
-HANDOFF_LOG_FILE = BASE / ".conductor-handoffs.jsonl"
-TRACE_LOG_FILE = BASE / ".conductor-traces.jsonl"
-ROUTE_DECISION_LOG_FILE = BASE / ".conductor-route-decisions.jsonl"
+HANDOFF_LOG_FILE = STATE_DIR / "traces" / "handoffs.jsonl"
+TRACE_LOG_FILE = STATE_DIR / "traces" / "routes.jsonl"
+ROUTE_DECISION_LOG_FILE = STATE_DIR / "traces" / "decisions.jsonl"
 
 
 def _now_iso() -> str:
@@ -31,8 +31,9 @@ def _append_jsonl(path: Path, payload: dict[str, Any]) -> None:
     try:
         from .observability import rotate_log
         rotate_log(path)
-    except Exception:
-        pass
+    except Exception as exc:
+        from .observability import log_event
+        log_event("handoff.rotate_error", {"error": str(exc)})
 
 
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:

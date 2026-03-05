@@ -83,8 +83,9 @@ def _load_stats() -> dict:
     if STATS_FILE.exists():
         try:
             return json.loads(STATS_FILE.read_text())
-        except (json.JSONDecodeError, OSError):
-            pass
+        except (json.JSONDecodeError, OSError) as exc:
+            from .observability import log_event
+            log_event("session.stats_load_error", {"error": str(exc), "path": str(STATS_FILE)})
     return {
         "total_sessions": 0, "total_minutes": 0, "shipped": 0, "closed": 0,
         "by_organ": {}, "streak": 0, "last_session_id": "", "recent_sessions": [],
@@ -172,7 +173,7 @@ class SessionEngine:
                 return Session.from_dict(data)
             except (json.JSONDecodeError, TypeError, KeyError) as e:
                 raise SessionError(
-                    f"Session state corrupted ({e}). Fix or delete .conductor-session.json manually."
+                    f"Session state corrupted ({e}). Fix or delete .conductor/session.json manually."
                 ) from e
         return None
 
@@ -226,20 +227,23 @@ class SessionEngine:
             ship_rate = stats["shipped"] / stats["total_sessions"] * 100
             print(f"  Lifetime: {stats['total_sessions']} sessions, {stats['total_minutes']}m, {ship_rate:.0f}% ship rate")
 
-        # Oracle advisories at session start
+        # Guardian Angel advisories at session start
         try:
-            from .oracle import Oracle
-            oracle = Oracle()
-            advisories = oracle.consult(max_advisories=3)
+            from .guardian import GuardianAngel
+            guardian = GuardianAngel()
+            advisories = guardian.counsel(max_advisories=3)
             if advisories:
-                print(f"\n  Oracle:")
+                print(f"\n  Guardian Angel:")
                 for adv in advisories:
                     icon = "!!" if adv.severity == "warning" else "! " if adv.severity == "caution" else "  "
                     print(f"  {icon} {adv.message}")
-                    if adv.recommendation:
+                    if adv.teaching:
+                        print(f"     * {adv.teaching[:120]}")
+                    elif adv.recommendation:
                         print(f"     -> {adv.recommendation}")
-        except Exception:
-            pass
+        except Exception as exc:
+            from .observability import log_event
+            log_event("session.oracle_advisory_error", {"error": str(exc)})
 
         print()
 
@@ -276,7 +280,8 @@ class SessionEngine:
             else:
                 print(f"  WARNING: Could not create branch: {result.stderr.strip()}")
         except (subprocess.TimeoutExpired, FileNotFoundError):
-            pass  # No git — that's fine
+            from .observability import log_event
+            log_event("session.branch_create_error", {"branch": branch})
 
     def _scaffold_templates(self, session: Session) -> None:
         """Copy and fill templates for this session."""
@@ -348,10 +353,11 @@ class SessionEngine:
         print(f"  AI Role: {PHASE_ROLES.get(target, 'N/A')}")
         print(f"  Active clusters: {', '.join(self.phase_clusters.get(target, []))}")
 
-        # Oracle gate advisory at phase transition
+        # Guardian Angel gate advisory at phase transition
         try:
-            from .oracle import Oracle, OracleContext
-            oracle = Oracle()
+            from .guardian import GuardianAngel
+            from .oracle import OracleContext
+            guardian = GuardianAngel()
             ctx = OracleContext(
                 trigger="phase_transition",
                 session_id=session.session_id,
@@ -359,16 +365,19 @@ class SessionEngine:
                 target_phase=target,
                 organ=session.organ,
             )
-            advisories = oracle.consult(ctx, max_advisories=3, gate_mode=True)
+            advisories = guardian.counsel(ctx, max_advisories=3, gate_mode=True)
             if advisories:
-                print(f"\n  Oracle:")
+                print(f"\n  Guardian Angel:")
                 for adv in advisories:
                     icon = "!!" if adv.severity == "warning" else "! " if adv.severity == "caution" else "  "
                     print(f"  {icon} {adv.message}")
-                    if adv.recommendation:
+                    if adv.teaching:
+                        print(f"     * {adv.teaching[:120]}")
+                    elif adv.recommendation:
                         print(f"     -> {adv.recommendation}")
-        except Exception:
-            pass
+        except Exception as exc:
+            from .observability import log_event
+            log_event("session.oracle_advisory_error", {"error": str(exc)})
 
         print()
 
@@ -517,20 +526,23 @@ class SessionEngine:
         if n in (1, 5, 10, 25, 50, 100):
             print(f"  MILESTONE: {n} sessions completed!")
 
-        # Oracle retrospective advisories
+        # Guardian Angel retrospective advisories
         try:
-            from .oracle import Oracle
-            oracle = Oracle()
-            advisories = oracle.consult(max_advisories=3)
+            from .guardian import GuardianAngel
+            guardian = GuardianAngel()
+            advisories = guardian.counsel(max_advisories=3)
             if advisories:
-                print(f"\n  Oracle (retrospective):")
+                print(f"\n  Guardian Angel (retrospective):")
                 for adv in advisories:
                     icon = "!!" if adv.severity == "warning" else "! " if adv.severity == "caution" else "  "
                     print(f"  {icon} {adv.message}")
-                    if adv.recommendation:
+                    if adv.teaching:
+                        print(f"     * {adv.teaching[:120]}")
+                    elif adv.recommendation:
                         print(f"     -> {adv.recommendation}")
-        except Exception:
-            pass
+        except Exception as exc:
+            from .observability import log_event
+            log_event("session.oracle_advisory_error", {"error": str(exc)})
 
         # Record patterns for growth feedback loop
         try:
@@ -541,16 +553,18 @@ class SessionEngine:
                 from .product import record_pattern
                 for pattern_name, _ in detected:
                     record_pattern(pattern_name, session.session_id, session.result)
-        except Exception:
-            pass
+        except Exception as exc:
+            from .observability import log_event
+            log_event("session.oracle_advisory_error", {"error": str(exc)})
 
         # Oracle effectiveness tracking
         try:
             from .oracle import Oracle as OracleForEffectiveness
             oracle_eff = OracleForEffectiveness()
             oracle_eff._update_effectiveness(session.session_id, session.result)
-        except Exception:
-            pass
+        except Exception as exc:
+            from .observability import log_event
+            log_event("session.oracle_advisory_error", {"error": str(exc)})
 
         print()
 
@@ -581,4 +595,5 @@ class SessionEngine:
             if result.returncode != 0:
                 print(f"  WARNING: git commit failed: {result.stderr.strip()}")
         except (subprocess.TimeoutExpired, FileNotFoundError):
-            pass
+            from .observability import log_event
+            log_event("session.commit_breadcrumb_error", {"session_id": session.session_id})

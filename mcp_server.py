@@ -48,6 +48,8 @@ BASE = Path(__file__).parent
 sys.path.insert(0, str(BASE))
 
 from router import Ontology, RoutingEngine
+from conductor.router_extensions import install as _install_router_extensions
+_install_router_extensions()
 from conductor.constants import (
     ONTOLOGY_PATH,
     PHASE_INSTRUMENTS,
@@ -529,6 +531,133 @@ def oracle_wisdom() -> str:
         return _encode_mcp_payload({"error": str(e)})
 
 
+def oracle_profile() -> str:
+    """Get the Oracle's behavioral profile for the current user."""
+    try:
+        from conductor.oracle import Oracle
+        oracle = Oracle()
+        profile = oracle.build_profile()
+        return _encode_mcp_payload(profile.to_dict())
+    except Exception as e:
+        return _encode_mcp_payload({"error": str(e)})
+
+
+def oracle_detectors() -> str:
+    """Get the full detector manifest with effectiveness scores."""
+    try:
+        from conductor.oracle import Oracle
+        oracle = Oracle()
+        manifest = oracle.get_detector_manifest()
+        return _encode_mcp_payload({
+            "count": len(manifest),
+            "detectors": manifest,
+        })
+    except Exception as e:
+        return _encode_mcp_payload({"error": str(e)})
+
+
+def oracle_trends() -> str:
+    """Get trend summary: ship rate, duration over recent windows."""
+    try:
+        from conductor.oracle import Oracle
+        oracle = Oracle()
+        summary = oracle.get_trend_summary()
+        return _encode_mcp_payload(summary)
+    except Exception as e:
+        return _encode_mcp_payload({"error": str(e)})
+
+
+def oracle_diagnose() -> str:
+    """Run Oracle self-diagnostics."""
+    try:
+        from conductor.oracle import Oracle
+        oracle = Oracle()
+        diag = oracle.diagnose()
+        return _encode_mcp_payload(diag)
+    except Exception as e:
+        return _encode_mcp_payload({"error": str(e)})
+
+
+def oracle_calibrate(detector: str, action: str = "reset") -> str:
+    """Calibrate a detector's effectiveness score."""
+    try:
+        from conductor.oracle import Oracle
+        oracle = Oracle()
+        result = oracle.calibrate_detector(detector, action)
+        return _encode_mcp_payload(result)
+    except Exception as e:
+        return _encode_mcp_payload({"error": str(e)})
+
+
+# ---------------------------------------------------------------------------
+# Guardian Angel MCP handlers
+# ---------------------------------------------------------------------------
+
+
+def guardian_counsel(context: dict[str, Any] | None = None) -> str:
+    """Guardian Angel enhanced consult with wisdom enrichment."""
+    try:
+        from conductor.guardian import GuardianAngel
+        from conductor.oracle import OracleContext
+        guardian = GuardianAngel()
+        ctx = OracleContext.from_dict(context) if context else None
+        advisories = guardian.counsel(ctx)
+        return _encode_mcp_payload({
+            "count": len(advisories),
+            "advisories": [a.to_dict() for a in advisories],
+        })
+    except Exception as e:
+        return _encode_mcp_payload({"error": str(e)})
+
+
+def guardian_whisper(action: str, context: dict[str, Any] | None = None) -> str:
+    """Lightweight ambient guidance for a specific action."""
+    try:
+        from conductor.guardian import GuardianAngel
+        from conductor.oracle import OracleContext
+        guardian = GuardianAngel()
+        ctx = OracleContext.from_dict(context) if context else None
+        adv = guardian.whisper(action, ctx)
+        return _encode_mcp_payload(adv.to_dict() if adv else {"whisper": None})
+    except Exception as e:
+        return _encode_mcp_payload({"error": str(e)})
+
+
+def guardian_teach(topic: str) -> str:
+    """On-demand pedagogical lookup of a principle."""
+    try:
+        from conductor.guardian import GuardianAngel
+        guardian = GuardianAngel()
+        result = guardian.teach(topic)
+        return _encode_mcp_payload(result)
+    except Exception as e:
+        return _encode_mcp_payload({"error": str(e)})
+
+
+def guardian_landscape(decision: str, context: dict[str, Any] | None = None) -> str:
+    """Risk-reward landscape mapping for a decision."""
+    try:
+        from conductor.guardian import GuardianAngel
+        from conductor.oracle import OracleContext
+        guardian = GuardianAngel()
+        ctx = OracleContext.from_dict(context) if context else None
+        result = guardian.landscape(decision, ctx)
+        return _encode_mcp_payload(result)
+    except Exception as e:
+        return _encode_mcp_payload({"error": str(e)})
+
+
+def guardian_mastery() -> str:
+    """Growth and mastery report."""
+    try:
+        from conductor.guardian import GuardianAngel
+        guardian = GuardianAngel()
+        report = guardian.growth_report()
+        return _encode_mcp_payload(report)
+    except Exception as e:
+        return _encode_mcp_payload({"error": str(e)})
+
+
 def workflow_status() -> str:
     from conductor.executor import WorkflowExecutor
     from conductor.constants import WORKFLOW_DSL_PATH
@@ -697,6 +826,89 @@ TOOLS = [
         inputSchema={"type": "object", "properties": {}},
     ),
     Tool(
+        name="conductor_oracle_profile",
+        description="Behavioral profile from cross-session analysis — ship rate, cadence, risk appetite, preferred organs, active hours.",
+        inputSchema={"type": "object", "properties": {}},
+    ),
+    Tool(
+        name="conductor_oracle_detectors",
+        description="List all Oracle detectors with categories, enabled status, and effectiveness scores.",
+        inputSchema={"type": "object", "properties": {}},
+    ),
+    Tool(
+        name="conductor_oracle_trends",
+        description="Trend summary — ship rate, duration, and session counts over recent windows (last 5/10/20 sessions).",
+        inputSchema={"type": "object", "properties": {}},
+    ),
+    Tool(
+        name="conductor_oracle_diagnose",
+        description="Oracle self-diagnostics — detector health, state file integrity, data freshness.",
+        inputSchema={"type": "object", "properties": {}},
+    ),
+    Tool(
+        name="conductor_oracle_calibrate",
+        description="Calibrate a detector's effectiveness score (reset, boost, or penalize).",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "detector": {"type": "string", "description": "Detector name (e.g., process_drift, burnout_risk)"},
+                "action": {"type": "string", "enum": ["reset", "boost", "penalize"], "description": "Calibration action"},
+            },
+            "required": ["detector"],
+        },
+    ),
+    # Guardian Angel tools
+    Tool(
+        name="conductor_guardian_counsel",
+        description="Guardian Angel enhanced consult — Oracle advisories enriched with canonical wisdom, mastery tracking, and pedagogical teaching.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "context": {"type": "object", "description": "Optional context (trigger, current_phase, target_phase, organ, etc.)"},
+            },
+        },
+    ),
+    Tool(
+        name="conductor_guardian_whisper",
+        description="Lightweight ambient guidance — check if an action has any canonical warnings before proceeding.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "action": {"type": "string", "description": "Action description to check (e.g., 'rewriting the auth module')"},
+                "context": {"type": "object", "description": "Optional session context"},
+            },
+            "required": ["action"],
+        },
+    ),
+    Tool(
+        name="conductor_guardian_teach",
+        description="On-demand teaching — look up a principle by topic/ID, get pedagogical explanation and mastery history.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "topic": {"type": "string", "description": "Topic or principle ID (e.g., 'tdd', 'SOLID', 'mvp', 'eng.tdd')"},
+            },
+            "required": ["topic"],
+        },
+    ),
+    Tool(
+        name="conductor_guardian_landscape",
+        description="Map risk-reward poles for a decision with personalized positioning based on behavioral profile.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "decision": {"type": "string", "description": "Decision description (e.g., 'rewrite vs refactor the API layer')"},
+                "context": {"type": "object", "description": "Optional session context"},
+            },
+            "required": ["decision"],
+        },
+    ),
+    Tool(
+        name="conductor_guardian_mastery",
+        description="Full mastery and growth report — principles encountered, internalized, learning velocity, growth areas.",
+        inputSchema={"type": "object", "properties": {}},
+    ),
+    Tool(
         name="conductor_workflow_status",
         description="Get the briefing of the current active workflow (including current step, status, and suggested tool call).",
         inputSchema={"type": "object", "properties": {}},
@@ -729,6 +941,17 @@ DISPATCH = {
     "conductor_oracle": lambda args: oracle_consult((args or {}).get("context"), bool((args or {}).get("include_narrative"))),
     "conductor_oracle_gate": lambda args: oracle_gate((args or {})["trigger"], (args or {}).get("target", ""), (args or {}).get("repo", "")),
     "conductor_oracle_wisdom": lambda args: oracle_wisdom(),
+    "conductor_oracle_profile": lambda args: oracle_profile(),
+    "conductor_oracle_detectors": lambda args: oracle_detectors(),
+    "conductor_oracle_trends": lambda args: oracle_trends(),
+    "conductor_oracle_diagnose": lambda args: oracle_diagnose(),
+    "conductor_oracle_calibrate": lambda args: oracle_calibrate((args or {})["detector"], (args or {}).get("action", "reset")),
+    # Guardian Angel
+    "conductor_guardian_counsel": lambda args: guardian_counsel((args or {}).get("context")),
+    "conductor_guardian_whisper": lambda args: guardian_whisper((args or {})["action"], (args or {}).get("context")),
+    "conductor_guardian_teach": lambda args: guardian_teach((args or {})["topic"]),
+    "conductor_guardian_landscape": lambda args: guardian_landscape((args or {})["decision"], (args or {}).get("context")),
+    "conductor_guardian_mastery": lambda args: guardian_mastery(),
     "conductor_workflow_status": lambda args: workflow_status(),
     "conductor_workflow_step": lambda args: workflow_step((args or {}).get("tool_output"), (args or {}).get("checkpoint_action")),
 }

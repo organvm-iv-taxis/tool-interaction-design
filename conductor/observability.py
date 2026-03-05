@@ -9,12 +9,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from .constants import BASE
+from .constants import STATE_DIR
 from .policy import load_policy
 
-OBS_LOG_FILE = BASE / ".conductor-observability.jsonl"
-OBS_METRICS_FILE = BASE / ".conductor-observability-metrics.json"
-OBS_REPORT_FILE = BASE / ".conductor-observability-report.json"
+OBS_LOG_FILE = STATE_DIR / "observability" / "events.jsonl"
+OBS_METRICS_FILE = STATE_DIR / "observability" / "metrics.json"
+OBS_REPORT_FILE = STATE_DIR / "observability" / "report.json"
 
 # Log rotation constants
 _MAX_LOG_LINES = 5000

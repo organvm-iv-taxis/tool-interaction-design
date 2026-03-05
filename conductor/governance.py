@@ -20,6 +20,7 @@ from .constants import (
     PROMOTION_STATES,
     PROMOTION_TRANSITIONS,
     REGISTRY_PATH,
+    STATE_DIR,
     WORKSPACE,
     GovernanceError,
     atomic_write,
@@ -178,7 +179,7 @@ class GovernanceRuntime:
         return answer.lower() in ("y", "yes")
 
     # Path to local cache of last-known-good corpus data
-    _CORPUS_CACHE_DIR = Path(__file__).parent.parent / ".conductor-corpus-cache"
+    _CORPUS_CACHE_DIR = STATE_DIR / "corpus-cache"
 
     def _cache_corpus(self) -> None:
         """Cache current corpus data locally for offline fallback."""
@@ -192,8 +193,9 @@ class GovernanceRuntime:
                 (self._CORPUS_CACHE_DIR / "governance-rules.json").write_text(
                     json.dumps(self.governance, indent=2)
                 )
-        except OSError:
-            pass
+        except OSError as exc:
+            from .observability import log_event
+            log_event("governance.cache_write_error", {"error": str(exc)})
 
     def _load_from_cache(self) -> bool:
         """Load corpus from local cache. Returns True if cache was available."""
@@ -204,14 +206,16 @@ class GovernanceRuntime:
             try:
                 self.registry = _parse_registry_payload(json.loads(cache_reg.read_text()))
                 loaded = True
-            except Exception:
-                pass
+            except Exception as exc:
+                from .observability import log_event
+                log_event("governance.cache_load_error", {"error": str(exc)})
         if cache_gov.exists():
             try:
                 self.governance = _parse_governance_payload(json.loads(cache_gov.read_text()))
                 loaded = True
-            except Exception:
-                pass
+            except Exception as exc:
+                from .observability import log_event
+                log_event("governance.cache_load_error", {"error": str(exc)})
         return loaded
 
     def _load(self) -> None:
@@ -1000,8 +1004,12 @@ class GovernanceRuntime:
             if result.returncode == 0:
                 for issue in json.loads(result.stdout):
                     existing_titles.add(issue.get("title", ""))
-        except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError):
-            pass  # If we can't check, proceed with creation
+        except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError) as exc:
+            from .observability import log_event
+            log_event(
+                "governance.audit_issue_list_error",
+                {"error": str(exc), "repo": target_repo},
+            )
 
         for rec in recommendations:
             title = f"[conductor audit] {rec[:80]}"

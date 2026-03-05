@@ -16,13 +16,12 @@ from .constants import (
     ConductorError,
     EXPORTS_DIR,
     GENERATED_DIR,
+    PATTERN_HISTORY_FILE,
     PHASES,
     SESSIONS_DIR,
     TEMPLATES_DIR,
 )
 from .governance import GovernanceRuntime
-
-PATTERN_HISTORY_FILE = BASE / ".conductor-pattern-history.jsonl"
 
 
 def record_pattern(pattern_name: str, session_id: str, outcome: str) -> None:

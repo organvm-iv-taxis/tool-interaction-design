@@ -181,12 +181,39 @@ def _tool_availability_check(ontology_path: Path) -> DoctorCheck:
     )
 
 
+def _legacy_artifacts_check() -> DoctorCheck:
+    """Check for legacy .conductor-* files in the root that should be in .conductor/."""
+    from .constants import BASE, STATE_DIR
+    legacy = sorted(
+        (p for p in BASE.glob(".conductor-*") if p != STATE_DIR),
+        key=lambda p: p.name,
+    )
+    # Filter out the state directory itself if it matches the pattern (unlikely but safe)
+    if not legacy:
+        return DoctorCheck(name="legacy-artifacts", ok=True)
+
+    preview = ", ".join(p.name for p in legacy[:5])
+    extra = len(legacy) - 5
+    suffix = f" (+{extra} more)" if extra > 0 else ""
+    message = f"Found {len(legacy)} legacy artifacts in root: {preview}{suffix}"
+
+    return DoctorCheck(
+        name="legacy-artifacts",
+        ok=False,
+        errors=[message],
+        hints=[
+            "Review root-level `.conductor-*` files, move any needed data into `.conductor/`, then remove the legacy files.",
+        ],
+    )
+
+
 def _collect_checks(workflow_path: Path, *, include_tools: bool = False) -> list[DoctorCheck]:
     checks: list[DoctorCheck] = [
         _schema_check(REGISTRY_PATH, "registry"),
         _schema_check(GOVERNANCE_PATH, "governance"),
         _workflow_schema_check(workflow_path),
         _phase_config_check(ONTOLOGY_PATH),
+        _legacy_artifacts_check(),
     ]
 
     integrity = run_integrity_checks(ONTOLOGY_PATH, ROUTING_PATH, workflow_path)
@@ -208,6 +235,15 @@ def _collect_checks(workflow_path: Path, *, include_tools: bool = False) -> list
 
 def _apply_autofixes() -> list[str]:
     fixes: list[str] = []
+    
+    # 1. Clean up legacy artifacts in root
+    from .constants import BASE, STATE_DIR
+    legacy = sorted(p for p in BASE.glob(".conductor-*") if p != STATE_DIR)
+    for p in legacy:
+        p.unlink()
+        fixes.append(f"removed legacy artifact: {p.name}")
+
+    # 2. Migrate schemas
     for name, path, migrator in [
         ("registry", REGISTRY_PATH, migrate_registry),
         ("governance", GOVERNANCE_PATH, migrate_governance),
@@ -217,7 +253,9 @@ def _apply_autofixes() -> list[str]:
         try:
             before = json.loads(path.read_text())
             migrated = migrator(path)
-        except Exception:
+        except Exception as exc:
+            from .observability import log_event
+            log_event("doctor.migration_error", {"error": str(exc), "file": str(path)})
             continue
         if migrated != before:
             write_migration_output(migrated, path)

@@ -2,21 +2,34 @@
 
 Consumes session stats, observability trends, pattern data, and governance
 state to produce actionable advisories. Writes ONLY to its own state file
-(.conductor-oracle-state.json) — never mutates session/governance/workflow state.
+(.conductor/oracle/state.json) — never mutates session/governance/workflow state.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import math
+import os
+import re
 import time
-from collections import Counter
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
 from .constants import ORACLE_STATE_FILE, SESSIONS_DIR, STATS_FILE, WORKSPACE
+from .observability import log_event
+
+
+def _log_detector_error(detector: str, error: Exception) -> None:
+    """Log a detector failure to observability — keeps Oracle non-fatal but visible."""
+    log_event("oracle.detector_error", {
+        "detector": detector,
+        "error_type": type(error).__name__,
+        "error": str(error)[:200],
+    })
 
 
 # ---------------------------------------------------------------------------
@@ -43,6 +56,10 @@ class Advisory:
     confidence: float = 1.0  # 0.0-1.0
     narrative: str = ""  # Rich contextual wisdom text (capped 200 chars)
     tags: list[str] = field(default_factory=list)  # For filtering/grouping
+    # --- Guardian Angel fields ---
+    wisdom_id: str = ""  # Reference to WisdomEntry
+    teaching: str = ""  # Pedagogical explanation from wisdom corpus
+    mastery_note: str = ""  # "You've encountered this 5 times..."
 
     SEVERITY_ORDER = SEVERITY_ORDER
 
@@ -54,7 +71,7 @@ class Advisory:
         return hashlib.sha256(f"{self.detector}:{self.category}:{self.message[:80]}".encode()).hexdigest()[:12]
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        d = {
             "category": self.category,
             "severity": self.severity,
             "message": self.message,
@@ -67,6 +84,13 @@ class Advisory:
             "narrative": self.narrative,
             "tags": self.tags,
         }
+        if self.wisdom_id:
+            d["wisdom_id"] = self.wisdom_id
+        if self.teaching:
+            d["teaching"] = self.teaching
+        if self.mastery_note:
+            d["mastery_note"] = self.mastery_note
+        return d
 
 
 @dataclass
@@ -97,6 +121,56 @@ class OracleContext:
         if extra:
             kwargs.setdefault("extra", {}).update(extra)
         return cls(**kwargs)
+
+
+# Re-export for backwards compatibility
+from .profiler import OracleProfile  # noqa: F401
+
+
+# ---------------------------------------------------------------------------
+# Oracle configuration
+# ---------------------------------------------------------------------------
+
+
+def _load_oracle_config() -> dict[str, Any]:
+    """Load oracle-specific config from .conductor.yaml."""
+    from .constants import load_config
+    config = load_config()
+    return config.get("oracle", {})
+
+
+DETECTOR_REGISTRY: dict[str, dict[str, Any]] = {
+    # Original detectors
+    "process_drift": {"category": "process", "default_enabled": True, "phase": "stateless"},
+    "scope_risk": {"category": "risk", "default_enabled": True, "phase": "stateless"},
+    "momentum": {"category": "growth", "default_enabled": True, "phase": "stateless"},
+    "governance_gaps": {"category": "governance", "default_enabled": True, "phase": "stateless"},
+    "pattern_antipatterns": {"category": "risk", "default_enabled": True, "phase": "stateless"},
+    "knowledge_gaps": {"category": "risk", "default_enabled": True, "phase": "stateless"},
+    "growth_opportunities": {"category": "growth", "default_enabled": True, "phase": "stateless"},
+    "seasonal_wisdom": {"category": "history", "default_enabled": True, "phase": "stateless"},
+    "growth_plan": {"category": "growth", "default_enabled": True, "phase": "stateless", "method": "_generate_growth_plan"},
+    # Phase 2 detectors
+    "tool_recommendations": {"category": "tools", "default_enabled": True, "phase": "context"},
+    "gate_checks": {"category": "gate", "default_enabled": True, "phase": "context"},
+    "predictive_warnings": {"category": "risk", "default_enabled": True, "phase": "context"},
+    "narrative_wisdom": {"category": "narrative", "default_enabled": True, "phase": "narrative", "method": "_generate_narrative_wisdom"},
+    "cross_session_patterns": {"category": "growth", "default_enabled": True, "phase": "context"},
+    "workflow_risks": {"category": "risk", "default_enabled": True, "phase": "context"},
+    # Phase 3 detectors (expansion)
+    "dependency_risks": {"category": "governance", "default_enabled": True, "phase": "stateless"},
+    "cost_awareness": {"category": "cost", "default_enabled": True, "phase": "context"},
+    "session_cadence": {"category": "process", "default_enabled": True, "phase": "stateless"},
+    "technical_debt": {"category": "governance", "default_enabled": True, "phase": "stateless"},
+    "scope_complexity": {"category": "risk", "default_enabled": True, "phase": "context"},
+    "collaboration_patterns": {"category": "process", "default_enabled": True, "phase": "stateless"},
+    "stale_repos": {"category": "governance", "default_enabled": True, "phase": "stateless"},
+    "burnout_risk": {"category": "risk", "default_enabled": True, "phase": "stateless"},
+    # Guardian Angel detectors (wisdom-powered)
+    "canonical_practice": {"category": "wisdom", "default_enabled": True, "phase": "context"},
+    "business_insight": {"category": "business", "default_enabled": True, "phase": "context"},
+    "mastery_progress": {"category": "growth", "default_enabled": True, "phase": "stateless"},
+}
 
 
 # ---------------------------------------------------------------------------
@@ -137,7 +211,8 @@ class Oracle:
         try:
             from .observability import compute_trend_report
             self._trends = compute_trend_report()
-        except Exception:
+        except (OSError, json.JSONDecodeError, ImportError) as e:
+            _log_detector_error("_load_trends", e)
             self._trends = {}
         return self._trends
 
@@ -162,7 +237,7 @@ class Oracle:
         for log_path in session_logs:
             try:
                 log = yaml.safe_load(log_path.read_text())
-            except Exception:
+            except (OSError, yaml.YAMLError):
                 continue
             for phase_name, phase_data in (log or {}).get("phases", {}).items():
                 if isinstance(phase_data, dict):
@@ -191,7 +266,8 @@ class Oracle:
             return self._pattern_history
         try:
             from .constants import BASE
-            history_file = BASE / ".conductor-pattern-history.jsonl"
+            from .constants import PATTERN_HISTORY_FILE
+            history_file = PATTERN_HISTORY_FILE
             if not history_file.exists():
                 self._pattern_history = []
                 return self._pattern_history
@@ -201,7 +277,8 @@ class Oracle:
                 if line:
                     entries.append(json.loads(line))
             self._pattern_history = entries
-        except Exception:
+        except (OSError, json.JSONDecodeError) as e:
+            _log_detector_error("_load_pattern_history", e)
             self._pattern_history = []
         return self._pattern_history
 
@@ -281,6 +358,114 @@ class Oracle:
             return True
         return False
 
+    # ----- Mastery ledger -----
+
+    def _load_mastery(self) -> dict[str, Any]:
+        """Load the mastery section from oracle state."""
+        state = self._load_oracle_state()
+        return state.setdefault("mastery", {
+            "encountered": {},
+            "internalized": {},
+            "growth_areas": [],
+            "mastery_score": 0.0,
+        })
+
+    def _save_mastery(self, mastery: dict[str, Any]) -> None:
+        """Write mastery section back to oracle state."""
+        state = self._load_oracle_state()
+        state["mastery"] = mastery
+        self._save_oracle_state()
+
+    def _record_wisdom_shown(self, wisdom_id: str) -> None:
+        """Increment encounter counter for a wisdom entry."""
+        mastery = self._load_mastery()
+        encountered = mastery.setdefault("encountered", {})
+        now = datetime.now(timezone.utc).isoformat()
+        if wisdom_id in encountered:
+            encountered[wisdom_id]["times_shown"] += 1
+            encountered[wisdom_id]["last_shown"] = now
+        else:
+            encountered[wisdom_id] = {
+                "first_seen": now,
+                "times_shown": 1,
+                "last_shown": now,
+            }
+        self._save_mastery(mastery)
+
+    def _check_internalization(self, wisdom_id: str) -> bool:
+        """Check if a wisdom entry has been internalized (behavioral change detected)."""
+        mastery = self._load_mastery()
+        return wisdom_id in mastery.get("internalized", {})
+
+    def _mark_internalized(self, wisdom_id: str, evidence: str = "") -> None:
+        """Mark a wisdom entry as internalized."""
+        mastery = self._load_mastery()
+        internalized = mastery.setdefault("internalized", {})
+        internalized[wisdom_id] = {
+            "at": datetime.now(timezone.utc).isoformat(),
+            "evidence": evidence,
+        }
+        # Update mastery score
+        total_encountered = len(mastery.get("encountered", {}))
+        total_internalized = len(internalized)
+        mastery["mastery_score"] = total_internalized / total_encountered if total_encountered > 0 else 0.0
+        # Remove from growth areas if present
+        growth = mastery.get("growth_areas", [])
+        if wisdom_id in growth:
+            growth.remove(wisdom_id)
+            mastery["growth_areas"] = growth
+        self._save_mastery(mastery)
+
+    def get_mastery_report(self) -> dict[str, Any]:
+        """Public API returning growth state."""
+        mastery = self._load_mastery()
+        encountered = mastery.get("encountered", {})
+        internalized = mastery.get("internalized", {})
+        total_encountered = len(encountered)
+        total_internalized = len(internalized)
+
+        # Determine learning velocity
+        velocity = "starting"
+        if total_encountered == 0:
+            velocity = "starting"
+        elif total_internalized >= total_encountered * 0.7 and total_encountered >= 10:
+            velocity = "mastering"
+        elif total_internalized >= total_encountered * 0.4:
+            velocity = "growing"
+        elif total_encountered >= 10:
+            velocity = "plateau"
+
+        # Top growth areas: most shown but not internalized
+        practicing = []
+        for wid, data in encountered.items():
+            if wid not in internalized:
+                practicing.append((wid, data.get("times_shown", 0)))
+        practicing.sort(key=lambda x: -x[1])
+
+        return {
+            "mastery_score": mastery.get("mastery_score", 0.0),
+            "principles_encountered": total_encountered,
+            "principles_internalized": total_internalized,
+            "learning_velocity": velocity,
+            "top_growth_areas": [wid for wid, _ in practicing[:5]],
+            "recently_internalized": [
+                {"id": wid, "at": data.get("at", "")}
+                for wid, data in sorted(
+                    internalized.items(),
+                    key=lambda x: x[1].get("at", ""),
+                    reverse=True,
+                )[:5]
+            ],
+            "most_encountered": [
+                {"id": wid, "times": data.get("times_shown", 0)}
+                for wid, data in sorted(
+                    encountered.items(),
+                    key=lambda x: x[1].get("times_shown", 0),
+                    reverse=True,
+                )[:5]
+            ],
+        }
+
     # ----- Existing detectors -----
 
     def _detect_process_drift(self) -> list[Advisory]:
@@ -302,7 +487,7 @@ class Oracle:
                     phases = (log or {}).get("phases", {})
                     if "FRAME" not in phases:
                         frame_skips += 1
-                except Exception:
+                except (OSError, yaml.YAMLError):
                     pass
 
         if frame_skips >= 2:
@@ -434,8 +619,8 @@ class Oracle:
                     confidence=0.85,
                     tags=["governance", "ci"],
                 ))
-        except Exception:
-            pass
+        except (OSError, json.JSONDecodeError) as e:
+            _log_detector_error("governance_gaps", e)
 
         return advisories
 
@@ -631,8 +816,8 @@ class Oracle:
                         confidence=0.7,
                         tags=["tools", "phase"],
                     ))
-        except Exception:
-            pass
+        except (OSError, json.JSONDecodeError) as e:
+            _log_detector_error("tool_recommendations", e)
 
         return advisories
 
@@ -659,8 +844,8 @@ class Oracle:
                                 confidence=0.75,
                                 tags=["gate", "phase_transition"],
                             ))
-                except Exception:
-                    pass
+                except (OSError, json.JSONDecodeError) as e:
+                    _log_detector_error("gate_checks.frame_shape", e)
 
             if ctx.current_phase == "BUILD" and ctx.target_phase == "PROVE":
                 # Warn if no commits
@@ -683,8 +868,8 @@ class Oracle:
                                 confidence=0.7,
                                 tags=["gate", "phase_transition"],
                             ))
-                except Exception:
-                    pass
+                except (OSError, json.JSONDecodeError) as e:
+                    _log_detector_error("gate_checks.build_prove", e)
 
             if ctx.target_phase == "DONE":
                 # Check for active warnings
@@ -703,8 +888,8 @@ class Oracle:
                                 confidence=0.8,
                                 tags=["gate", "warnings"],
                             ))
-                except Exception:
-                    pass
+                except (OSError, json.JSONDecodeError) as e:
+                    _log_detector_error("gate_checks.done", e)
 
         if ctx.trigger == "promotion" and ctx.promotion_repo:
             try:
@@ -724,8 +909,8 @@ class Oracle:
                                 tags=["gate", "promotion", "ci"],
                             ))
                         break
-            except Exception:
-                pass
+            except (OSError, json.JSONDecodeError) as e:
+                _log_detector_error("gate_checks.promotion", e)
 
         return advisories
 
@@ -756,8 +941,8 @@ class Oracle:
                         confidence=0.6,
                         tags=["risk", "prediction"],
                     ))
-        except Exception:
-            pass
+        except (OSError, json.JSONDecodeError) as e:
+            _log_detector_error("predictive_warnings", e)
 
         # Composite session health score
         recent = stats.get("recent_sessions", [])
@@ -851,26 +1036,9 @@ class Oracle:
 
     def _detect_cross_session_patterns(self) -> list[Advisory]:
         """Learn which advisories were heeded vs ignored, correlate with outcomes."""
-        advisories: list[Advisory] = []
+        from .profiler import detect_cross_session_patterns
         state = self._load_oracle_state()
-        scores = state.get("detector_scores", {})
-
-        for det, score_data in scores.items():
-            total = score_data.get("total", 0)
-            shipped = score_data.get("shipped", 0)
-            if total >= 5:
-                effectiveness = shipped / total
-                if effectiveness < 0.3:
-                    advisories.append(Advisory(
-                        category="growth",
-                        severity="caution",
-                        message=f"Detector '{det}' active in {total} sessions but only {shipped} shipped. Consider addressing its advisories.",
-                        detector="cross_session_patterns",
-                        confidence=0.65,
-                        tags=["growth", "effectiveness"],
-                    ))
-
-        return advisories
+        return [Advisory(**d) for d in detect_cross_session_patterns(state)]
 
     def _detect_workflow_risks(self, ctx: OracleContext) -> list[Advisory]:
         """Advise during workflow step execution."""
@@ -894,15 +1062,34 @@ class Oracle:
                             confidence=0.7,
                             tags=["risk", "workflow", "health"],
                         ))
-            except Exception:
-                pass
+            except (OSError, json.JSONDecodeError) as e:
+                _log_detector_error("workflow_risks.health", e)
 
         if ctx.trigger == "workflow_post_step":
-            # Suggest checkpointing for long workflows
+            # Suggest checkpointing for long workflows.
+            # Prefer explicit workflow_name, then active pointer, then legacy default.
             try:
-                from .constants import BASE
-                wf_state_file = BASE / ".conductor-workflow-state.json"
-                if wf_state_file.exists():
+                from .constants import STATE_DIR
+
+                wf_dir = STATE_DIR / "workflows"
+                candidates: list[Path] = []
+                if ctx.workflow_name:
+                    candidates.append(wf_dir / f"{ctx.workflow_name}.json")
+
+                active_pointer = wf_dir / "_active"
+                if active_pointer.exists():
+                    try:
+                        active_name = active_pointer.read_text().strip()
+                        if active_name:
+                            candidates.append(wf_dir / f"{active_name}.json")
+                    except OSError as e:
+                        _log_detector_error("workflow_risks.checkpoint.active_pointer", e)
+
+                # Backward compatibility for old single-file state.
+                candidates.append(wf_dir / "_default.json")
+
+                wf_state_file = next((path for path in candidates if path.exists()), None)
+                if wf_state_file is not None:
                     wf_state = json.loads(wf_state_file.read_text())
                     steps = wf_state.get("steps", {})
                     completed = sum(1 for s in steps.values() if isinstance(s, dict) and s.get("status") == "COMPLETED")
@@ -916,10 +1103,659 @@ class Oracle:
                             confidence=0.6,
                             tags=["process", "workflow", "checkpoint"],
                         ))
-            except Exception:
-                pass
+            except (OSError, json.JSONDecodeError) as e:
+                _log_detector_error("workflow_risks.checkpoint", e)
 
         return advisories
+
+    # ----- Phase 3 detectors (expansion) -----
+
+    def _detect_dependency_risks(self) -> list[Advisory]:
+        """Cross-organ dependency violations and unhealthy coupling."""
+        advisories: list[Advisory] = []
+        try:
+            from .governance import GovernanceRuntime
+            gov = GovernanceRuntime()
+            all_repos = gov._all_repos()
+
+            # Check for repos depending on lower-tier organs (back-edges)
+            organ_order = {"I": 1, "II": 2, "III": 3, "IV": 4, "V": 5, "VI": 6, "VII": 7, "META": 0}
+            dep_violations = 0
+            for name, repo in all_repos:
+                deps = repo.get("dependencies", [])
+                repo_organ = repo.get("organ", "")
+                repo_rank = organ_order.get(repo_organ.replace("ORGAN-", "").replace("META-ORGANVM", "META"), 99)
+                for dep in deps:
+                    if not isinstance(dep, dict):
+                        continue
+                    dep_organ = dep.get("organ", "")
+                    dep_rank = organ_order.get(dep_organ.replace("ORGAN-", "").replace("META-ORGANVM", "META"), 99)
+                    if dep_rank > repo_rank and repo_rank < 4:  # back-edge in I->II->III
+                        dep_violations += 1
+
+            if dep_violations > 0:
+                advisories.append(Advisory(
+                    category="governance",
+                    severity="warning",
+                    message=f"{dep_violations} cross-organ dependency violation(s) detected. Check unidirectional flow.",
+                    recommendation="Run `conductor audit` to identify dependency back-edges.",
+                    detector="dependency_risks",
+                    confidence=0.85,
+                    tags=["governance", "dependencies"],
+                ))
+
+            # Concentration risk: too many repos depending on one
+            dep_targets: Counter = Counter()
+            for name, repo in all_repos:
+                for dep in repo.get("dependencies", []):
+                    dep_name = dep.get("repo", "") if isinstance(dep, dict) else str(dep)
+                    dep_targets[dep_name] += 1
+            for target, count in dep_targets.most_common(3):
+                if count >= 5 and target:
+                    advisories.append(Advisory(
+                        category="governance",
+                        severity="caution",
+                        message=f"'{target}' is a dependency for {count} repos — high concentration risk.",
+                        detector="dependency_risks",
+                        confidence=0.7,
+                        tags=["governance", "dependencies", "concentration"],
+                    ))
+
+        except (OSError, json.JSONDecodeError) as e:
+            _log_detector_error("dependency_risks", e)
+        return advisories
+
+    def _detect_cost_awareness(self, ctx: OracleContext) -> list[Advisory]:
+        """Warn about expensive tool cluster usage and suggest cheaper alternatives."""
+        advisories: list[Advisory] = []
+        try:
+            import yaml
+            from .constants import ONTOLOGY_PATH
+            if not ONTOLOGY_PATH.exists():
+                return advisories
+            data = yaml.safe_load(ONTOLOGY_PATH.read_text())
+            clusters = {c["id"]: c for c in data.get("clusters", [])}
+
+            # Identify high-cost clusters being used in current session
+            from .constants import SESSION_STATE_FILE
+            if not SESSION_STATE_FILE.exists():
+                return advisories
+            session = json.loads(SESSION_STATE_FILE.read_text())
+            tools_used: set[str] = set()
+            for pl in session.get("phase_logs", []):
+                tools_used.update(pl.get("tools_used", []))
+
+            high_cost_used = []
+            for tool_id in tools_used:
+                for cid, cluster in clusters.items():
+                    if cluster.get("cost_tier") == "high":
+                        tool_ids = []
+                        for t in cluster.get("tools", []):
+                            if isinstance(t, str):
+                                tool_ids.append(t)
+                            elif isinstance(t, dict):
+                                tool_ids.extend(t.values())
+                        if tool_id in tool_ids or tool_id == cid:
+                            high_cost_used.append(cid)
+                            break
+
+            if high_cost_used:
+                unique_clusters = list(set(high_cost_used))
+                # Find cheaper alternatives in same domain
+                alternatives = []
+                for hc in unique_clusters[:2]:
+                    hc_domain = clusters.get(hc, {}).get("domain", "")
+                    for cid, cluster in clusters.items():
+                        if (cluster.get("domain") == hc_domain and
+                                cluster.get("cost_tier") in ("free", "low") and
+                                cid != hc):
+                            alternatives.append(cid)
+                            break
+
+                advisories.append(Advisory(
+                    category="cost",
+                    severity="info",
+                    message=f"Using {len(unique_clusters)} high-cost cluster(s): {', '.join(unique_clusters[:3])}.",
+                    tools_suggested=alternatives[:3],
+                    recommendation=f"Consider alternatives: {', '.join(alternatives[:3])}" if alternatives else "Monitor usage costs.",
+                    detector="cost_awareness",
+                    confidence=0.65,
+                    tags=["cost", "optimization"],
+                ))
+        except (OSError, json.JSONDecodeError, ValueError) as e:
+            _log_detector_error("cost_awareness", e)
+        return advisories
+
+    def _detect_session_cadence(self) -> list[Advisory]:
+        """Analyze daily/weekly rhythm and suggest optimal scheduling."""
+        from .profiler import detect_session_cadence
+        stats = self._load_stats()
+        return [Advisory(**d) for d in detect_session_cadence(stats)]
+
+    def _detect_technical_debt(self) -> list[Advisory]:
+        """Identify repos lacking tests, CI, or documentation — correlating with failures."""
+        advisories: list[Advisory] = []
+        try:
+            from .governance import GovernanceRuntime
+            gov = GovernanceRuntime()
+            all_repos = gov._all_repos()
+
+            no_ci_candidates = []
+            no_tests_candidates = []
+            for name, repo in all_repos:
+                status = repo.get("promotion_status", "LOCAL")
+                if status in ("CANDIDATE", "PUBLIC_PROCESS"):
+                    if not repo.get("ci_workflow"):
+                        no_ci_candidates.append(name)
+                    if not repo.get("has_tests", True):  # assume True if not tracked
+                        no_tests_candidates.append(name)
+
+            if len(no_ci_candidates) >= 3:
+                advisories.append(Advisory(
+                    category="governance",
+                    severity="warning",
+                    message=f"{len(no_ci_candidates)} promoted repos lack CI: {', '.join(no_ci_candidates[:3])}{'...' if len(no_ci_candidates) > 3 else ''}",
+                    recommendation="Add CI workflows before further promotion. Run `conductor enforce generate`.",
+                    detector="technical_debt",
+                    confidence=0.85,
+                    tags=["governance", "ci", "debt"],
+                ))
+
+            if no_tests_candidates:
+                advisories.append(Advisory(
+                    category="governance",
+                    severity="caution",
+                    message=f"{len(no_tests_candidates)} promoted repo(s) lack test coverage.",
+                    recommendation="Add test suites to repos approaching PUBLIC_PROCESS.",
+                    detector="technical_debt",
+                    confidence=0.75,
+                    tags=["governance", "tests", "debt"],
+                ))
+
+            # Repos in CANDIDATE > 30 days
+            stale_candidates = []
+            now = time.time()
+            for name, repo in all_repos:
+                if repo.get("promotion_status") == "CANDIDATE":
+                    promoted_at = repo.get("last_promoted_at", 0)
+                    if promoted_at and isinstance(promoted_at, (int, float)):
+                        days = (now - promoted_at) / 86400
+                        if days > 30:
+                            stale_candidates.append((name, int(days)))
+
+            if stale_candidates:
+                worst = sorted(stale_candidates, key=lambda x: -x[1])[:3]
+                names = ", ".join(f"{n} ({d}d)" for n, d in worst)
+                advisories.append(Advisory(
+                    category="governance",
+                    severity="caution",
+                    message=f"Stale CANDIDATE repos: {names}. Either promote or archive.",
+                    recommendation="Run `conductor stale --days 30` for full list.",
+                    detector="technical_debt",
+                    confidence=0.8,
+                    tags=["governance", "stale", "debt"],
+                ))
+
+        except (OSError, json.JSONDecodeError) as e:
+            _log_detector_error("technical_debt", e)
+        return advisories
+
+    def _detect_scope_complexity(self, ctx: OracleContext) -> list[Advisory]:
+        """Analyze session scope text for complexity signals."""
+        advisories: list[Advisory] = []
+        try:
+            from .constants import SESSION_STATE_FILE
+            if not SESSION_STATE_FILE.exists():
+                return advisories
+            session = json.loads(SESSION_STATE_FILE.read_text())
+            scope = session.get("scope", "")
+            if not scope:
+                return advisories
+
+            # Word count heuristic
+            words = scope.split()
+            word_count = len(words)
+
+            # Complexity signals
+            complexity_keywords = ["and", "also", "plus", "additionally", "furthermore",
+                                   "as well as", "along with", "including", "multiple"]
+            conjunctions = sum(1 for w in words if w.lower() in complexity_keywords)
+
+            # Scope too broad?
+            if word_count > 30:
+                advisories.append(Advisory(
+                    category="risk",
+                    severity="caution",
+                    message=f"Scope description is {word_count} words. Complex scopes correlate with lower ship rates.",
+                    recommendation="Distill scope to a single sentence. Ship the rest in follow-up sessions.",
+                    detector="scope_complexity",
+                    confidence=0.65,
+                    tags=["risk", "scope"],
+                ))
+            elif conjunctions >= 3:
+                advisories.append(Advisory(
+                    category="risk",
+                    severity="caution",
+                    message=f"Scope has {conjunctions} conjunction(s) ('and', 'also', etc.) — may be multiple tasks in disguise.",
+                    recommendation="Consider splitting into separate sessions for each deliverable.",
+                    detector="scope_complexity",
+                    confidence=0.6,
+                    tags=["risk", "scope", "splitting"],
+                ))
+
+            # Check if scope mentions unfamiliar organs
+            if ctx.organ:
+                mentioned_organs = re.findall(r'\b(ORGAN-[IVX]+|organ[- ][IVX]+)\b', scope, re.IGNORECASE)
+                other_organs = [o for o in mentioned_organs if ctx.organ not in o.upper()]
+                if other_organs:
+                    advisories.append(Advisory(
+                        category="risk",
+                        severity="info",
+                        message=f"Scope references other organs ({', '.join(other_organs[:2])}). Cross-organ work needs extra coordination.",
+                        detector="scope_complexity",
+                        confidence=0.55,
+                        tags=["risk", "scope", "cross_organ"],
+                    ))
+
+        except (OSError, json.JSONDecodeError) as e:
+            _log_detector_error("scope_complexity", e)
+        return advisories
+
+    def _detect_collaboration_patterns(self) -> list[Advisory]:
+        """Detect multi-session coordination patterns and repo contention."""
+        from .profiler import detect_collaboration_patterns
+        stats = self._load_stats()
+        return [Advisory(**d) for d in detect_collaboration_patterns(stats)]
+
+    def _detect_stale_repos(self) -> list[Advisory]:
+        """Identify repos that haven't been touched in a long time."""
+        advisories: list[Advisory] = []
+        try:
+            from .governance import GovernanceRuntime
+            gov = GovernanceRuntime()
+            all_repos = gov._all_repos()
+
+            now = time.time()
+            stale_by_organ: dict[str, int] = defaultdict(int)
+            total_stale = 0
+            threshold_days = 60
+
+            for name, repo in all_repos:
+                status = repo.get("promotion_status", "LOCAL")
+                if status in ("ARCHIVED",):
+                    continue
+                last_activity = repo.get("last_committed_at") or repo.get("last_promoted_at") or 0
+                if last_activity and isinstance(last_activity, (int, float)):
+                    days_since = (now - last_activity) / 86400
+                    if days_since > threshold_days:
+                        organ = repo.get("organ", "UNKNOWN")
+                        stale_by_organ[organ] += 1
+                        total_stale += 1
+
+            if total_stale >= 10:
+                worst_organ = max(stale_by_organ.items(), key=lambda x: x[1]) if stale_by_organ else ("?", 0)
+                advisories.append(Advisory(
+                    category="governance",
+                    severity="caution",
+                    message=f"{total_stale} non-archived repos inactive for {threshold_days}+ days. Worst: {worst_organ[0]} ({worst_organ[1]}).",
+                    recommendation=f"Run `conductor stale --days {threshold_days}` to review. Archive or revive.",
+                    detector="stale_repos",
+                    confidence=0.75,
+                    tags=["governance", "stale"],
+                ))
+
+        except (OSError, json.JSONDecodeError) as e:
+            _log_detector_error("stale_repos", e)
+        return advisories
+
+    def _detect_burnout_risk(self) -> list[Advisory]:
+        """Detect overwork patterns: marathon sessions, late nights, declining ship rates."""
+        from .profiler import detect_burnout_risk
+        stats = self._load_stats()
+        return [Advisory(**d) for d in detect_burnout_risk(stats)]
+
+    # ----- Guardian Angel detectors (wisdom-powered) -----
+
+    def _detect_canonical_practice(self, ctx: OracleContext) -> list[Advisory]:
+        """Surface engineering principles relevant to current phase/behavior."""
+        advisories: list[Advisory] = []
+        try:
+            from .wisdom import WisdomCorpus
+            corpus = WisdomCorpus()
+
+            # Derive triggers from phase and behavioral signals
+            triggers: list[str] = []
+            phase = ctx.current_phase or ""
+
+            if phase == "FRAME":
+                triggers.extend(["research_phase", "preparation", "ambiguity"])
+            elif phase == "SHAPE":
+                triggers.extend(["decomposition", "system_design", "scope_complex"])
+            elif phase == "BUILD":
+                triggers.extend(["no_tests", "small_commits", "refactoring"])
+            elif phase == "PROVE":
+                triggers.extend(["testing", "monitoring", "deployment"])
+
+            # Check session for behavioral signals
+            from .constants import SESSION_STATE_FILE
+            if SESSION_STATE_FILE.exists():
+                try:
+                    session = json.loads(SESSION_STATE_FILE.read_text())
+                    scope = session.get("scope", "").lower()
+                    if "and" in scope or "also" in scope:
+                        triggers.append("scope_complex")
+                    if "refactor" in scope:
+                        triggers.append("refactoring")
+                    warnings = session.get("warnings", [])
+                    if len(warnings) >= 2:
+                        triggers.append("multi_concern")
+                except (OSError, json.JSONDecodeError):
+                    pass
+
+            if not triggers:
+                return advisories
+
+            entries = corpus.query(
+                triggers=triggers,
+                phase=phase,
+                domain="engineering",
+                limit=2,
+            )
+
+            for entry in entries:
+                if self._check_internalization(entry.id):
+                    continue
+                mastery = self._load_mastery()
+                enc = mastery.get("encountered", {}).get(entry.id, {})
+                times = enc.get("times_shown", 0)
+                mastery_note = f"You've encountered this {times} time(s)." if times > 0 else ""
+
+                advisories.append(Advisory(
+                    category="wisdom",
+                    severity=entry.severity_hint,
+                    message=f"{entry.principle}: {entry.summary}",
+                    teaching=entry.teaching,
+                    narrative=entry.metaphor[:200] if entry.metaphor else "",
+                    wisdom_id=entry.id,
+                    mastery_note=mastery_note,
+                    detector="canonical_practice",
+                    confidence=0.7,
+                    tags=["wisdom", "engineering"] + entry.tags[:3],
+                ))
+
+        except (ImportError, OSError) as e:
+            _log_detector_error("canonical_practice", e)
+        return advisories
+
+    def _detect_business_insight(self, ctx: OracleContext) -> list[Advisory]:
+        """Surface business wisdom based on project state."""
+        advisories: list[Advisory] = []
+        try:
+            from .wisdom import WisdomCorpus
+            corpus = WisdomCorpus()
+            stats = self._load_stats()
+            total = stats.get("total_sessions", 0)
+
+            triggers: list[str] = []
+
+            # New repos → MVP thinking
+            if total < 5:
+                triggers.extend(["new_repo", "mvp", "validation"])
+
+            # Stuck candidates → shipping urgency
+            try:
+                from .governance import GovernanceRuntime
+                gov = GovernanceRuntime()
+                all_repos = gov._all_repos()
+                candidates = sum(1 for _, r in all_repos if r.get("promotion_status") == "CANDIDATE")
+                if candidates > 8:
+                    triggers.extend(["stuck_candidate", "perfectionism", "fear_of_shipping"])
+            except Exception as exc:
+                from .observability import log_event
+                log_event("oracle.governance_gap_error", {"error": str(exc)})
+
+            # Single organ focus → portfolio balancing
+            by_organ = stats.get("by_organ", {})
+            if total >= 5 and len(by_organ) <= 2:
+                triggers.extend(["single_organ_focus", "portfolio_imbalance"])
+
+            # Momentum
+            streak = stats.get("streak", 0)
+            if streak >= 3:
+                triggers.append("momentum")
+
+            if not triggers:
+                return advisories
+
+            entries = corpus.query(
+                triggers=triggers,
+                phase=ctx.current_phase or "",
+                domain="business",
+                limit=1,
+            )
+
+            for entry in entries:
+                if self._check_internalization(entry.id):
+                    continue
+                advisories.append(Advisory(
+                    category="business",
+                    severity=entry.severity_hint,
+                    message=f"{entry.principle}: {entry.summary}",
+                    teaching=entry.teaching,
+                    narrative=entry.metaphor[:200] if entry.metaphor else "",
+                    wisdom_id=entry.id,
+                    detector="business_insight",
+                    confidence=0.65,
+                    tags=["wisdom", "business"] + entry.tags[:3],
+                ))
+
+        except (ImportError, OSError) as e:
+            _log_detector_error("business_insight", e)
+        return advisories
+
+    def _detect_mastery_progress(self) -> list[Advisory]:
+        """Growth trajectory updates and milestone celebration."""
+        advisories: list[Advisory] = []
+        mastery = self._load_mastery()
+        encountered = mastery.get("encountered", {})
+        internalized = mastery.get("internalized", {})
+
+        total_enc = len(encountered)
+        total_int = len(internalized)
+
+        if total_enc == 0:
+            return advisories
+
+        # Milestone celebrations
+        milestone_messages = {
+            5: "You've encountered 5 principles. The foundation of wisdom is exposure.",
+            10: "10 principles encountered. Pattern recognition is beginning.",
+            25: "25 principles encountered. You're building a comprehensive knowledge base.",
+            50: "50 principles. The corpus of wisdom is becoming part of your practice.",
+        }
+        if total_enc in milestone_messages:
+            advisories.append(Advisory(
+                category="growth",
+                severity="info",
+                message=milestone_messages[total_enc],
+                detector="mastery_progress",
+                confidence=0.9,
+                tags=["growth", "mastery", "milestone"],
+            ))
+
+        internalization_milestones = {
+            3: "3 principles internalized! Your behavior is visibly changing.",
+            5: "5 principles internalized. Wisdom is becoming instinct.",
+            10: "10 principles internalized. The Guardian Angel has less to teach — you're teaching yourself.",
+        }
+        if total_int in internalization_milestones:
+            advisories.append(Advisory(
+                category="growth",
+                severity="info",
+                message=internalization_milestones[total_int],
+                detector="mastery_progress",
+                confidence=0.9,
+                tags=["growth", "mastery", "internalization"],
+            ))
+
+        # Identify stalled growth
+        if total_enc >= 15 and total_int < total_enc * 0.2:
+            advisories.append(Advisory(
+                category="growth",
+                severity="caution",
+                message=f"You've encountered {total_enc} principles but internalized only {total_int}. "
+                        f"Consider slowing down to practice what you've learned.",
+                recommendation="Run `conductor oracle mastery` to see your growth areas.",
+                detector="mastery_progress",
+                confidence=0.6,
+                tags=["growth", "mastery", "plateau"],
+            ))
+
+        return advisories
+
+    # ----- Profile + convenience -----
+
+    def build_profile(self) -> OracleProfile:
+        """Build a behavioral profile from stats and oracle state."""
+        stats = self._load_stats()
+        state = self._load_oracle_state()
+        return OracleProfile.build(stats, state)
+
+    def get_detector_manifest(self) -> list[dict[str, Any]]:
+        """Return metadata for all registered detectors."""
+        config = _load_oracle_config()
+        disabled = set(config.get("disabled_detectors", []))
+        thresholds = config.get("thresholds", {})
+        scores = self.get_detector_scores()
+
+        manifest = []
+        for name, meta in DETECTOR_REGISTRY.items():
+            entry = {
+                "name": name,
+                "category": meta["category"],
+                "phase": meta["phase"],
+                "enabled": name not in disabled and meta["default_enabled"],
+                "effectiveness": None,
+            }
+            if name in scores:
+                s = scores[name]
+                t = s.get("total", 0)
+                entry["effectiveness"] = s.get("shipped", 0) / t if t > 0 else None
+            if name in thresholds:
+                entry["threshold_override"] = thresholds[name]
+            manifest.append(entry)
+        return manifest
+
+    def get_trend_summary(self) -> dict[str, Any]:
+        """Aggregate trends: ship rate, duration, phase balance over recent sessions."""
+        from .profiler import get_trend_summary
+        stats = self._load_stats()
+        return get_trend_summary(stats)
+
+    def calibrate_detector(self, detector_name: str, action: str = "reset") -> dict[str, Any]:
+        """Calibrate a detector: reset its effectiveness scores or boost/penalize."""
+        state = self._load_oracle_state()
+        scores = state.setdefault("detector_scores", {})
+
+        if detector_name not in DETECTOR_REGISTRY:
+            return {"error": f"Unknown detector: {detector_name}"}
+
+        if action == "reset":
+            scores.pop(detector_name, None)
+            self._save_oracle_state()
+            return {"calibrated": detector_name, "action": "reset"}
+        elif action == "boost":
+            if detector_name in scores:
+                scores[detector_name]["shipped"] = min(
+                    scores[detector_name].get("shipped", 0) + 2,
+                    scores[detector_name].get("total", 0),
+                )
+            self._save_oracle_state()
+            return {"calibrated": detector_name, "action": "boost"}
+        elif action == "penalize":
+            if detector_name in scores:
+                scores[detector_name]["shipped"] = max(scores[detector_name].get("shipped", 0) - 2, 0)
+            self._save_oracle_state()
+            return {"calibrated": detector_name, "action": "penalize"}
+        else:
+            return {"error": f"Unknown action: {action}. Use reset, boost, or penalize."}
+
+    def export_state(self) -> dict[str, Any]:
+        """Full export of oracle state, profile, and detector manifest."""
+        return {
+            "profile": self.build_profile().to_dict(),
+            "detector_manifest": self.get_detector_manifest(),
+            "trend_summary": self.get_trend_summary(),
+            "state": self._load_oracle_state(),
+            "exported_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+    def diagnose(self) -> dict[str, Any]:
+        """Self-diagnostic: check detector health, state file integrity, data freshness."""
+        issues: list[dict[str, str]] = []
+        info: dict[str, Any] = {}
+
+        # State file
+        if ORACLE_STATE_FILE.exists():
+            try:
+                state = json.loads(ORACLE_STATE_FILE.read_text())
+                info["state_file_size"] = ORACLE_STATE_FILE.stat().st_size
+                info["advisory_log_entries"] = len(state.get("advisory_log", []))
+                info["suppressed_count"] = len(state.get("suppressed_hashes", []))
+                info["detector_scores_tracked"] = len(state.get("detector_scores", {}))
+            except (OSError, json.JSONDecodeError) as e:
+                issues.append({"level": "error", "message": f"Oracle state file corrupt: {e}"})
+        else:
+            info["state_file_size"] = 0
+            issues.append({"level": "info", "message": "No oracle state file yet — will be created on first consult."})
+
+        # Stats file freshness
+        if STATS_FILE.exists():
+            age_hours = (time.time() - STATS_FILE.stat().st_mtime) / 3600
+            info["stats_file_age_hours"] = round(age_hours, 1)
+            if age_hours > 168:  # 1 week
+                issues.append({"level": "warning", "message": f"Stats file is {age_hours:.0f}h old. Run a session to refresh."})
+        else:
+            issues.append({"level": "info", "message": "No stats file. Complete a session to generate stats."})
+
+        # Detector coverage
+        config = _load_oracle_config()
+        disabled = set(config.get("disabled_detectors", []))
+        enabled_count = sum(1 for name, meta in DETECTOR_REGISTRY.items() if name not in disabled and meta["default_enabled"])
+        info["detectors_total"] = len(DETECTOR_REGISTRY)
+        info["detectors_enabled"] = enabled_count
+        info["detectors_disabled"] = list(disabled) if disabled else []
+
+        # Run a test consult to check for errors
+        detector_errors: list[str] = []
+        try:
+            test_ctx = OracleContext(trigger="manual")
+            # Test each stateless detector
+            for name in DETECTOR_REGISTRY:
+                meta = DETECTOR_REGISTRY[name]
+                if meta["phase"] == "stateless":
+                    method_name = meta.get("method", f"_detect_{name}")
+                    method = getattr(self, method_name, None)
+                    if method is None:
+                        detector_errors.append(f"Missing method: {method_name}")
+                    else:
+                        try:
+                            method()
+                        except Exception as e:
+                            detector_errors.append(f"{name}: {e}")
+        except Exception as e:
+            detector_errors.append(f"Diagnostic run failed: {e}")
+
+        if detector_errors:
+            for err in detector_errors:
+                issues.append({"level": "warning", "message": f"Detector issue: {err}"})
+        info["detector_errors"] = len(detector_errors)
+
+        return {
+            "ok": len([i for i in issues if i["level"] == "error"]) == 0,
+            "issues": issues,
+            "info": info,
+        }
 
     # ----- Main entry point -----
 
@@ -951,42 +1787,71 @@ class Oracle:
 
         all_advisories: list[Advisory] = []
 
-        # Original detectors (no context needed)
-        stateless_detectors = [
-            self._detect_process_drift,
-            self._detect_scope_risk,
-            self._detect_momentum,
-            self._detect_governance_gaps,
-            self._detect_pattern_antipatterns,
-            self._detect_knowledge_gaps,
-            self._detect_growth_opportunities,
-            self._detect_seasonal_wisdom,
-            self._generate_growth_plan,
+        # Load config for detector toggles
+        oracle_config = _load_oracle_config()
+        disabled_detectors = set(oracle_config.get("disabled_detectors", []))
+
+        def _is_enabled(name: str) -> bool:
+            if name in disabled_detectors:
+                return False
+            reg = DETECTOR_REGISTRY.get(name, {})
+            return reg.get("default_enabled", True)
+
+        # Original stateless detectors
+        stateless_detectors: list[tuple[str, Any]] = [
+            ("process_drift", self._detect_process_drift),
+            ("scope_risk", self._detect_scope_risk),
+            ("momentum", self._detect_momentum),
+            ("governance_gaps", self._detect_governance_gaps),
+            ("pattern_antipatterns", self._detect_pattern_antipatterns),
+            ("knowledge_gaps", self._detect_knowledge_gaps),
+            ("growth_opportunities", self._detect_growth_opportunities),
+            ("seasonal_wisdom", self._detect_seasonal_wisdom),
+            ("growth_plan", self._generate_growth_plan),
+            # Phase 3 stateless
+            ("dependency_risks", self._detect_dependency_risks),
+            ("session_cadence", self._detect_session_cadence),
+            ("technical_debt", self._detect_technical_debt),
+            ("collaboration_patterns", self._detect_collaboration_patterns),
+            ("stale_repos", self._detect_stale_repos),
+            ("burnout_risk", self._detect_burnout_risk),
+            # Guardian Angel stateless
+            ("mastery_progress", self._detect_mastery_progress),
         ]
 
-        for detector in stateless_detectors:
+        for name, detector in stateless_detectors:
+            if not _is_enabled(name):
+                continue
             try:
                 all_advisories.extend(detector())
-            except Exception:
-                pass
+            except Exception as e:
+                _log_detector_error(name, e)
 
-        # New context-aware detectors
-        context_detectors = [
-            lambda: self._detect_tool_recommendations(ctx),
-            lambda: self._detect_gate_checks(ctx),
-            lambda: self._detect_predictive_warnings(),
-            lambda: self._detect_cross_session_patterns(),
-            lambda: self._detect_workflow_risks(ctx),
+        # Context-aware detectors
+        context_detectors: list[tuple[str, Any]] = [
+            ("tool_recommendations", lambda: self._detect_tool_recommendations(ctx)),
+            ("gate_checks", lambda: self._detect_gate_checks(ctx)),
+            ("predictive_warnings", lambda: self._detect_predictive_warnings()),
+            ("cross_session_patterns", lambda: self._detect_cross_session_patterns()),
+            ("workflow_risks", lambda: self._detect_workflow_risks(ctx)),
+            # Phase 3 context-aware
+            ("cost_awareness", lambda: self._detect_cost_awareness(ctx)),
+            ("scope_complexity", lambda: self._detect_scope_complexity(ctx)),
+            # Guardian Angel context-aware
+            ("canonical_practice", lambda: self._detect_canonical_practice(ctx)),
+            ("business_insight", lambda: self._detect_business_insight(ctx)),
         ]
 
         if include_narrative:
-            context_detectors.append(lambda: self._generate_narrative_wisdom(ctx))
+            context_detectors.append(("narrative_wisdom", lambda: self._generate_narrative_wisdom(ctx)))
 
-        for detector in context_detectors:
+        for name, detector in context_detectors:
+            if not _is_enabled(name):
+                continue
             try:
                 all_advisories.extend(detector())
-            except Exception:
-                pass
+            except Exception as e:
+                _log_detector_error(name, e)
 
         # Filter suppressed
         state = self._load_oracle_state()
@@ -1015,8 +1880,8 @@ class Oracle:
         # Record to state
         try:
             self._record_advisories(result)
-        except Exception:
-            pass
+        except (OSError, json.JSONDecodeError) as e:
+            _log_detector_error("_record_advisories", e)
 
         return result
 

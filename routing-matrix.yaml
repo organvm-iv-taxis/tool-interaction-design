@@ -1186,7 +1186,7 @@ routes:
     target: create_pull_request
 - id: analysis_to_testing
   from: code_analysis_mcp
-  to: test_runner_cli
+  to: code_quality_cli
   data_flow: "JSON \u2192 TEXT"
   protocol: "MCP \u2192 CLI"
   automatable: true

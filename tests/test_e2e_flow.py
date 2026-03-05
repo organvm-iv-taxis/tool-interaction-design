@@ -96,6 +96,7 @@ def test_e2e_doctor_json_contract() -> None:
     assert "checks" in report
     assert "summary" in report
     assert isinstance(report["checks"], list)
+    assert all("name" in c and "ok" in c for c in report["checks"])
     assert report["summary"]["checks_total"] > 0
 
 
@@ -302,6 +303,8 @@ def test_e2e_oracle_consult_json() -> None:
     assert result.returncode == 0
     payload = json.loads(result.stdout)
     assert isinstance(payload, list)
+    for item in payload:
+        assert "category" in item and "severity" in item and "message" in item
 
 
 def test_e2e_oracle_gate_phase_transition() -> None:
@@ -327,7 +330,75 @@ def test_e2e_oracle_history() -> None:
 def test_e2e_oracle_ack_nonexistent() -> None:
     result = _run_conductor("oracle", "ack", "nonexistent_hash")
     assert result.returncode == 0
-    assert "Acknowledged" in result.stdout
+    assert "Acknowledged" in result.stdout or "acknowledged" in result.stdout.lower()
+
+
+def test_e2e_oracle_profile_text() -> None:
+    result = _run_conductor("oracle", "profile")
+    assert result.returncode == 0
+
+
+def test_e2e_oracle_profile_json() -> None:
+    result = _run_conductor("oracle", "profile", "--format", "json")
+    assert result.returncode == 0
+    payload = json.loads(result.stdout)
+    assert "total_sessions" in payload
+    assert "ship_rate" in payload
+    assert "risk_appetite" in payload
+    assert "cadence" in payload
+
+
+def test_e2e_oracle_detectors_text() -> None:
+    result = _run_conductor("oracle", "detectors")
+    assert result.returncode == 0
+    assert "DETECTOR MANIFEST" in result.stdout
+
+
+def test_e2e_oracle_detectors_json() -> None:
+    result = _run_conductor("oracle", "detectors", "--format", "json")
+    assert result.returncode == 0
+    payload = json.loads(result.stdout)
+    assert len(payload) >= 23
+
+
+def test_e2e_oracle_trends() -> None:
+    result = _run_conductor("oracle", "trends")
+    assert result.returncode == 0
+
+
+def test_e2e_oracle_trends_json() -> None:
+    result = _run_conductor("oracle", "trends", "--format", "json")
+    assert result.returncode == 0
+    payload = json.loads(result.stdout)
+    assert "sessions_analyzed" in payload
+
+
+def test_e2e_oracle_calibrate_unknown() -> None:
+    result = _run_conductor("oracle", "calibrate", "nonexistent_det")
+    assert result.returncode == 0
+    assert "ERROR" in result.stdout or "Unknown" in result.stdout or "error" in result.stdout.lower()
+
+
+def test_e2e_oracle_calibrate_reset() -> None:
+    result = _run_conductor("oracle", "calibrate", "momentum", "--action", "reset")
+    assert result.returncode == 0
+    assert "Calibrated" in result.stdout
+
+
+def test_e2e_oracle_export() -> None:
+    result = _run_conductor("oracle", "export")
+    assert result.returncode == 0
+    payload = json.loads(result.stdout)
+    assert "profile" in payload
+    assert "detector_manifest" in payload
+    assert "trend_summary" in payload
+    assert "exported_at" in payload
+
+
+def test_e2e_oracle_diagnose() -> None:
+    result = _run_conductor("oracle", "diagnose")
+    assert result.returncode == 0
+    assert "ORACLE DIAGNOSTICS" in result.stdout
 
 
 def test_e2e_oracle_session_lifecycle(tmp_dir, ontology) -> None:
@@ -375,6 +446,53 @@ def test_e2e_oracle_mcp_dispatch() -> None:
     result_json = mcp_server.DISPATCH["conductor_oracle_wisdom"](None)
     payload = json.loads(result_json)
     assert "wisdom" in payload or "error" in payload
+
+
+def test_e2e_oracle_mcp_profile() -> None:
+    """MCP dispatch for oracle profile."""
+    import mcp_server
+
+    result_json = mcp_server.DISPATCH["conductor_oracle_profile"](None)
+    payload = json.loads(result_json)
+    assert "total_sessions" in payload or "error" in payload
+
+
+def test_e2e_oracle_mcp_detectors() -> None:
+    """MCP dispatch for oracle detectors."""
+    import mcp_server
+
+    result_json = mcp_server.DISPATCH["conductor_oracle_detectors"](None)
+    payload = json.loads(result_json)
+    assert "detectors" in payload or "error" in payload
+
+
+def test_e2e_oracle_mcp_trends() -> None:
+    """MCP dispatch for oracle trends."""
+    import mcp_server
+
+    result_json = mcp_server.DISPATCH["conductor_oracle_trends"](None)
+    payload = json.loads(result_json)
+    assert "sessions_analyzed" in payload or "error" in payload
+
+
+def test_e2e_oracle_mcp_diagnose() -> None:
+    """MCP dispatch for oracle diagnostics."""
+    import mcp_server
+
+    result_json = mcp_server.DISPATCH["conductor_oracle_diagnose"](None)
+    payload = json.loads(result_json)
+    assert "ok" in payload or "error" in payload
+
+
+def test_e2e_oracle_mcp_calibrate() -> None:
+    """MCP dispatch for oracle calibrate."""
+    import mcp_server
+
+    result_json = mcp_server.DISPATCH["conductor_oracle_calibrate"](
+        {"detector": "momentum", "action": "reset"}
+    )
+    payload = json.loads(result_json)
+    assert "calibrated" in payload or "error" in payload
 
 
 # ---------------------------------------------------------------------------

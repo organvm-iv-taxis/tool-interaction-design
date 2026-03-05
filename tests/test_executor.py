@@ -392,7 +392,7 @@ def test_emit_logs_event(tmp_path) -> None:
 
     executor.run_step("collect", tool_output="collected-data")
 
-    with patch("conductor.executor.log_event") as mock_log:
+    with patch("conductor.step_runners.log_event") as mock_log:
         result = executor.run_step("notify")
         assert result["status"] == "FINISHED"
         # Check that log_event was called with the emit event type
@@ -490,3 +490,30 @@ def test_all_passed_requires_all_branches(tmp_path) -> None:
 
     done = executor.run_step("gate")
     assert done["status"] == "FINISHED"
+
+
+def test_executor_logs_oracle_advisory_failures(tmp_path) -> None:
+    workflow_path = tmp_path / "workflow.yaml"
+    state_path = tmp_path / "state.json"
+    payload = {
+        "version": "1.0",
+        "examples": [{
+            "name": "oracle-failure-log",
+            "version": "1.0",
+            "steps": [
+                {"name": "only", "cluster": "sequential_thinking"},
+            ],
+        }],
+    }
+    workflow_path.write_text(yaml.safe_dump(payload))
+    executor = WorkflowExecutor(workflow_path=workflow_path, state_file=state_path)
+    executor.start_workflow("oracle-failure-log", session_id="s-oracle-log")
+
+    with patch("conductor.oracle.Oracle.consult", side_effect=RuntimeError("oracle unavailable")), \
+            patch("conductor.executor.log_event") as mock_log:
+        result = executor.run_step("only")
+
+    assert result["status"] == "FINISHED"
+    event_names = [call.args[0] for call in mock_log.call_args_list]
+    assert "executor.oracle_pre_advisory_error" in event_names
+    assert "executor.oracle_post_advisory_error" in event_names

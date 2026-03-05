@@ -1,121 +1,76 @@
-"""conductor — The AI-Conductor's Operating System."""
+"""conductor — The AI-Conductor's Operating System.
+
+Public API only. Internal constants, paths, and helpers are available
+via their respective submodules (e.g., `conductor.constants`).
+"""
 
 __version__ = "0.5.1"
 
-from .constants import (
-    BASE,
-    CONFIG_FILE,
-    EXPORTS_DIR,
-    GENERATED_DIR,
-    GOVERNANCE_PATH,
-    MAX_CANDIDATE_PER_ORGAN,
-    MAX_PUBLIC_PROCESS_PER_ORGAN,
-    ONTOLOGY_PATH,
-    ORACLE_STATE_FILE,
-    ORGANS,
-    PATTERN_HISTORY_FILE,
-    PHASE_CLUSTERS,
-    PHASE_ROLES,
-    PHASES,
-    PROMOTION_STATES,
-    PROMOTION_TRANSITIONS,
-    REGISTRY_PATH,
-    ROUTING_PATH,
-    SESSIONS_DIR,
-    SESSION_STATE_FILE,
-    STATS_FILE,
-    TEMPLATES_DIR,
-    VALID_TRANSITIONS,
-    ConductorError,
-    GovernanceError,
-    SessionError,
-    atomic_write,
-    get_phase_clusters,
-    load_config,
-    organ_short,
-    resolve_organ_key,
-)
-from .doctor import run_doctor
-from .executor import WorkflowExecutor
-from .governance import GovernanceRuntime
-from .handoff import create_handoff_envelope, edge_health_report, get_trace_bundle, simulate_route_handoff, validate_handoff_payload
-from .integrity import IntegrityIssue, IntegrityReport, run_integrity_checks
-from .migrate import migrate_governance, migrate_registry
-from .observability import log_event
-from .oracle import Advisory, Oracle, OracleContext
-from .patchbay import Patchbay
-from .policy import Policy, load_policy
-from .product import ProductExtractor, correlate_patterns_with_outcomes
-from .schemas import SchemaIssue, assert_valid_document, load_schema, validate_document
+# Exceptions
+from .constants import ConductorError, GovernanceError, SessionError
+
+# Core runtime
 from .session import Session, SessionEngine
+from .governance import GovernanceRuntime
+from .patchbay import Patchbay
+from .executor import WorkflowExecutor
 from .workqueue import WorkItem, WorkQueue
+
+# Oracle
+from .oracle import Advisory, DETECTOR_REGISTRY, Oracle, OracleContext, OracleProfile
+
+# Guardian Angel
+from .guardian import GuardianAngel
+from .wisdom import WisdomCorpus, WisdomEntry
+
+# Handoff / routing
+from .handoff import (
+    create_handoff_envelope,
+    edge_health_report,
+    get_trace_bundle,
+    simulate_route_handoff,
+    validate_handoff_payload,
+)
+
+# Policy
+from .policy import Policy, load_policy
+
+# Observability
+from .observability import log_event
 
 __all__ = [
     "__version__",
-    # Constants
-    "BASE",
-    "CONFIG_FILE",
-    "EXPORTS_DIR",
-    "GENERATED_DIR",
-    "GOVERNANCE_PATH",
-    "MAX_CANDIDATE_PER_ORGAN",
-    "MAX_PUBLIC_PROCESS_PER_ORGAN",
-    "ONTOLOGY_PATH",
-    "ORGANS",
-    "ORACLE_STATE_FILE",
-    "PATTERN_HISTORY_FILE",
-    "PHASE_CLUSTERS",
-    "PHASE_ROLES",
-    "PHASES",
-    "PROMOTION_STATES",
-    "PROMOTION_TRANSITIONS",
-    "REGISTRY_PATH",
-    "ROUTING_PATH",
-    "SESSIONS_DIR",
-    "SESSION_STATE_FILE",
-    "STATS_FILE",
-    "TEMPLATES_DIR",
-    "VALID_TRANSITIONS",
     # Exceptions
     "ConductorError",
     "GovernanceError",
     "SessionError",
-    # Helpers
-    "atomic_write",
-    "get_phase_clusters",
-    "load_config",
-    "load_policy",
-    "Policy",
-    "organ_short",
-    "resolve_organ_key",
-    # Classes
-    "Advisory",
-    "Oracle",
-    "OracleContext",
-    "GovernanceRuntime",
-    "correlate_patterns_with_outcomes",
-    "create_handoff_envelope",
-    "simulate_route_handoff",
-    "validate_handoff_payload",
-    "edge_health_report",
-    "get_trace_bundle",
-    "Patchbay",
-    "ProductExtractor",
+    # Core runtime
     "Session",
     "SessionEngine",
+    "GovernanceRuntime",
+    "Patchbay",
+    "WorkflowExecutor",
     "WorkItem",
     "WorkQueue",
-    # Validation and observability
-    "SchemaIssue",
-    "load_schema",
-    "validate_document",
-    "assert_valid_document",
-    "run_integrity_checks",
-    "IntegrityIssue",
-    "IntegrityReport",
-    "run_doctor",
-    "WorkflowExecutor",
-    "migrate_registry",
-    "migrate_governance",
+    # Oracle
+    "Advisory",
+    "DETECTOR_REGISTRY",
+    "Oracle",
+    "OracleContext",
+    "OracleProfile",
+    # Guardian Angel
+    "GuardianAngel",
+    "WisdomCorpus",
+    "WisdomEntry",
+    # Handoff / routing
+    "create_handoff_envelope",
+    "edge_health_report",
+    "get_trace_bundle",
+    "simulate_route_handoff",
+    "validate_handoff_payload",
+    # Policy
+    "Policy",
+    "load_policy",
+    # Observability
     "log_event",
 ]

@@ -1,0 +1,257 @@
+# Philosophical wisdom entries
+# ~15 entries: mythological, alchemical, musical, and philosophical framing
+
+- id: phil.scylla_charybdis
+  domain: philosophical
+  principle: Navigate Between Scylla and Charybdis
+  summary: Steer between the twin perils — recklessness and paralysis.
+  teaching: >-
+    Odysseus chose to pass closer to Scylla (losing some crew) rather
+    than Charybdis (losing the entire ship). In development, perfection
+    (Charybdis) devours everything; carelessness (Scylla) costs pieces.
+    The wise navigator accepts calculated losses to save the voyage.
+  metaphor: >-
+    The strait narrows. Both monsters are real. The hero doesn't defeat
+    them — the hero survives them. Survival is the victory.
+  triggers: [risky_decision, analysis_paralysis, perfectionism, reckless_shipping]
+  phase_relevance: [FRAME, SHAPE, BUILD, PROVE]
+  severity_hint: caution
+  tags: [mythology, navigation, balance]
+
+- id: phil.daedalus
+  domain: philosophical
+  principle: The Labyrinth of Daedalus
+  summary: The architect who builds the labyrinth must also build the escape.
+  teaching: >-
+    Daedalus built the labyrinth so complex that even he needed wings
+    to escape. Complexity you create ensnares you. Every system you build
+    should include the path out — rollback plans, exit strategies,
+    documentation for future navigators.
+  metaphor: >-
+    The labyrinth's designer is its first prisoner unless
+    they plan the thread of Ariadne before laying the first stone.
+  triggers: [complexity_trap, no_exit_plan, over_engineering, labyrinth]
+  phase_relevance: [SHAPE, BUILD]
+  severity_hint: caution
+  tags: [mythology, complexity, planning]
+
+- id: phil.solve_et_coagula
+  domain: philosophical
+  principle: Solve et Coagula
+  summary: Dissolve and recombine — the alchemical cycle of creation.
+  teaching: >-
+    The alchemical maxim teaches that creation requires both dissolution
+    and reintegration. Break the problem apart (analysis), then recombine
+    the elements into something new (synthesis). FRAME dissolves the
+    unknown; BUILD coagulates the solution.
+  metaphor: >-
+    The prima materia must be broken down to its elements before
+    the philosopher's stone can be composed. Destruction precedes creation.
+  triggers: [decomposition, synthesis, refactoring, phase_transition]
+  phase_relevance: [FRAME, SHAPE]
+  severity_hint: info
+  tags: [alchemy, transformation, analysis]
+
+- id: phil.counterpoint
+  domain: philosophical
+  principle: Counterpoint — Multiple Voices in Harmony
+  summary: Independent voices creating something greater than any solo line.
+  teaching: >-
+    In counterpoint, each voice has its own melody, rhythm, and direction.
+    The beauty emerges from their interaction — tension, resolution,
+    and interplay. A well-orchestrated system has independent components
+    that harmonize through well-defined interfaces.
+  metaphor: >-
+    Bach's fugues prove that four independent voices, each following
+    strict rules, create infinite beauty. Constraint enables complexity.
+  triggers: [multi_component, orchestration, system_design, independence]
+  phase_relevance: [SHAPE]
+  severity_hint: info
+  tags: [music, harmony, architecture]
+
+- id: phil.wabi_sabi
+  domain: philosophical
+  principle: Wabi-Sabi — Beauty in Imperfection
+  summary: Accept imperfection. Ship the beautifully incomplete.
+  teaching: >-
+    The Japanese aesthetic of wabi-sabi finds beauty in impermanence,
+    incompleteness, and imperfection. Version 1.0 will have rough edges.
+    Those edges are not failures — they are evidence of the courage to ship.
+    Polish comes from iteration, not from delay.
+  metaphor: >-
+    The cracked tea bowl, repaired with gold, is more beautiful
+    than one that was never used. The cracks tell the story of use.
+  triggers: [perfectionism, fear_of_shipping, rough_edges, v1_anxiety]
+  phase_relevance: [BUILD, PROVE]
+  severity_hint: info
+  tags: [philosophy, acceptance, shipping]
+
+- id: phil.mise_en_place
+  domain: philosophical
+  principle: Mise en Place — Everything in Its Place
+  summary: Prepare your workspace before you begin the work.
+  teaching: >-
+    The chef's mise en place — ingredients measured, tools arranged,
+    workspace clean — enables flow state and prevents errors. In
+    development, this means FRAME before BUILD: understand the problem,
+    gather references, prepare the environment, THEN create.
+  metaphor: >-
+    The chef who reaches for the salt and finds it missing
+    burns the sauce while searching. Preparation is invisible productivity.
+  triggers: [unprepared, rushed_start, missing_context, skipped_frame]
+  phase_relevance: [FRAME]
+  severity_hint: caution
+  tags: [philosophy, preparation, discipline]
+
+- id: phil.opus_magnum
+  domain: philosophical
+  principle: The Great Work — Opus Magnum
+  summary: The masterwork emerges from sustained practice, not sudden inspiration.
+  teaching: >-
+    The alchemist's Opus Magnum is not a single act but a sustained
+    process of purification — nigredo (dissolution), albedo (purification),
+    citrinitas (awakening), rubedo (completion). Each session is a step
+    in the Great Work. Trust the process.
+  metaphor: >-
+    The philosopher's stone is not found — it is forged through
+    a thousand patient transmutations. The work IS the reward.
+  triggers: [milestone, long_journey, sustained_effort, mastery]
+  phase_relevance: [FRAME, SHAPE, BUILD, PROVE]
+  severity_hint: info
+  tags: [alchemy, mastery, patience]
+
+- id: phil.kaizen
+  domain: philosophical
+  principle: Kaizen — Continuous Improvement
+  summary: Small daily improvements compound into transformation.
+  teaching: >-
+    The Japanese principle of kaizen: improve by 1% each day. In one year,
+    that compounds to 37x improvement. Don't seek revolutionary changes —
+    seek continuous, incremental refinement of process, code, and skill.
+  metaphor: >-
+    The bamboo grows invisibly underground for years, building roots.
+    When it finally breaks the surface, it shoots up 90 feet in weeks.
+    The growth was always happening — just not where you could see it.
+  triggers: [incremental, improvement, growth, small_wins]
+  phase_relevance: [BUILD, PROVE]
+  severity_hint: info
+  tags: [philosophy, improvement, growth]
+
+- id: phil.via_negativa
+  domain: philosophical
+  principle: Via Negativa — Subtract to Improve
+  summary: What you remove matters more than what you add.
+  teaching: >-
+    Nassim Taleb's principle: improvement often comes from subtraction,
+    not addition. Remove dependencies, remove features, remove complexity.
+    The surgeon heals by cutting. The editor improves by deleting.
+    The best code is no code at all.
+  metaphor: >-
+    Michelangelo freed David from the marble by removing
+    everything that was not David. The masterpiece was already inside.
+  triggers: [over_engineering, bloat, simplification, removal]
+  phase_relevance: [SHAPE, BUILD]
+  severity_hint: info
+  tags: [philosophy, simplicity, subtraction]
+
+- id: phil.antifragile
+  domain: philosophical
+  principle: Antifragility — Grow from Stress
+  summary: Design systems that get stronger from adversity, not just resilient.
+  teaching: >-
+    Resilient systems survive stress. Antifragile systems improve from it.
+    A test suite that catches a bug makes the system stronger. A failed
+    session that teaches a pattern makes the developer stronger.
+    Welcome failures as teachers.
+  metaphor: >-
+    The bone that heals from a fracture grows back stronger at the break.
+    The immune system that encounters a pathogen builds lasting defense.
+  triggers: [failure_learning, post_mortem, resilience, growth_from_failure]
+  phase_relevance: [PROVE]
+  severity_hint: info
+  tags: [philosophy, resilience, growth]
+
+- id: phil.prima_materia
+  domain: philosophical
+  principle: Prima Materia — The Raw Material
+  summary: Every creation begins with undifferentiated potential.
+  teaching: >-
+    The alchemist's prima materia is the raw, chaotic base material
+    from which the Work begins. In FRAME phase, you face the prima
+    materia of a problem — unstructured, ambiguous, full of potential.
+    The work is to differentiate, separate, and purify.
+  metaphor: >-
+    The ore does not know it contains gold. The alchemist's art
+    is seeing the gold within and knowing the fire to extract it.
+  triggers: [new_project, blank_slate, ambiguity, research_phase]
+  phase_relevance: [FRAME]
+  severity_hint: info
+  tags: [alchemy, beginning, potential]
+
+- id: phil.ergon
+  domain: philosophical
+  principle: Ergon — The Essential Function
+  summary: Everything has a function it was designed to fulfill.
+  teaching: >-
+    Aristotle's ergon is the essential function of a thing — what makes
+    a knife a knife is its cutting, not its decoration. In software,
+    the ergon is the core value proposition. Build for the ergon first.
+    Everything else is ornament.
+  metaphor: >-
+    The eye's ergon is sight. A beautiful eye that cannot see
+    fails its essential purpose. Function precedes form.
+  triggers: [core_feature, essential_function, value_proposition]
+  phase_relevance: [FRAME, SHAPE]
+  severity_hint: info
+  tags: [philosophy, purpose, function]
+
+- id: phil.compass_not_map
+  domain: philosophical
+  principle: Compass Over Map
+  summary: In uncertain terrain, direction matters more than detail.
+  teaching: >-
+    Maps describe known territory. Compasses navigate unknown territory.
+    When exploring new problem spaces, a clear direction (vision, values,
+    principles) is more useful than a detailed plan that will be wrong.
+    Plan loosely, navigate by compass.
+  metaphor: >-
+    The explorer with a compass and no map reaches the destination.
+    The explorer with a perfect map of the wrong territory is lost.
+  triggers: [uncertainty, exploration, new_territory, planning_excess]
+  phase_relevance: [FRAME, SHAPE]
+  severity_hint: info
+  tags: [philosophy, navigation, uncertainty]
+
+- id: phil.memento_mori
+  domain: philosophical
+  principle: Memento Mori — Remember Impermanence
+  summary: Nothing lasts forever. Build for today, not for eternity.
+  teaching: >-
+    Code will be rewritten. APIs will be deprecated. Today's architecture
+    will be tomorrow's legacy system. Accepting impermanence liberates
+    you from perfectionism and over-engineering. Build well for NOW.
+  metaphor: >-
+    The sand mandala, painstakingly created by monks, is deliberately
+    destroyed upon completion. The creation was the practice; the
+    destruction, the teaching.
+  triggers: [over_engineering, eternity_thinking, legacy_fear]
+  phase_relevance: [SHAPE, BUILD]
+  severity_hint: info
+  tags: [philosophy, impermanence, pragmatism]
+
+- id: phil.crucible
+  domain: philosophical
+  principle: The Crucible — Transformation Through Heat
+  summary: Pressure and constraints forge stronger outcomes.
+  teaching: >-
+    The crucible subjects material to extreme heat and pressure to
+    purify and transform it. Deadlines, resource constraints, and
+    scope limits are your crucible. They burn away the unnecessary
+    and reveal what survives — the essential.
+  metaphor: >-
+    Gold is purified by fire. The dross burns away; the gold remains.
+    Without the fire, gold and dross are indistinguishable.
+  triggers: [deadline_pressure, constraint, scope_reduction, purification]
+  phase_relevance: [BUILD, PROVE]
+  severity_hint: info
+  tags: [alchemy, transformation, constraints]

@@ -24,6 +24,7 @@ from .contracts import assert_contract
 from .executor import WorkflowExecutor
 from .governance import GovernanceRuntime
 from .observability import get_metrics, log_event
+from .guardian import GuardianAngel
 from .oracle import Oracle, OracleContext
 from .session import Session, SessionEngine, _load_stats
 from .work_item import WorkRegistry
@@ -51,8 +52,9 @@ class Patchbay:
         try:
             computed = self.wq.compute(organ_filter)
             self.wr.sync(computed)
-        except Exception:
-            pass
+        except Exception as exc:
+            from .observability import log_event
+            log_event("patchbay.sync_error", {"error": str(exc)})
 
         result: dict = {"timestamp": datetime.now(timezone.utc).isoformat()}
 
@@ -72,7 +74,9 @@ class Patchbay:
 
         try:
             result["suggested_action"] = self._suggest_next(organ_filter)
-        except Exception:
+        except Exception as exc:
+            from .observability import log_event
+            log_event("patchbay.suggest_next_error", {"error": str(exc)})
             result["suggested_action"] = ""
 
         assert_contract("patchbay_briefing", result)
@@ -84,7 +88,9 @@ class Patchbay:
         """Active session or last closed."""
         try:
             session = self.engine._load_session()
-        except Exception:
+        except Exception as exc:
+            from .observability import log_event
+            log_event("patchbay.session_load_error", {"error": str(exc)})
             session = None
         if session:
             phase_clusters = get_phase_clusters()
@@ -129,7 +135,9 @@ class Patchbay:
         """AI orchestra briefing for the current session phase."""
         try:
             session = self.engine._load_session()
-        except Exception:
+        except Exception as exc:
+            from .observability import log_event
+            log_event("patchbay.session_load_error", {"error": str(exc)})
             session = None
 
         if not session:
@@ -244,13 +252,15 @@ class Patchbay:
         }
 
     def _oracle_section(self) -> dict:
-        """Advisory wisdom from the Oracle."""
-        oracle = Oracle()
+        """Advisory wisdom from the Guardian Angel (Oracle + Wisdom Corpus)."""
+        guardian = GuardianAngel()
 
         # Build context from session state
         try:
             session = self.engine._load_session()
-        except Exception:
+        except Exception as exc:
+            from .observability import log_event
+            log_event("patchbay.session_load_error", {"error": str(exc)})
             session = None
 
         ctx = OracleContext(
@@ -259,7 +269,11 @@ class Patchbay:
             current_phase=session.current_phase if session else "",
             organ=session.organ if session else "",
         )
-        advisories = oracle.consult(ctx, include_narrative=True)
+        advisories = guardian.counsel(ctx)
+
+        # Include mastery summary
+        mastery = guardian.growth_report()
+
         return {
             "count": len(advisories),
             "advisories": [
@@ -272,9 +286,17 @@ class Patchbay:
                     "tools_suggested": a.tools_suggested,
                     "confidence": a.confidence,
                     "detector": a.detector,
+                    "wisdom_id": a.wisdom_id,
+                    "teaching": a.teaching,
                 }
                 for a in advisories
             ],
+            "mastery": {
+                "score": mastery.get("mastery_score", 0.0),
+                "velocity": mastery.get("learning_velocity", "starting"),
+                "encountered": mastery.get("principles_encountered", 0),
+                "internalized": mastery.get("principles_internalized", 0),
+            },
         }
 
     def _suggest_next(self, organ_filter: str | None = None) -> str:
@@ -548,23 +570,32 @@ class Patchbay:
                 f"Streak: {stats.get('streak', 0)}"
             )
 
-        # Oracle advisories
+        # Guardian Angel advisories
         oracle_data = data.get("oracle", {})
         oracle_items = oracle_data.get("advisories", [])
         if oracle_items:
             lines.append("")
-            lines.append("  ORACLE")
+            # Keep "ORACLE" in the header for backward-compatible text parsers.
+            lines.append("  ORACLE / GUARDIAN ANGEL")
             lines.append("  " + "-" * 68)
             severity_icons = {"critical": "XX", "warning": "!!", "caution": "! ", "info": "  "}
             for adv in oracle_items[:5]:
                 icon = severity_icons.get(adv["severity"], "  ")
                 lines.append(f"  {icon} [{adv['category'].upper()}] {adv['message']}")
-                if adv.get("narrative"):
+                if adv.get("teaching"):
+                    lines.append(f"     * {adv['teaching'][:120]}")
+                elif adv.get("narrative"):
                     lines.append(f"     ~ {adv['narrative']}")
                 if adv.get("recommendation"):
                     lines.append(f"     -> {adv['recommendation']}")
                 if adv.get("tools_suggested"):
                     lines.append(f"     tools: {', '.join(adv['tools_suggested'][:4])}")
+            mastery = oracle_data.get("mastery", {})
+            if mastery.get("encountered", 0) > 0:
+                lines.append(f"  Mastery: {mastery.get('score', 0):.0%} | "
+                             f"{mastery.get('encountered', 0)} encountered, "
+                             f"{mastery.get('internalized', 0)} internalized | "
+                             f"velocity: {mastery.get('velocity', 'starting')}")
 
         # Suggested action (shown for both active and inactive sessions)
         suggested = data.get("suggested_action", "")

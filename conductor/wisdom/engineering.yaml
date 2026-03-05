@@ -1,0 +1,614 @@
+# Canonical software engineering wisdom entries
+# ~40 entries covering SOLID, TDD, design patterns, anti-patterns, practices
+
+- id: solid.single_responsibility
+  domain: engineering
+  principle: Single Responsibility Principle
+  summary: A class/module should have one reason to change.
+  teaching: >-
+    When a module serves two masters, changes for one break the other.
+    Single responsibility reduces coupling, simplifies testing, and makes
+    code navigable. Each function should do one thing well.
+  metaphor: >-
+    A knife that is also a hammer cuts poorly and strikes weakly.
+    The master craftsman keeps separate tools for separate tasks.
+  triggers: [scope_complex, multi_concern, large_module, god_object]
+  phase_relevance: [SHAPE, BUILD]
+  severity_hint: caution
+  tags: [solid, design, modularity]
+
+- id: solid.open_closed
+  domain: engineering
+  principle: Open/Closed Principle
+  summary: Open for extension, closed for modification.
+  teaching: >-
+    Stable code should not need modification to add new behavior.
+    Use abstractions and composition to extend functionality without
+    touching proven, tested code.
+  metaphor: >-
+    The cathedral is not rebuilt for each new saint — a niche is added.
+    The foundation endures; the ornament evolves.
+  triggers: [modification_heavy, breaking_change, refactor_fear]
+  phase_relevance: [SHAPE, BUILD]
+  severity_hint: info
+  tags: [solid, design, extensibility]
+
+- id: solid.liskov_substitution
+  domain: engineering
+  principle: Liskov Substitution Principle
+  summary: Subtypes must be substitutable for their base types.
+  teaching: >-
+    If code works with a base class, it must work with any subclass without
+    surprises. Violated when subclasses throw unexpected exceptions or
+    change invariants. Design inheritance hierarchies carefully.
+  metaphor: >-
+    A promise made by the parent must be kept by every child.
+    The apprentice who violates the master's contract breaks the guild.
+  triggers: [inheritance_deep, type_error, subclass_override]
+  phase_relevance: [SHAPE, BUILD]
+  severity_hint: info
+  tags: [solid, design, inheritance]
+
+- id: solid.interface_segregation
+  domain: engineering
+  principle: Interface Segregation Principle
+  summary: No client should depend on methods it does not use.
+  teaching: >-
+    Fat interfaces force implementers to stub out unused methods.
+    Split interfaces by client need. Small, focused interfaces are
+    easier to implement, test, and evolve independently.
+  metaphor: >-
+    Do not force the violinist to carry the percussion kit.
+    Each musician's stand holds only the score they play.
+  triggers: [fat_interface, unused_methods, forced_implementation]
+  phase_relevance: [SHAPE]
+  severity_hint: info
+  tags: [solid, design, interfaces]
+
+- id: solid.dependency_inversion
+  domain: engineering
+  principle: Dependency Inversion Principle
+  summary: Depend on abstractions, not concretions.
+  teaching: >-
+    High-level modules should not import low-level modules directly.
+    Both should depend on abstractions. This makes systems testable,
+    swappable, and resilient to infrastructure changes.
+  metaphor: >-
+    The general gives orders to roles, not to individuals.
+    When a soldier falls, the role is filled — the strategy endures.
+  triggers: [tight_coupling, hard_dependency, untestable]
+  phase_relevance: [SHAPE, BUILD]
+  severity_hint: info
+  tags: [solid, design, abstraction]
+
+- id: tdd.red_green_refactor
+  domain: engineering
+  principle: Test-Driven Development
+  summary: Write a failing test, make it pass, then refactor.
+  teaching: >-
+    TDD is a design discipline, not just a testing technique. Writing
+    the test first forces you to think about the interface before the
+    implementation. The red-green-refactor cycle keeps changes small and safe.
+  metaphor: >-
+    The sculptor sketches the form before lifting the chisel.
+    Each stroke is measured against the drawing — deviation is caught immediately.
+  triggers: [no_tests, test_after, large_untested, build_without_tests]
+  phase_relevance: [BUILD, PROVE]
+  severity_hint: caution
+  tags: [tdd, testing, discipline]
+
+- id: tdd.test_pyramid
+  domain: engineering
+  principle: Test Pyramid
+  summary: Many unit tests, fewer integration tests, fewest E2E tests.
+  teaching: >-
+    Unit tests are fast, focused, and cheap. Integration tests verify
+    boundaries. E2E tests are slow and brittle but prove the system works.
+    Inverting the pyramid (all E2E, no unit) creates a fragile, slow suite.
+  metaphor: >-
+    The pyramid stands because its base is widest. Build confidence
+    from the ground up — speed at the base, comprehensiveness at the peak.
+  triggers: [slow_tests, no_unit_tests, flaky_tests, test_strategy]
+  phase_relevance: [BUILD, PROVE]
+  severity_hint: info
+  tags: [testing, architecture, quality]
+
+- id: twelve_factor.config
+  domain: engineering
+  principle: 12-Factor App — Config in Environment
+  summary: Store config in environment variables, not code.
+  teaching: >-
+    Configuration varies between deployments; code does not. Hardcoded
+    config prevents reuse across environments and leaks secrets.
+    Environment variables are language-agnostic and deployment-safe.
+  metaphor: >-
+    The recipe stays in the cookbook; the ingredients come from the pantry.
+    A recipe that demands a specific pantry cannot travel.
+  triggers: [hardcoded_config, secrets_in_code, environment_mismatch]
+  phase_relevance: [BUILD]
+  severity_hint: caution
+  tags: [twelve_factor, deployment, config]
+
+- id: twelve_factor.disposability
+  domain: engineering
+  principle: 12-Factor App — Disposability
+  summary: Maximize robustness with fast startup and graceful shutdown.
+  teaching: >-
+    Processes should start quickly and handle termination gracefully.
+    This enables elastic scaling, rapid deployment, and fault tolerance.
+    Design for crash — assume any process can die at any moment.
+  metaphor: >-
+    The relay runner must be ready to receive the baton at any instant
+    and hand it off without dropping it — the race continues regardless.
+  triggers: [slow_startup, no_graceful_shutdown, stateful_process]
+  phase_relevance: [BUILD, PROVE]
+  severity_hint: info
+  tags: [twelve_factor, deployment, resilience]
+
+- id: ci_cd.continuous_integration
+  domain: engineering
+  principle: Continuous Integration
+  summary: Merge to main frequently; validate with automated builds.
+  teaching: >-
+    Integration pain grows exponentially with delay. Merging daily
+    catches conflicts early, keeps the build green, and enables
+    continuous delivery. Long-lived branches are technical debt.
+  metaphor: >-
+    A river fed by many small streams flows steadily.
+    Dam the streams and the eventual flood destroys the valley.
+  triggers: [long_branch, no_ci, merge_conflict, integration_fear]
+  phase_relevance: [BUILD, PROVE]
+  severity_hint: caution
+  tags: [ci_cd, integration, automation]
+
+- id: ci_cd.deploy_small
+  domain: engineering
+  principle: Deploy Small, Deploy Often
+  summary: Small deployments reduce risk and speed feedback.
+  teaching: >-
+    Each deployment should be a small, reversible change. Large
+    deployments bundle risk — when something breaks, the blast radius
+    is enormous and the root cause is hidden. Ship atoms, not monoliths.
+  metaphor: >-
+    The experienced sailor adjusts the tiller continuously.
+    The novice waits until the ship is far off course, then overcorrects.
+  triggers: [big_deploy, infrequent_release, fear_of_shipping]
+  phase_relevance: [PROVE]
+  severity_hint: info
+  tags: [ci_cd, deployment, risk]
+
+- id: semver.semantic_versioning
+  domain: engineering
+  principle: Semantic Versioning
+  summary: MAJOR.MINOR.PATCH communicates change impact.
+  teaching: >-
+    Version numbers are a contract with consumers. MAJOR means breaking
+    changes, MINOR means new features (backward-compatible), PATCH means
+    bug fixes. Without semver, every update is a gamble for dependents.
+  metaphor: >-
+    Traffic lights communicate intent without conversation.
+    Red, yellow, green — each color is a promise the driver trusts.
+  triggers: [version_bump, breaking_api, release_prep]
+  phase_relevance: [PROVE]
+  severity_hint: info
+  tags: [versioning, api, contract]
+
+- id: pattern.composition_over_inheritance
+  domain: engineering
+  principle: Composition Over Inheritance
+  summary: Favor composing objects over extending class hierarchies.
+  teaching: >-
+    Inheritance creates rigid hierarchies that are hard to change.
+    Composition lets you combine behaviors flexibly at runtime.
+    Deep inheritance trees breed fragile base class problems.
+  metaphor: >-
+    The alchemist combines elements in the crucible — each retains its nature.
+    Forcing lead to become gold through ancestry is the fool's errand.
+  triggers: [deep_inheritance, class_hierarchy, inflexible_design]
+  phase_relevance: [SHAPE, BUILD]
+  severity_hint: info
+  tags: [design, patterns, composition]
+
+- id: pattern.separation_of_concerns
+  domain: engineering
+  principle: Separation of Concerns
+  summary: Each module addresses a distinct concern.
+  teaching: >-
+    Mixing UI logic with business logic with data access creates
+    unmaintainable code. Clean boundaries between concerns enable
+    independent evolution, testing, and team ownership.
+  metaphor: >-
+    The orchestra has sections — strings, brass, percussion —
+    each mastering its domain. The conductor unites them without
+    asking the violinist to play the drum.
+  triggers: [mixed_concerns, spaghetti, tangled_logic]
+  phase_relevance: [SHAPE, BUILD]
+  severity_hint: caution
+  tags: [design, architecture, modularity]
+
+- id: pattern.dry
+  domain: engineering
+  principle: Don't Repeat Yourself
+  summary: Every piece of knowledge has a single, authoritative representation.
+  teaching: >-
+    Duplication is not just about code — it's about knowledge. When the same
+    business rule exists in three places, changing it requires finding all three.
+    But beware premature abstraction — two similar things are not necessarily the same thing.
+  metaphor: >-
+    The scribe who copies the manuscript by hand will introduce errors.
+    The printing press ensures one master, many faithful copies.
+  triggers: [code_duplication, copy_paste, inconsistent_behavior]
+  phase_relevance: [BUILD]
+  severity_hint: info
+  tags: [design, maintenance, duplication]
+
+- id: pattern.yagni
+  domain: engineering
+  principle: You Aren't Gonna Need It
+  summary: Don't build features until they're actually needed.
+  teaching: >-
+    Speculative features add complexity, increase maintenance burden,
+    and are often wrong when the real need arrives. Build for today's
+    requirements. Tomorrow's requirements will speak for themselves.
+  metaphor: >-
+    The traveler who packs for every possible weather carries a burden
+    that slows the journey. Pack light; buy the umbrella when it rains.
+  triggers: [speculative_feature, premature_abstraction, over_engineering]
+  phase_relevance: [SHAPE, BUILD]
+  severity_hint: caution
+  tags: [design, simplicity, scope]
+
+- id: pattern.kiss
+  domain: engineering
+  principle: Keep It Simple, Stupid
+  summary: The simplest solution that works is usually the best.
+  teaching: >-
+    Complexity is the enemy of reliability. Every abstraction layer,
+    every indirection, every clever trick is a place where bugs hide.
+    Earn complexity by proving simplicity is insufficient.
+  metaphor: >-
+    The master calligrapher's stroke looks effortless because years of
+    practice distilled the unnecessary. Simplicity is the residue of mastery.
+  triggers: [over_engineering, complex_solution, clever_code]
+  phase_relevance: [SHAPE, BUILD]
+  severity_hint: info
+  tags: [design, simplicity]
+
+- id: antipattern.god_object
+  domain: engineering
+  principle: Avoid God Objects
+  summary: No single class should know or do everything.
+  teaching: >-
+    God objects concentrate knowledge and responsibility, creating a
+    bottleneck for changes and testing. They grow indefinitely because
+    it's always easier to add one more method than to refactor.
+  metaphor: >-
+    The king who insists on making every decision paralyzes the kingdom.
+    Delegate authority or drown in minutiae.
+  triggers: [god_object, large_class, knows_everything, single_point_of_failure]
+  phase_relevance: [SHAPE, BUILD]
+  severity_hint: warning
+  tags: [antipattern, design, complexity]
+
+- id: antipattern.premature_optimization
+  domain: engineering
+  principle: Avoid Premature Optimization
+  summary: Measure before optimizing. Premature optimization is the root of all evil.
+  teaching: >-
+    Donald Knuth's famous warning: optimizing without profiling wastes effort
+    on the wrong bottleneck, obscures code clarity, and introduces bugs.
+    Write clear code first. Measure. Optimize only what the data demands.
+  metaphor: >-
+    The archer who polishes arrows while the target is unknown
+    will have beautiful arrows and no game for dinner.
+  triggers: [premature_optimization, performance_anxiety, micro_optimization]
+  phase_relevance: [BUILD]
+  severity_hint: caution
+  tags: [antipattern, performance, discipline]
+
+- id: antipattern.big_bang
+  domain: engineering
+  principle: Avoid Big Bang Integration
+  summary: Integrate incrementally, not all at once.
+  teaching: >-
+    Building all components separately and integrating at the end
+    guarantees integration surprises. Continuous integration catches
+    issues as they arise. The longer you delay integration, the more
+    painful it becomes.
+  metaphor: >-
+    The bridge built from both sides must meet in the middle.
+    If neither side checks alignment until the last span,
+    the gap will be unbridgeable.
+  triggers: [big_bang, late_integration, all_at_once, no_incremental]
+  phase_relevance: [BUILD, PROVE]
+  severity_hint: warning
+  tags: [antipattern, integration, risk]
+
+- id: practice.code_review
+  domain: engineering
+  principle: Code Review
+  summary: Every change should be reviewed by at least one other person.
+  teaching: >-
+    Code review catches bugs, spreads knowledge, enforces standards,
+    and improves design. The reviewer learns the codebase; the author
+    gets a fresh perspective. Skip it and you ship blind spots.
+  metaphor: >-
+    The editor who reviews the manuscript is not the author's enemy
+    but the reader's advocate. Every great work has been shaped by feedback.
+  triggers: [no_review, solo_coding, unreviewed_merge]
+  phase_relevance: [PROVE]
+  severity_hint: info
+  tags: [practice, quality, collaboration]
+
+- id: practice.small_commits
+  domain: engineering
+  principle: Small, Atomic Commits
+  summary: Each commit should be a single logical change.
+  teaching: >-
+    Small commits are easy to review, easy to revert, and tell a story.
+    Large commits hide bugs, mix concerns, and make git bisect useless.
+    Commit often. Each commit should leave the codebase in a working state.
+  metaphor: >-
+    The diary written daily captures the journey faithfully.
+    The memoir written from memory years later is fiction.
+  triggers: [large_commit, mixed_changes, infrequent_commits]
+  phase_relevance: [BUILD]
+  severity_hint: info
+  tags: [practice, git, workflow]
+
+- id: practice.documentation
+  domain: engineering
+  principle: Document Decisions, Not Just Code
+  summary: Architecture Decision Records capture the why behind choices.
+  teaching: >-
+    Code comments explain what. ADRs explain why this approach was chosen
+    over alternatives. When future developers ask "why is it this way?",
+    the answer should be findable, not locked in someone's memory.
+  metaphor: >-
+    The navigator's log records not just the course taken but the reefs
+    avoided. Without it, the next captain will discover the reefs personally.
+  triggers: [undocumented_decision, missing_adr, why_question]
+  phase_relevance: [FRAME, SHAPE]
+  severity_hint: info
+  tags: [practice, documentation, decisions]
+
+- id: practice.error_handling
+  domain: engineering
+  principle: Handle Errors Explicitly
+  summary: Don't swallow exceptions. Fail fast, fail loudly.
+  teaching: >-
+    Silent failures are the worst kind — the system looks healthy while
+    data corrupts silently. Handle errors at the appropriate level.
+    Log context. Provide actionable error messages. Let the caller decide
+    what to do.
+  metaphor: >-
+    The canary in the coal mine saves lives by dying visibly.
+    A canary that coughs quietly and carries on is worse than no canary at all.
+  triggers: [silent_failure, swallowed_exception, generic_catch]
+  phase_relevance: [BUILD]
+  severity_hint: caution
+  tags: [practice, reliability, errors]
+
+- id: practice.refactoring
+  domain: engineering
+  principle: Refactor Under Green Tests
+  summary: Restructure code only when all tests pass.
+  teaching: >-
+    Refactoring changes structure without changing behavior. If you
+    refactor without a test safety net, you can't distinguish a bug
+    from a restructuring mistake. Green tests are your license to refactor.
+  metaphor: >-
+    The tightrope walker practices with a net before performing without one.
+    Confidence comes from knowing the net is there, even when unused.
+  triggers: [refactor_without_tests, structural_change, cleanup]
+  phase_relevance: [BUILD]
+  severity_hint: caution
+  tags: [practice, refactoring, testing]
+
+- id: practice.feature_flags
+  domain: engineering
+  principle: Feature Flags for Safe Rollout
+  summary: Decouple deployment from release using feature flags.
+  teaching: >-
+    Feature flags let you deploy code without exposing it to users.
+    Roll out gradually, A/B test, and roll back instantly without
+    redeploying. Deployment becomes a non-event.
+  metaphor: >-
+    The theater director rehearses the scene before the curtain rises.
+    The audience sees only the performance, never the preparation.
+  triggers: [risky_release, gradual_rollout, ab_test]
+  phase_relevance: [PROVE]
+  severity_hint: info
+  tags: [practice, deployment, safety]
+
+- id: practice.monitoring
+  domain: engineering
+  principle: Instrument Everything
+  summary: You can't fix what you can't measure.
+  teaching: >-
+    Logging, metrics, and tracing are not afterthoughts — they're
+    first-class features. Instrument early. Monitor in production.
+    Alerting without context is noise; context without alerting is blindness.
+  metaphor: >-
+    The pilot's instrument panel is not optional equipment.
+    Flying blind in clear weather works until the clouds arrive.
+  triggers: [no_monitoring, blind_production, missing_metrics]
+  phase_relevance: [BUILD, PROVE]
+  severity_hint: info
+  tags: [practice, observability, operations]
+
+- id: practice.api_design
+  domain: engineering
+  principle: Design APIs for the Consumer
+  summary: APIs should be easy to use correctly and hard to use incorrectly.
+  teaching: >-
+    The API is a user interface for developers. Good APIs have obvious
+    defaults, consistent naming, and fail with helpful messages. Design
+    from the caller's perspective, not the implementer's convenience.
+  metaphor: >-
+    The door handle that looks like it should be pushed but must be
+    pulled fails its one job. Design communicates intent without instruction.
+  triggers: [api_design, interface_confusion, breaking_api]
+  phase_relevance: [SHAPE, BUILD]
+  severity_hint: info
+  tags: [practice, api, design]
+
+- id: practice.security_by_default
+  domain: engineering
+  principle: Security by Default
+  summary: Secure the defaults. Opt-in to risk, not to safety.
+  teaching: >-
+    Users will use defaults. If the default is insecure, most deployments
+    will be insecure. Require explicit opt-in for dangerous operations.
+    Never store secrets in code. Validate all input at system boundaries.
+  metaphor: >-
+    The castle gate is closed by default, not open.
+    A gate that requires effort to close will be left open.
+  triggers: [security_concern, default_insecure, input_validation]
+  phase_relevance: [BUILD, PROVE]
+  severity_hint: warning
+  tags: [practice, security, defaults]
+
+- id: practice.backward_compatibility
+  domain: engineering
+  principle: Backward Compatibility
+  summary: Don't break existing consumers when evolving.
+  teaching: >-
+    Breaking changes destroy trust and create upgrade resistance.
+    Deprecate gracefully with warnings and migration paths. When breaking
+    changes are necessary, communicate clearly and bump the major version.
+  metaphor: >-
+    The bridge builder who removes the old bridge before the new one
+    is ready strands everyone in between.
+  triggers: [breaking_change, api_evolution, migration]
+  phase_relevance: [SHAPE, BUILD]
+  severity_hint: caution
+  tags: [practice, api, compatibility]
+
+- id: practice.dependency_management
+  domain: engineering
+  principle: Pin Dependencies, Audit Regularly
+  summary: Know what you depend on and keep it healthy.
+  teaching: >-
+    Unpinned dependencies break builds randomly. Unaudited dependencies
+    introduce vulnerabilities. Lock files, regular updates, and security
+    scanning keep the supply chain trustworthy.
+  metaphor: >-
+    The chain is only as strong as its weakest link.
+    Inspect every link, or accept that any link may break without warning.
+  triggers: [dependency_hell, unpinned, security_vulnerability]
+  phase_relevance: [BUILD, PROVE]
+  severity_hint: caution
+  tags: [practice, dependencies, security]
+
+- id: practice.idempotency
+  domain: engineering
+  principle: Design for Idempotency
+  summary: Operations should be safe to retry without side effects.
+  teaching: >-
+    Networks fail. Requests timeout. Users double-click. If your operation
+    is not idempotent, retries create duplicates, corruption, or
+    inconsistency. Design every write operation to be safely repeatable.
+  metaphor: >-
+    The light switch doesn't care how many times you flip it to ON —
+    it's always ON. But a counter that increments on each flip lies.
+  triggers: [retry_logic, duplicate_request, network_failure]
+  phase_relevance: [BUILD]
+  severity_hint: info
+  tags: [practice, reliability, design]
+
+- id: practice.database_migrations
+  domain: engineering
+  principle: Version Database Schema
+  summary: Database changes should be versioned, reversible migrations.
+  teaching: >-
+    Ad-hoc ALTER TABLEs in production are how data is lost. Migration
+    files create an auditable history. Each migration should have a
+    rollback. Test migrations against production-like data.
+  metaphor: >-
+    The archaeologist's careful layers reveal history.
+    The bulldozer reveals nothing but rubble.
+  triggers: [database_change, schema_migration, data_loss_risk]
+  phase_relevance: [BUILD]
+  severity_hint: caution
+  tags: [practice, database, migrations]
+
+- id: practice.logging_levels
+  domain: engineering
+  principle: Use Logging Levels Meaningfully
+  summary: DEBUG for development, INFO for operations, ERROR for incidents.
+  teaching: >-
+    If everything is logged at ERROR, nothing is an error. If everything
+    is DEBUG, production logs are useless noise. Disciplined log levels
+    enable effective filtering and alerting.
+  metaphor: >-
+    The town crier who screams every message at the same volume
+    is ignored when the real fire comes.
+  triggers: [logging_noise, missing_logs, alert_fatigue]
+  phase_relevance: [BUILD]
+  severity_hint: info
+  tags: [practice, logging, operations]
+
+- id: practice.type_safety
+  domain: engineering
+  principle: Leverage Type Systems
+  summary: Types catch errors at compile time instead of runtime.
+  teaching: >-
+    Type annotations are documentation that the compiler verifies.
+    They catch entire categories of bugs — null references, wrong
+    argument types, missing fields — before the code ever runs.
+  metaphor: >-
+    The guardrail on the mountain road prevents falls without slowing
+    the skilled driver. Remove it and the unskilled driver learns gravity.
+  triggers: [type_error, untyped_code, runtime_crash]
+  phase_relevance: [BUILD]
+  severity_hint: info
+  tags: [practice, types, safety]
+
+- id: practice.graceful_degradation
+  domain: engineering
+  principle: Graceful Degradation
+  summary: When a dependency fails, degrade functionality instead of crashing.
+  teaching: >-
+    Not every failure is fatal. If the recommendation engine is down,
+    show popular items. If the CDN is slow, serve from origin. Design
+    fallback paths that keep the core experience alive.
+  metaphor: >-
+    The ship with a damaged sail can still row to port.
+    The ship that sinks when one plank leaks was poorly built.
+  triggers: [dependency_failure, cascade_failure, single_point_of_failure]
+  phase_relevance: [BUILD, PROVE]
+  severity_hint: info
+  tags: [practice, resilience, fallback]
+
+- id: practice.immutability
+  domain: engineering
+  principle: Prefer Immutable Data
+  summary: Data that doesn't change is data that can't be corrupted.
+  teaching: >-
+    Mutable shared state is the root of concurrency bugs. Immutable
+    data is inherently thread-safe, cache-friendly, and easy to reason
+    about. Make mutation explicit and controlled.
+  metaphor: >-
+    A stone tablet endures; a sand drawing is erased by the next wave.
+    When permanence matters, choose the medium that resists change.
+  triggers: [mutable_state, race_condition, shared_state]
+  phase_relevance: [BUILD]
+  severity_hint: info
+  tags: [practice, design, concurrency]
+
+- id: practice.scope_management
+  domain: engineering
+  principle: Scope Ruthlessly
+  summary: Define what is NOT in scope as clearly as what is.
+  teaching: >-
+    Scope creep is the #1 project killer. Every "quick addition" has
+    hidden complexity. A clear out-of-scope list protects focus.
+    Ship the MVP, then iterate. Features deferred are not features denied.
+  metaphor: >-
+    The sculptor removes marble to reveal the form within.
+    Adding more marble never creates a masterpiece.
+  triggers: [scope_creep, feature_creep, unbounded_scope, scope_complex]
+  phase_relevance: [FRAME, SHAPE]
+  severity_hint: caution
+  tags: [practice, scope, discipline]

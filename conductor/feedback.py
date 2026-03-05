@@ -13,10 +13,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from .constants import BASE, atomic_write
+from .constants import STATE_DIR, atomic_write
 from .observability import log_event
 
-HEALTH_CACHE_FILE = BASE / ".conductor-cluster-health.json"
+HEALTH_CACHE_FILE = STATE_DIR / "cluster-health.json"
 
 # Decay factor: each feedback cycle blends new data with existing scores.
 # 0.0 = ignore history, 1.0 = ignore new data. 0.3 = 30% history weight.

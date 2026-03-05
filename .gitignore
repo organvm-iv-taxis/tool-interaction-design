@@ -20,23 +20,8 @@ Thumbs.db
 .env
 .env.local
 
-# Conductor runtime
-.conductor-session.json
-.conductor-active-workflow
-.conductor-work-registry.json
-.conductor-workflow-*.json
-.conductor-observability.jsonl
-.conductor-observability-metrics.json
-.conductor-observability-report*.json
-.conductor-handoffs.jsonl
-.conductor-traces.jsonl
-.conductor-route-decisions.jsonl
-.conductor-pattern-history.jsonl
-.conductor-oracle-state.json
-.conductor-cluster-health.json
-.conductor-corpus-cache/
-.conductor-observability-archive-*.jsonl
-.conductor-stats.json
+# Conductor runtime state
+.conductor/
 sessions/
 generated/
 exports/

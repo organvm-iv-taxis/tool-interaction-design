@@ -1,0 +1,292 @@
+# Business wisdom entries
+# ~20 entries covering MVP, shipping, strategy, portfolio management
+
+- id: biz.mvp
+  domain: business
+  principle: Minimum Viable Product
+  summary: Ship the smallest thing that tests your hypothesis.
+  teaching: >-
+    The MVP is not a half-baked product — it's the smallest experiment
+    that validates or invalidates your assumption. If you're building more
+    than needed to learn, you're wasting effort on unvalidated features.
+  metaphor: >-
+    The explorer sends a scout before marching the army.
+    The scout returns with intelligence; the army marches with certainty.
+  triggers: [over_building, premature_polish, feature_creep, new_repo]
+  phase_relevance: [FRAME, SHAPE]
+  severity_hint: caution
+  tags: [strategy, shipping, validation]
+
+- id: biz.mlp
+  domain: business
+  principle: Minimum Lovable Product
+  summary: Ship something people actually want to use, not just tolerate.
+  teaching: >-
+    Beyond viability lies lovability. The MLP has the minimum set of
+    features needed for users to love the product. Polish the core
+    experience ruthlessly; ignore the periphery until the core shines.
+  metaphor: >-
+    The small restaurant with five perfect dishes outshines the buffet
+    with a hundred mediocre ones. Depth of excellence over breadth of adequacy.
+  triggers: [quality_vs_speed, polish_needed, user_delight]
+  phase_relevance: [SHAPE, BUILD]
+  severity_hint: info
+  tags: [strategy, quality, product]
+
+- id: biz.ship_speed
+  domain: business
+  principle: Ship Speed Over Ship Perfection
+  summary: A shipped imperfect product beats an unshipped perfect one.
+  teaching: >-
+    Perfectionism is procrastination in disguise. Real feedback comes
+    from real users. Ship, measure, iterate. The first version teaches
+    you what the second version needs to be.
+  metaphor: >-
+    The painter who never shows their work to the gallery
+    paints only for the mirror. The world learns nothing; neither does the painter.
+  triggers: [perfectionism, delayed_release, fear_of_shipping, stuck_candidate]
+  phase_relevance: [BUILD, PROVE]
+  severity_hint: caution
+  tags: [shipping, perfectionism, action]
+
+- id: biz.pareto
+  domain: business
+  principle: 80/20 Rule (Pareto Principle)
+  summary: 80% of results come from 20% of effort.
+  teaching: >-
+    Identify the vital few inputs that produce most of the output.
+    The first 80% of a feature is often trivial; the last 20% consumes
+    80% of the time. Know when to stop polishing and start shipping.
+  metaphor: >-
+    The gold miner who sifts every grain of sand finds little gold
+    and dies of thirst. Pan for the nuggets; leave the dust.
+  triggers: [diminishing_returns, over_polish, effort_allocation]
+  phase_relevance: [FRAME, SHAPE]
+  severity_hint: info
+  tags: [strategy, efficiency, focus]
+
+- id: biz.effort_vs_impact
+  domain: business
+  principle: Effort vs Impact Matrix
+  summary: Prioritize high-impact, low-effort work.
+  teaching: >-
+    Plot tasks on effort (x) vs impact (y). Do high-impact/low-effort
+    first (quick wins). Plan high-impact/high-effort carefully. Delegate
+    low-impact/low-effort. Kill low-impact/high-effort ruthlessly.
+  metaphor: >-
+    The farmer plants the fertile field before the rocky hillside.
+    Both yield crops, but the field feeds the family sooner.
+  triggers: [prioritization, task_selection, resource_allocation]
+  phase_relevance: [FRAME]
+  severity_hint: info
+  tags: [strategy, prioritization, efficiency]
+
+- id: biz.sunk_cost
+  domain: business
+  principle: Sunk Cost Fallacy
+  summary: Past investment does not justify future investment.
+  teaching: >-
+    "We've already put so much into this" is never a reason to continue.
+    Evaluate every project on its future potential, not past expenditure.
+    Killing a failing project frees resources for one that might succeed.
+  metaphor: >-
+    The gambler who chases losses doubles them. The wise player folds
+    a bad hand early — the chips saved fund the next, better hand.
+  triggers: [stuck_project, failing_repo, archive_candidate, sunk_cost]
+  phase_relevance: [FRAME, SHAPE]
+  severity_hint: warning
+  tags: [strategy, decision, psychology]
+
+- id: biz.portfolio
+  domain: business
+  principle: Portfolio Strategy
+  summary: Balance exploration and exploitation across projects.
+  teaching: >-
+    Not every project needs to succeed. A healthy portfolio has bets at
+    different stages — some exploring new territory, others exploiting
+    proven ground. Over-concentration in one area is fragile.
+  metaphor: >-
+    The gardener plants many seeds knowing some will not sprout.
+    The harvest comes from the garden, not from any single seed.
+  triggers: [single_organ_focus, portfolio_imbalance, exploration_needed]
+  phase_relevance: [FRAME]
+  severity_hint: info
+  tags: [strategy, portfolio, diversification]
+
+- id: biz.flywheel
+  domain: business
+  principle: Flywheel Effect
+  summary: Small consistent efforts compound into unstoppable momentum.
+  teaching: >-
+    Jim Collins' flywheel: each push is small, but they compound.
+    The first turns are hardest. But once spinning, the flywheel's
+    own momentum carries it forward. Consistency beats intensity.
+  metaphor: >-
+    The river carved the Grand Canyon not by force but by persistence.
+    Each day's flow was imperceptible; the result is monumental.
+  triggers: [momentum, consistency, compounding, streak]
+  phase_relevance: [FRAME, BUILD]
+  severity_hint: info
+  tags: [strategy, momentum, persistence]
+
+- id: biz.opportunity_cost
+  domain: business
+  principle: Opportunity Cost
+  summary: Every choice is also a choice not to do something else.
+  teaching: >-
+    Time spent on project A is time not spent on project B. The true
+    cost of a decision is the value of the best alternative forgone.
+    Before committing, ask: what am I NOT doing by doing this?
+  metaphor: >-
+    The chess player who sees only the move they make is blind.
+    The master sees every move they chose NOT to make.
+  triggers: [project_selection, time_allocation, multi_project]
+  phase_relevance: [FRAME]
+  severity_hint: info
+  tags: [strategy, decision, tradeoffs]
+
+- id: biz.technical_debt
+  domain: business
+  principle: Technical Debt Is Real Debt
+  summary: Shortcuts today become interest payments tomorrow.
+  teaching: >-
+    Like financial debt, technical debt has interest. Strategic debt
+    (shipping fast with a plan to refactor) is fine. Reckless debt
+    (not knowing you're taking shortcuts) is dangerous. Track it,
+    budget for it, and pay it down regularly.
+  metaphor: >-
+    The builder who uses green wood saves time today but rebuilds
+    next year when it warps. Seasoned wood takes patience but endures.
+  triggers: [tech_debt, shortcut, quick_hack, accumulating_debt]
+  phase_relevance: [BUILD]
+  severity_hint: caution
+  tags: [strategy, debt, maintenance]
+
+- id: biz.iteration
+  domain: business
+  principle: Iterate, Don't Speculate
+  summary: Build, measure, learn. Repeat.
+  teaching: >-
+    The Lean Startup cycle: every feature is a hypothesis. Ship it,
+    measure the outcome, learn from the data, then decide what to build
+    next. Speculation without data is guessing with confidence.
+  metaphor: >-
+    The compass is recalibrated at every waypoint, not set once at departure.
+    The journey teaches the destination.
+  triggers: [speculation, planning_paralysis, analysis_paralysis]
+  phase_relevance: [FRAME, PROVE]
+  severity_hint: info
+  tags: [strategy, iteration, learning]
+
+- id: biz.constraint
+  domain: business
+  principle: Embrace Constraints
+  summary: Constraints drive creativity. Abundance breeds mediocrity.
+  teaching: >-
+    Unlimited time and resources rarely produce great work. Constraints
+    force prioritization, innovation, and focus. A tight deadline
+    clarifies what matters. A small budget reveals what's essential.
+  metaphor: >-
+    The sonnet's fourteen lines have birthed more beauty than
+    the blank page's infinite space ever could.
+  triggers: [unlimited_scope, no_deadline, resource_abundance]
+  phase_relevance: [FRAME, SHAPE]
+  severity_hint: info
+  tags: [strategy, creativity, focus]
+
+- id: biz.done_is_a_feature
+  domain: business
+  principle: Done Is a Feature
+  summary: Completing and shipping is itself valuable — beyond any feature.
+  teaching: >-
+    The act of finishing builds muscle memory. Each completed project
+    teaches the meta-skill of completion. Organizations that finish
+    projects develop a shipping culture; those that don't develop a
+    starting culture.
+  metaphor: >-
+    The cathedral took generations to build, but it was FINISHED.
+    An unfinished cathedral is a pile of ambitious rubble.
+  triggers: [incomplete_project, abandoned_work, finishing_difficulty]
+  phase_relevance: [PROVE]
+  severity_hint: info
+  tags: [shipping, completion, discipline]
+
+- id: biz.second_system
+  domain: business
+  principle: Second-System Effect
+  summary: The second version is almost always over-engineered.
+  teaching: >-
+    Fred Brooks' warning: emboldened by first-system success, the team
+    over-designs the second system with every feature they wished for.
+    The result is late, bloated, and often worse than the first.
+  metaphor: >-
+    The apprentice who succeeds with a simple sword tries to forge
+    a flaming greatsword next — and burns down the smithy.
+  triggers: [rewrite, v2_planning, over_engineering, ambitious_rewrite]
+  phase_relevance: [FRAME, SHAPE]
+  severity_hint: caution
+  tags: [strategy, risk, planning]
+
+- id: biz.focus
+  domain: business
+  principle: Focus Beats Breadth
+  summary: Do fewer things better.
+  teaching: >-
+    Spreading thin across many projects means none gets the depth
+    needed to succeed. The WIP limit exists because human attention
+    is finite. Three active projects with focus beats ten with fragmented attention.
+  metaphor: >-
+    The sun's light warms gently; focused through a lens, it ignites.
+    Power comes from concentration, not diffusion.
+  triggers: [too_many_projects, wip_violation, context_switching, scattered_focus]
+  phase_relevance: [FRAME]
+  severity_hint: warning
+  tags: [strategy, focus, wip]
+
+- id: biz.network_effects
+  domain: business
+  principle: Build for Network Effects
+  summary: The product becomes more valuable as more people use it.
+  teaching: >-
+    Tools, templates, and processes that others can adopt create
+    compounding value. Open-source, shared libraries, and reusable
+    patterns are investments in network effects.
+  metaphor: >-
+    The telephone is useless alone. The thousandth telephone
+    makes every other telephone more valuable.
+  triggers: [reusability, open_source, shared_tooling]
+  phase_relevance: [SHAPE]
+  severity_hint: info
+  tags: [strategy, growth, compounding]
+
+- id: biz.launch_and_iterate
+  domain: business
+  principle: Launch and Iterate
+  summary: The launch is the beginning of learning, not the end of building.
+  teaching: >-
+    Pre-launch, everything is assumption. Post-launch, you have data.
+    The longer you delay launch, the longer you operate on assumptions.
+    Launch early, iterate based on reality, not imagination.
+  metaphor: >-
+    The ship is tested not in the harbor but on the sea.
+    A ship that never sails is just expensive furniture.
+  triggers: [delayed_launch, pre_launch_anxiety, perfectionism]
+  phase_relevance: [PROVE]
+  severity_hint: info
+  tags: [shipping, iteration, learning]
+
+- id: biz.commodify_process
+  domain: business
+  principle: Commodify Your Process
+  summary: Turn your workflow into a reusable, transferable asset.
+  teaching: >-
+    A process that exists only in your head dies with your attention.
+    Document it, automate it, template it. A commodified process
+    can be delegated, scaled, and sold. Your meta-work becomes a product.
+  metaphor: >-
+    The master who writes down the recipe feeds many.
+    The master who cooks alone feeds only those at their table.
+  triggers: [process_documentation, automation, scaling, export]
+  phase_relevance: [PROVE]
+  severity_hint: info
+  tags: [strategy, process, commodification]

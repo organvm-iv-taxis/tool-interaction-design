@@ -20,13 +20,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import yaml
 
 from conductor import (
-    MAX_CANDIDATE_PER_ORGAN,
-    MAX_PUBLIC_PROCESS_PER_ORGAN,
-    PHASE_CLUSTERS,
-    PHASES,
-    PROMOTION_STATES,
-    PROMOTION_TRANSITIONS,
-    VALID_TRANSITIONS,
     ConductorError,
     GovernanceError,
     GovernanceRuntime,
@@ -34,11 +27,18 @@ from conductor import (
     SessionEngine,
     SessionError,
     __version__,
-    atomic_write,
+)
+from conductor.constants import (
+    PHASE_CLUSTERS,
+    PHASES,
+    PROMOTION_STATES,
+    PROMOTION_TRANSITIONS,
+    VALID_TRANSITIONS,
     get_phase_clusters,
     resolve_organ_key,
     organ_short,
 )
+from conductor.constants import MAX_CANDIDATE_PER_ORGAN, MAX_PUBLIC_PROCESS_PER_ORGAN, atomic_write
 from conductor.product import ProductExtractor
 import conductor.constants
 import conductor.product
@@ -1107,6 +1107,8 @@ class TestConductorCliValidate:
 class TestVersion:
     def test_version_is_string(self):
         assert isinstance(__version__, str)
+        assert len(__version__) > 0
+        assert "." in __version__, "Version should contain at least one dot (e.g., '0.1.0')"
 
     def test_version_matches_pyproject(self):
         pyproject = Path(__file__).parent.parent / "pyproject.toml"

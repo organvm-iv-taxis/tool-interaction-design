@@ -15,7 +15,7 @@ from typing import Any
 
 import yaml
 
-from .constants import BASE, ConductorError, WORKFLOW_DSL_PATH, atomic_write
+from .constants import BASE, ConductorError, STATE_DIR, WORKFLOW_DSL_PATH, atomic_write
 from .feedback import record_step_outcome
 from .observability import log_event
 
@@ -37,8 +37,9 @@ def _load_primitive_maturity() -> dict[str, str]:
         for name, defn in primitives.items():
             if isinstance(defn, dict):
                 _PRIMITIVE_MATURITY[name] = defn.get("maturity", "alpha")
-    except Exception:
-        pass
+    except Exception as exc:
+        from .observability import log_event
+        log_event("executor.maturity_load_error", {"error": str(exc)})
     return _PRIMITIVE_MATURITY
 
 
@@ -96,7 +97,7 @@ class WorkflowExecutor:
         self.workflow_path = workflow_path
         self.spec = self._load_spec()
         # Default fallback, but methods now prefer workflow-specific files
-        self.default_state_file = state_file or (BASE / ".conductor-workflow-state.json")
+        self.default_state_file = state_file or (STATE_DIR / "workflows" / "_default.json")
 
     def _get_state_path(self, workflow_name: str | None = None) -> Path:
         """Return the specific path for a workflow's execution state.
@@ -106,11 +107,11 @@ class WorkflowExecutor:
         the pointer is cleaned up automatically.
         """
         if not workflow_name:
-            active_link = BASE / ".conductor-active-workflow"
+            active_link = STATE_DIR / "workflows" / "_active"
             if active_link.exists():
                 candidate = active_link.read_text().strip()
                 if candidate:
-                    candidate_path = BASE / f".conductor-workflow-{candidate}.json"
+                    candidate_path = STATE_DIR / "workflows" / f"{candidate}.json"
                     if candidate_path.exists():
                         workflow_name = candidate
                     else:
@@ -123,10 +124,12 @@ class WorkflowExecutor:
             if not workflow_name:
                 return self.default_state_file
 
-        return BASE / f".conductor-workflow-{workflow_name}.json"
+        return STATE_DIR / "workflows" / f"{workflow_name}.json"
 
     def _set_active_workflow(self, workflow_name: str) -> None:
-        (BASE / ".conductor-active-workflow").write_text(workflow_name)
+        wf_dir = STATE_DIR / "workflows"
+        wf_dir.mkdir(parents=True, exist_ok=True)
+        (wf_dir / "_active").write_text(workflow_name)
 
     def _load_spec(self) -> dict[str, Any]:
         if not self.workflow_path.exists():
@@ -228,7 +231,7 @@ class WorkflowExecutor:
     def clear_state(self, workflow_name: str | None = None) -> None:
         path = self._get_state_path(workflow_name)
         path.unlink(missing_ok=True)
-        active_link = BASE / ".conductor-active-workflow"
+        active_link = STATE_DIR / "workflows" / "_active"
         if active_link.exists() and (not workflow_name or active_link.read_text().strip() == workflow_name):
             active_link.unlink()
 
@@ -618,136 +621,6 @@ class WorkflowExecutor:
             return ("skip", 0)
         return ("fail", 0)
 
-    def _run_fan_out(
-        self, state: WorkflowState, step_name: str, step_spec: dict[str, Any],
-        workflow: dict[str, Any], steps: dict[str, dict[str, Any]],
-    ) -> dict[str, Any]:
-        """Execute fan_out branches sequentially and aggregate results."""
-        branches = step_spec.get("branches", [])
-        if not isinstance(branches, list) or not branches:
-            raise ConductorError(f"fan_out step '{step_name}' must have a 'branches' list")
-
-        state.steps[step_name].status = "RUNNING"
-        state.steps[step_name].start_time = time.time()
-        branch_outputs: list[Any] = []
-
-        for i, branch in enumerate(branches):
-            branch_name = f"{step_name}__branch_{i}"
-            branch_cluster = branch.get("cluster", "unknown") if isinstance(branch, dict) else str(branch)
-            branch_input = branch.get("input") if isinstance(branch, dict) else None
-
-            state.steps[branch_name] = StepState(name=branch_name)
-            if branch_name not in state.step_order:
-                idx = state.step_order.index(step_name) + 1 + i
-                state.step_order.insert(idx, branch_name)
-
-            state.steps[branch_name].status = "RUNNING"
-            state.steps[branch_name].start_time = time.time()
-            resolved = self._resolve_value(branch_input, state) if branch_input else self._pipe_input(state, step_name)
-            state.steps[branch_name].output = resolved
-            state.steps[branch_name].status = "COMPLETED"
-            state.steps[branch_name].end_time = time.time()
-            state.bindings[branch_name] = resolved
-            branch_outputs.append(resolved)
-
-        # Fan-in: aggregate
-        fan_in_name = f"{step_name}__fan_in"
-        state.steps[fan_in_name] = StepState(name=fan_in_name)
-        state.steps[fan_in_name].status = "COMPLETED"
-        state.steps[fan_in_name].start_time = time.time()
-        state.steps[fan_in_name].end_time = time.time()
-        state.steps[fan_in_name].output = branch_outputs
-        state.bindings[fan_in_name] = branch_outputs
-
-        # Complete parent step
-        state.steps[step_name].output = branch_outputs
-        state.steps[step_name].status = "COMPLETED"
-        state.steps[step_name].end_time = time.time()
-        state.bindings[step_name] = branch_outputs
-
-        next_step = self._find_next_ready_step(state, steps)
-        if next_step:
-            state.current_step = next_step
-            next_spec = steps.get(next_step, {})
-            result = {
-                "status": "CONTINUE",
-                "next_step": next_step,
-                "checkpoint": bool(next_spec.get("checkpoint")),
-                "input": self._resolve_step_input(state, workflow, next_step),
-                "branches_completed": len(branches),
-                "aggregated_output": branch_outputs,
-            }
-        else:
-            state.current_step = None
-            state.status = "COMPLETED"
-            result = {"status": "FINISHED", "branches_completed": len(branches), "aggregated_output": branch_outputs}
-
-        self.save_state(state)
-        log_event("executor.fan_out_completed", {"workflow": state.workflow_name, "step": step_name, "branches": len(branches)})
-        return result
-
-    def _run_loop(
-        self, state: WorkflowState, step_name: str, step_spec: dict[str, Any],
-        workflow: dict[str, Any], steps: dict[str, dict[str, Any]],
-        tool_output: Any = None,
-    ) -> dict[str, Any]:
-        """Execute a loop step until condition is met or max_iterations reached."""
-        max_iter = int(step_spec.get("max_iterations", 10))
-        until_condition = step_spec.get("until")
-        step = state.steps[step_name]
-        step.max_iterations = max_iter
-
-        step.status = "RUNNING"
-        step.start_time = step.start_time or time.time()
-
-        resolved_input = self._resolve_step_input(state, workflow, step_name)
-        output = resolved_input if tool_output is None else tool_output
-
-        step.iteration += 1
-        step.output = output
-        state.bindings[step_name] = output
-        step.metadata["last_iteration"] = step.iteration
-
-        # Check termination
-        done = step.iteration >= max_iter
-        if not done and until_condition:
-            done = self._condition_passes(state, until_condition)
-
-        if not done:
-            # Re-queue: keep as current step
-            self.save_state(state)
-            return {
-                "status": "LOOP_CONTINUE",
-                "step": step_name,
-                "iteration": step.iteration,
-                "max_iterations": max_iter,
-                "output": output,
-            }
-
-        # Loop complete
-        step.status = "COMPLETED"
-        step.end_time = time.time()
-
-        next_step = self._find_next_ready_step(state, steps)
-        if next_step:
-            state.current_step = next_step
-            next_spec = steps.get(next_step, {})
-            result: dict[str, Any] = {
-                "status": "CONTINUE",
-                "next_step": next_step,
-                "checkpoint": bool(next_spec.get("checkpoint")),
-                "input": self._resolve_step_input(state, workflow, next_step),
-                "iterations_completed": step.iteration,
-            }
-        else:
-            state.current_step = None
-            state.status = "COMPLETED"
-            result = {"status": "FINISHED", "iterations_completed": step.iteration}
-
-        self.save_state(state)
-        log_event("executor.loop_completed", {"workflow": state.workflow_name, "step": step_name, "iterations": step.iteration})
-        return result
-
     def run_step(
         self,
         step_name: str,
@@ -760,6 +633,8 @@ class WorkflowExecutor:
         Supported primitives: pipe, gate, checkpoint, fan_out/fan_in, loop,
         on_error/fallback, emit.
         """
+        from .step_runners import get_runner
+
         state = self.load_state(workflow_name)
         if not state:
             raise ConductorError("No active workflow state found. Run start_workflow first.")
@@ -772,7 +647,6 @@ class WorkflowExecutor:
         if step_name not in state.steps:
             raise ConductorError(f"Step '{step_name}' not found in workflow '{state.workflow_name}'")
 
-        # For dynamically-injected steps (fan_out branches etc.) that aren't in spec
         step_spec = steps.get(step_name, {})
 
         if state.current_step and state.current_step != step_name:
@@ -795,8 +669,16 @@ class WorkflowExecutor:
             )
             _pre_advs = _oracle.consult(_ctx, max_advisories=3)
             oracle_pre_advisories = [a.to_dict() for a in _pre_advs]
-        except Exception:
-            pass
+        except Exception as exc:
+            log_event(
+                "executor.oracle_pre_advisory_error",
+                {
+                    "workflow": state.workflow_name,
+                    "step": step_name,
+                    "error_type": type(exc).__name__,
+                    "error": str(exc)[:200],
+                },
+            )
 
         # --- Checkpoint handling ---
         requires_checkpoint = bool(step_spec.get("checkpoint"))
@@ -854,174 +736,38 @@ class WorkflowExecutor:
             self.save_state(state)
             return result
 
-        # --- Primitive dispatch ---
+        # --- Primitive dispatch via strategy ---
         step_type = step_spec.get("type", "pipe")
         _warn_if_alpha(step_type, step_name)
 
-        # fan_out
-        if step_type == "fan_out":
-            return self._run_fan_out(state, step_name, step_spec, workflow, steps)
+        runner = get_runner(
+            step_type, self, state, step_name, step_spec, workflow, steps, tool_output
+        )
+        result = runner.run()
 
-        # loop
-        if step_type == "loop":
-            return self._run_loop(state, step_name, step_spec, workflow, steps, tool_output)
-
-        # emit (side-effect only)
-        if step_type == "emit":
-            step.status = "RUNNING"
-            step.start_time = time.time()
-            resolved_input = self._resolve_step_input(state, workflow, step_name)
-            output = resolved_input if tool_output is None else tool_output
-            step.output = output
-            step.status = "COMPLETED"
-            step.end_time = time.time()
-            state.bindings[step_name] = output
-            log_event("executor.emit", {"workflow": state.workflow_name, "step": step_name, "payload": output})
-            next_step = self._find_next_ready_step(state, steps)
-            if next_step:
-                state.current_step = next_step
-                next_spec = steps.get(next_step, {})
-                result = {
-                    "status": "CONTINUE",
-                    "next_step": next_step,
-                    "checkpoint": bool(next_spec.get("checkpoint")),
-                    "input": self._resolve_step_input(state, workflow, next_step),
-                }
-            else:
-                state.current_step = None
-                state.status = "COMPLETED"
-                result = {"status": "FINISHED"}
-            self.save_state(state)
-            return result
-
-        # --- Standard pipe/gate execution with on_error support ---
-        step.status = "RUNNING"
-        step.start_time = step.start_time or time.time()
-        resolved_input = self._resolve_step_input(state, workflow, step_name)
-
-        on_error = step_spec.get("on_error")
-        strategy_type, strategy_param = self._parse_error_strategy(on_error)
-
-        # If tool_output is an exception marker dict, handle error strategies
-        if isinstance(tool_output, dict) and tool_output.get("__error__"):
-            error_msg = str(tool_output.get("message", "Step failed"))
-
-            if strategy_type == "retry" and step.iteration < strategy_param:
-                step.iteration += 1
-                step.status = "PENDING"
-                self.save_state(state)
-                return {
-                    "status": "RETRY",
-                    "step": step_name,
-                    "attempt": step.iteration,
-                    "max_attempts": strategy_param,
-                    "input": resolved_input,
-                }
-
-            if strategy_type == "skip":
-                self._mark_step_skipped(state, step_name)
-                next_step = self._find_next_ready_step(state, steps)
-                if next_step:
-                    state.current_step = next_step
-                    next_spec = steps.get(next_step, {})
-                    result = {
-                        "status": "SKIPPED",
+        # --- Oracle post-step advisory (on successful completion) ---
+        if result.get("status") in {"CONTINUE", "FINISHED"}:
+            try:
+                from .oracle import Oracle as PostOracle, OracleContext as PostCtx
+                _post_oracle = PostOracle()
+                _post_ctx = PostCtx(
+                    trigger="workflow_post_step",
+                    workflow_step=step_name,
+                    workflow_name=state.workflow_name,
+                )
+                _post_advs = _post_oracle.consult(_post_ctx, max_advisories=2)
+                if _post_advs:
+                    result["oracle_advisories"] = [a.to_dict() for a in _post_advs]
+            except Exception as exc:
+                log_event(
+                    "executor.oracle_post_advisory_error",
+                    {
+                        "workflow": state.workflow_name,
                         "step": step_name,
-                        "reason": error_msg,
-                        "next_step": next_step,
-                        "checkpoint": bool(next_spec.get("checkpoint")),
-                        "input": self._resolve_step_input(state, workflow, next_step),
-                    }
-                else:
-                    state.current_step = None
-                    state.status = "COMPLETED"
-                    result = {"status": "FINISHED"}
-                self.save_state(state)
-                return result
-
-            if strategy_type == "fallback":
-                fallback_step = step_spec.get("fallback")
-                if fallback_step and fallback_step in steps:
-                    self._fail_step(state, step_name, error_msg)
-                    state.bindings[step_name] = None
-                    # Make fallback the current step
-                    if fallback_step not in state.step_order:
-                        idx = state.step_order.index(step_name) + 1
-                        state.step_order.insert(idx, fallback_step)
-                    if fallback_step not in state.steps:
-                        state.steps[fallback_step] = StepState(name=fallback_step)
-                    state.current_step = fallback_step
-                    self.save_state(state)
-                    log_event("executor.fallback_triggered", {"workflow": state.workflow_name, "step": step_name, "fallback": fallback_step})
-                    return {
-                        "status": "FALLBACK",
-                        "failed_step": step_name,
-                        "fallback_step": fallback_step,
-                        "error": error_msg,
-                        "input": self._resolve_step_input(state, workflow, fallback_step),
-                    }
-
-            # Default: fail the workflow
-            self._fail_step(state, step_name, error_msg)
-            record_step_outcome(
-                step_spec.get("cluster"), False,
-                workflow_name=state.workflow_name, step_name=step_name,
-            )
-            state.current_step = None
-            state.status = "FAILED"
-            self.save_state(state)
-            return {"status": "FAILED", "step": step_name, "error": error_msg}
-
-        output = resolved_input if tool_output is None else tool_output
-
-        step.status = "COMPLETED"
-        step.end_time = time.time()
-        step.output = output
-        state.bindings[step_name] = output
-
-        next_step = self._find_next_ready_step(state, steps)
-        if next_step:
-            state.current_step = next_step
-            next_spec = steps.get(next_step, {})
-            result = {
-                "status": "CONTINUE",
-                "next_step": next_step,
-                "checkpoint": bool(next_spec.get("checkpoint")),
-                "input": self._resolve_step_input(state, workflow, next_step),
-            }
-        else:
-            state.current_step = None
-            state.status = "COMPLETED"
-            result = {"status": "FINISHED"}
-
-        self.save_state(state)
-        record_step_outcome(
-            step_spec.get("cluster"), True,
-            workflow_name=state.workflow_name, step_name=step_name,
-        )
-        log_event(
-            "executor.step_completed",
-            {
-                "workflow": state.workflow_name,
-                "step": step_name,
-                "next_step": state.current_step,
-            },
-        )
-
-        # --- Oracle post-step advisory ---
-        try:
-            from .oracle import Oracle as PostOracle, OracleContext as PostCtx
-            _post_oracle = PostOracle()
-            _post_ctx = PostCtx(
-                trigger="workflow_post_step",
-                workflow_step=step_name,
-                workflow_name=state.workflow_name,
-            )
-            _post_advs = _post_oracle.consult(_post_ctx, max_advisories=2)
-            if _post_advs:
-                result["oracle_advisories"] = [a.to_dict() for a in _post_advs]
-        except Exception:
-            pass
+                        "error_type": type(exc).__name__,
+                        "error": str(exc)[:200],
+                    },
+                )
 
         if oracle_pre_advisories:
             result.setdefault("oracle_pre_advisories", oracle_pre_advisories)

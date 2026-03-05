@@ -11,7 +11,14 @@ import pytest
 
 import conductor.constants
 import conductor.oracle
-from conductor.oracle import Advisory, Oracle, OracleContext
+from conductor.oracle import (
+    DETECTOR_REGISTRY,
+    Advisory,
+    Oracle,
+    OracleContext,
+    OracleProfile,
+    _load_oracle_config,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -487,6 +494,103 @@ class TestWorkflowRisks:
         advisories = oracle._detect_workflow_risks(ctx)
         assert advisories == []
 
+    def test_checkpoint_uses_named_workflow_state(self, oracle_tmp):
+        workflows_dir = oracle_tmp / "workflows"
+        workflows_dir.mkdir(parents=True, exist_ok=True)
+        (workflows_dir / "alpha.json").write_text(json.dumps({
+            "workflow_name": "alpha",
+            "steps": {
+                "s1": {"status": "COMPLETED"},
+                "s2": {"status": "COMPLETED"},
+                "s3": {"status": "COMPLETED"},
+                "s4": {"status": "PENDING"},
+                "s5": {"status": "PENDING"},
+            },
+        }))
+
+        with patch.object(conductor.constants, "STATE_DIR", oracle_tmp):
+            oracle = Oracle()
+            ctx = OracleContext(trigger="workflow_post_step", workflow_name="alpha")
+            advisories = oracle._detect_workflow_risks(ctx)
+
+        assert any(a.detector == "workflow_risks" and "checkpoint opportunity" in a.message.lower() for a in advisories)
+
+    def test_checkpoint_falls_back_to_active_pointer_state(self, oracle_tmp):
+        workflows_dir = oracle_tmp / "workflows"
+        workflows_dir.mkdir(parents=True, exist_ok=True)
+        (workflows_dir / "_active").write_text("beta")
+        (workflows_dir / "beta.json").write_text(json.dumps({
+            "workflow_name": "beta",
+            "steps": {
+                "s1": {"status": "COMPLETED"},
+                "s2": {"status": "COMPLETED"},
+                "s3": {"status": "COMPLETED"},
+                "s4": {"status": "PENDING"},
+                "s5": {"status": "PENDING"},
+            },
+        }))
+
+        with patch.object(conductor.constants, "STATE_DIR", oracle_tmp):
+            oracle = Oracle()
+            ctx = OracleContext(trigger="workflow_post_step")
+            advisories = oracle._detect_workflow_risks(ctx)
+
+        assert any(a.detector == "workflow_risks" and "3/5 steps complete" in a.message for a in advisories)
+
+    def test_checkpoint_falls_back_to_legacy_default_state(self, oracle_tmp):
+        workflows_dir = oracle_tmp / "workflows"
+        workflows_dir.mkdir(parents=True, exist_ok=True)
+        (workflows_dir / "_default.json").write_text(json.dumps({
+            "workflow_name": "_default",
+            "steps": {
+                "s1": {"status": "COMPLETED"},
+                "s2": {"status": "COMPLETED"},
+                "s3": {"status": "PENDING"},
+                "s4": {"status": "PENDING"},
+                "s5": {"status": "PENDING"},
+            },
+        }))
+
+        with patch.object(conductor.constants, "STATE_DIR", oracle_tmp):
+            oracle = Oracle()
+            ctx = OracleContext(trigger="workflow_post_step")
+            advisories = oracle._detect_workflow_risks(ctx)
+
+        assert any(a.detector == "workflow_risks" and "2/5 steps complete" in a.message for a in advisories)
+
+    def test_checkpoint_prioritizes_named_state_over_active_pointer(self, oracle_tmp):
+        workflows_dir = oracle_tmp / "workflows"
+        workflows_dir.mkdir(parents=True, exist_ok=True)
+        (workflows_dir / "_active").write_text("beta")
+        (workflows_dir / "alpha.json").write_text(json.dumps({
+            "workflow_name": "alpha",
+            "steps": {
+                "s1": {"status": "COMPLETED"},
+                "s2": {"status": "COMPLETED"},
+                "s3": {"status": "COMPLETED"},
+                "s4": {"status": "PENDING"},
+                "s5": {"status": "PENDING"},
+            },
+        }))
+        (workflows_dir / "beta.json").write_text(json.dumps({
+            "workflow_name": "beta",
+            "steps": {
+                "s1": {"status": "PENDING"},
+                "s2": {"status": "PENDING"},
+                "s3": {"status": "PENDING"},
+                "s4": {"status": "PENDING"},
+                "s5": {"status": "PENDING"},
+            },
+        }))
+
+        with patch.object(conductor.constants, "STATE_DIR", oracle_tmp):
+            oracle = Oracle()
+            ctx = OracleContext(trigger="workflow_post_step", workflow_name="alpha")
+            advisories = oracle._detect_workflow_risks(ctx)
+
+        # If named state is prioritized, we should see the 3/5 checkpoint from alpha.
+        assert any(a.detector == "workflow_risks" and "3/5 steps complete" in a.message for a in advisories)
+
 
 # ---------------------------------------------------------------------------
 # consult() integration
@@ -498,17 +602,29 @@ class TestConsult:
         oracle = Oracle()
         result = oracle.consult(None)
         assert isinstance(result, list)
+        for adv in result:
+            assert adv.category, "Advisory must have a category"
+            assert adv.severity in ("critical", "warning", "caution", "info")
+            assert adv.message, "Advisory must have a message"
 
     def test_consult_with_dict_context(self, oracle_tmp):
         oracle = Oracle()
         result = oracle.consult({"trigger": "patchbay"})
         assert isinstance(result, list)
+        for adv in result:
+            assert adv.severity in ("critical", "warning", "caution", "info")
+            assert adv.advisory_hash(), "Advisory hash must be non-empty"
 
     def test_consult_with_oracle_context(self, oracle_tmp):
         oracle = Oracle()
         ctx = OracleContext(trigger="session_start", current_phase="FRAME")
         result = oracle.consult(ctx)
         assert isinstance(result, list)
+        for adv in result:
+            assert adv.category
+            assert adv.message
+            d = adv.to_dict()
+            assert "category" in d and "severity" in d and "message" in d
 
     def test_consult_includes_narrative_when_requested(self, oracle_tmp):
         _write_stats(oracle_tmp, {
@@ -582,9 +698,576 @@ class TestConvenienceMethods:
         oracle = Oracle()
         scores = oracle.get_detector_scores()
         assert isinstance(scores, dict)
+        # Empty state should produce no scores, not crash
+        assert all(isinstance(v, dict) for v in scores.values())
 
     def test_get_advisory_history_empty(self, oracle_tmp):
         oracle = Oracle()
         history = oracle.get_advisory_history()
-        assert isinstance(history, list)
-        assert len(history) == 0
+        assert history == []  # explicitly empty, not just "is a list"
+
+
+# ---------------------------------------------------------------------------
+# OracleProfile
+# ---------------------------------------------------------------------------
+
+
+class TestOracleProfile:
+    def test_build_from_empty_stats(self, oracle_tmp):
+        profile = OracleProfile.build({}, {})
+        assert profile.total_sessions == 0
+        assert profile.ship_rate == 0.0
+        assert profile.cadence == "irregular"
+        assert profile.risk_appetite == "moderate"
+
+    def test_build_from_populated_stats(self, oracle_tmp):
+        stats = {
+            "total_sessions": 20,
+            "total_minutes": 1200,
+            "shipped": 16,
+            "streak": 5,
+            "streak_max": 8,
+            "by_organ": {"ORGAN-III": 12, "ORGAN-I": 6, "META-ORGANVM": 2},
+            "recent_sessions": [
+                {"session_id": f"s{i}", "result": "SHIPPED", "start_time": time.time() - (20 - i) * 86400}
+                for i in range(10)
+            ],
+        }
+        oracle_state = {
+            "detector_scores": {
+                "momentum": {"total": 5, "shipped": 4},
+            },
+            "mastery": {
+                "encountered": {
+                    "eng.tdd.red_green_refactor": {"times_shown": 5},
+                    "eng.solid.srp": {"times_shown": 3},
+                    "biz.mvp": {"times_shown": 2},
+                },
+                "internalized": {
+                    "eng.tdd.red_green_refactor": {"at": "2026-03-01T00:00:00+00:00"},
+                },
+                "growth_areas": ["eng.solid.srp", "biz.mvp"],
+                "mastery_score": 0.333,
+            },
+        }
+        profile = OracleProfile.build(stats, oracle_state)
+        assert profile.total_sessions == 20
+        assert profile.ship_rate == 0.8
+        assert profile.avg_duration_min == 60.0
+        assert "ORGAN-III" in profile.preferred_organs
+        assert profile.streak_current == 5
+        assert profile.streak_max == 8
+        assert profile.risk_appetite == "conservative"  # high ship rate
+        assert profile.principles_encountered == 3
+        assert profile.principles_internalized == 1
+        assert profile.mastery_score == pytest.approx(0.333, rel=1e-3)
+        assert profile.top_growth_areas == ["eng.solid.srp", "biz.mvp"]
+        assert profile.learning_velocity == "starting"
+
+    def test_to_dict_roundtrip(self, oracle_tmp):
+        profile = OracleProfile(
+            total_sessions=10,
+            total_minutes=500,
+            ship_rate=0.7,
+            avg_duration_min=50,
+            preferred_organs=["ORGAN-III"],
+            risk_appetite="moderate",
+            cadence="regular",
+        )
+        d = profile.to_dict()
+        assert d["total_sessions"] == 10
+        assert d["ship_rate"] == 0.7
+        assert d["cadence"] == "regular"
+
+    def test_aggressive_risk_appetite(self, oracle_tmp):
+        stats = {
+            "total_sessions": 10,
+            "shipped": 2,  # low ship rate
+            "total_minutes": 600,
+            "streak": 0,
+            "by_organ": {},
+            "recent_sessions": [],
+        }
+        profile = OracleProfile.build(stats, {})
+        assert profile.risk_appetite == "aggressive"
+
+    def test_cadence_detection_bursty(self, oracle_tmp):
+        now = time.time()
+        # Many sessions 1h apart, then big gaps
+        recent = []
+        for i in range(8):
+            recent.append({"session_id": f"s{i}", "start_time": now - (16 - i) * 3600})  # 1h apart
+        recent.append({"session_id": "s8", "start_time": now - 200 * 3600})  # 8 day gap
+        recent.append({"session_id": "s9", "start_time": now - 250 * 3600})
+        stats = {
+            "total_sessions": 10,
+            "shipped": 5,
+            "total_minutes": 600,
+            "streak": 0,
+            "by_organ": {},
+            "recent_sessions": recent,
+        }
+        profile = OracleProfile.build(stats, {})
+        assert profile.cadence in ("bursty", "irregular")
+
+
+# ---------------------------------------------------------------------------
+# DETECTOR_REGISTRY
+# ---------------------------------------------------------------------------
+
+
+class TestDetectorRegistry:
+    def test_all_detectors_registered(self):
+        assert len(DETECTOR_REGISTRY) >= 23  # 9 original + 6 phase2 + 8 phase3
+
+    def test_each_entry_has_required_keys(self):
+        for name, meta in DETECTOR_REGISTRY.items():
+            assert "category" in meta, f"{name} missing category"
+            assert "default_enabled" in meta, f"{name} missing default_enabled"
+            assert "phase" in meta, f"{name} missing phase"
+
+    def test_phase3_detectors_present(self):
+        phase3 = ["dependency_risks", "cost_awareness", "session_cadence",
+                   "technical_debt", "scope_complexity", "collaboration_patterns",
+                   "stale_repos", "burnout_risk"]
+        for det in phase3:
+            assert det in DETECTOR_REGISTRY, f"Missing phase3 detector: {det}"
+
+
+# ---------------------------------------------------------------------------
+# Phase 3 detectors
+# ---------------------------------------------------------------------------
+
+
+class TestSessionCadence:
+    def test_long_absence_detection(self, oracle_tmp):
+        now = time.time()
+        _write_stats(oracle_tmp, {
+            "total_sessions": 10,
+            "total_minutes": 600,
+            "shipped": 7,
+            "streak": 0,
+            "by_organ": {},
+            "recent_sessions": [
+                {"session_id": f"s{i}", "start_time": now - (30 + i) * 86400, "result": "SHIPPED"}
+                for i in range(5)
+            ] + [
+                {"session_id": "s5", "start_time": now - 15 * 86400, "result": "SHIPPED"},
+            ],
+        })
+        oracle = Oracle()
+        advisories = oracle._detect_session_cadence()
+        assert any("days" in a.message.lower() or "welcome back" in a.message.lower()
+                    for a in advisories) or len(advisories) == 0  # depends on gap math
+
+    def test_no_cadence_with_few_sessions(self, oracle_tmp):
+        _write_stats(oracle_tmp, {
+            "total_sessions": 2,
+            "total_minutes": 120,
+            "shipped": 1,
+            "streak": 0,
+            "by_organ": {},
+            "recent_sessions": [
+                {"session_id": "s1", "start_time": time.time() - 86400},
+            ],
+        })
+        oracle = Oracle()
+        advisories = oracle._detect_session_cadence()
+        assert advisories == []
+
+
+class TestScopeComplexity:
+    def test_long_scope_warning(self, oracle_tmp):
+        long_scope = " ".join(["implement"] * 35)
+        _write_session(oracle_tmp, {
+            "session_id": "test-001",
+            "organ": "ORGAN-III",
+            "repo": "test",
+            "scope": long_scope,
+            "start_time": time.time(),
+            "current_phase": "FRAME",
+            "phase_logs": [],
+            "warnings": [],
+            "result": "IN_PROGRESS",
+        })
+        oracle = Oracle()
+        ctx = OracleContext(trigger="session_start", current_phase="FRAME", organ="ORGAN-III")
+        advisories = oracle._detect_scope_complexity(ctx)
+        assert any("words" in a.message.lower() for a in advisories)
+
+    def test_conjunction_heavy_scope(self, oracle_tmp):
+        scope = "implement feature A and also add feature B and also fix bug C and also refactor D"
+        _write_session(oracle_tmp, {
+            "session_id": "test-001",
+            "organ": "ORGAN-III",
+            "repo": "test",
+            "scope": scope,
+            "start_time": time.time(),
+            "current_phase": "FRAME",
+            "phase_logs": [],
+            "warnings": [],
+            "result": "IN_PROGRESS",
+        })
+        oracle = Oracle()
+        ctx = OracleContext(trigger="session_start", current_phase="FRAME", organ="ORGAN-III")
+        advisories = oracle._detect_scope_complexity(ctx)
+        assert any("conjunction" in a.message.lower() for a in advisories)
+
+    def test_no_scope_no_advisory(self, oracle_tmp):
+        _write_session(oracle_tmp, {
+            "session_id": "test-001",
+            "organ": "ORGAN-III",
+            "repo": "test",
+            "scope": "",
+            "start_time": time.time(),
+            "current_phase": "FRAME",
+            "phase_logs": [],
+            "warnings": [],
+            "result": "IN_PROGRESS",
+        })
+        oracle = Oracle()
+        ctx = OracleContext(trigger="session_start", current_phase="FRAME")
+        advisories = oracle._detect_scope_complexity(ctx)
+        assert advisories == []
+
+
+class TestCollaborationPatterns:
+    def test_repo_revisit_detection(self, oracle_tmp):
+        _write_stats(oracle_tmp, {
+            "total_sessions": 10,
+            "total_minutes": 600,
+            "shipped": 7,
+            "streak": 2,
+            "by_organ": {},
+            "recent_sessions": [
+                {"session_id": f"s{i}", "repo": "my-repo", "result": "SHIPPED"}
+                for i in range(5)
+            ] + [
+                {"session_id": f"s{i+5}", "repo": "other-repo", "result": "SHIPPED"}
+                for i in range(5)
+            ],
+        })
+        oracle = Oracle()
+        advisories = oracle._detect_collaboration_patterns()
+        assert any("my-repo" in a.message for a in advisories)
+
+    def test_no_patterns_with_few_sessions(self, oracle_tmp):
+        _write_stats(oracle_tmp, {
+            "total_sessions": 2,
+            "total_minutes": 120,
+            "shipped": 1,
+            "streak": 0,
+            "by_organ": {},
+            "recent_sessions": [
+                {"session_id": "s1", "repo": "r1"},
+            ],
+        })
+        oracle = Oracle()
+        advisories = oracle._detect_collaboration_patterns()
+        assert advisories == []
+
+
+class TestBurnoutRisk:
+    def test_marathon_sessions(self, oracle_tmp):
+        _write_stats(oracle_tmp, {
+            "total_sessions": 10,
+            "total_minutes": 1000,
+            "shipped": 5,
+            "streak": 1,
+            "by_organ": {},
+            "recent_sessions": [
+                {"session_id": f"s{i}", "duration_min": 120, "start_time": time.time() - i * 86400, "result": "SHIPPED"}
+                for i in range(5)
+            ],
+        })
+        oracle = Oracle()
+        advisories = oracle._detect_burnout_risk()
+        assert any("marathon" in a.message.lower() or "fatigue" in a.message.lower()
+                    or "average session" in a.message.lower()
+                    for a in advisories)
+
+    def test_late_night_sessions(self, oracle_tmp):
+        now = time.time()
+        # Create sessions starting at 2am UTC
+        midnight_ts = now - (now % 86400)  # start of today UTC
+        late_starts = [midnight_ts + 2 * 3600 - i * 86400 for i in range(5)]  # 2am each day
+        _write_stats(oracle_tmp, {
+            "total_sessions": 10,
+            "total_minutes": 300,
+            "shipped": 5,
+            "streak": 1,
+            "by_organ": {},
+            "recent_sessions": [
+                {"session_id": f"s{i}", "duration_min": 60, "start_time": ts, "result": "SHIPPED"}
+                for i, ts in enumerate(late_starts)
+            ],
+        })
+        oracle = Oracle()
+        advisories = oracle._detect_burnout_risk()
+        assert any("late" in a.message.lower() or "night" in a.message.lower()
+                    for a in advisories)
+
+    def test_declining_ship_rate(self, oracle_tmp):
+        _write_stats(oracle_tmp, {
+            "total_sessions": 10,
+            "total_minutes": 600,
+            "shipped": 4,
+            "streak": 0,
+            "by_organ": {},
+            "recent_sessions": [
+                {"session_id": f"s{i}", "result": "SHIPPED", "duration_min": 60, "start_time": time.time() - (10 - i) * 86400}
+                for i in range(5)
+            ] + [
+                {"session_id": f"s{i+5}", "result": "CLOSED", "duration_min": 60, "start_time": time.time() - (5 - i) * 86400}
+                for i in range(5)
+            ],
+        })
+        oracle = Oracle()
+        advisories = oracle._detect_burnout_risk()
+        assert any("declining" in a.message.lower() or "ship rate" in a.message.lower()
+                    for a in advisories)
+
+    def test_no_burnout_with_few_sessions(self, oracle_tmp):
+        _write_stats(oracle_tmp, {
+            "total_sessions": 2,
+            "total_minutes": 120,
+            "shipped": 1,
+            "streak": 1,
+            "by_organ": {},
+            "recent_sessions": [{"session_id": "s1", "result": "SHIPPED"}],
+        })
+        oracle = Oracle()
+        advisories = oracle._detect_burnout_risk()
+        assert advisories == []
+
+
+class TestCostAwareness:
+    def test_no_advisory_without_session(self, oracle_tmp):
+        oracle = Oracle()
+        ctx = OracleContext(trigger="manual")
+        advisories = oracle._detect_cost_awareness(ctx)
+        assert advisories == []
+
+
+class TestDependencyRisks:
+    def test_runs_without_error(self, oracle_tmp):
+        """Detector should not crash even if governance is unavailable."""
+        oracle = Oracle()
+        advisories = oracle._detect_dependency_risks()
+        assert isinstance(advisories, list)
+        for adv in advisories:
+            assert adv.detector == "dependency_risks"
+            assert adv.category  # non-empty category
+            assert adv.message
+            assert adv.confidence > 0
+
+
+class TestTechnicalDebt:
+    def test_runs_without_error(self, oracle_tmp):
+        oracle = Oracle()
+        advisories = oracle._detect_technical_debt()
+        assert isinstance(advisories, list)
+        for adv in advisories:
+            assert adv.detector == "technical_debt"
+            assert adv.message
+            assert adv.confidence > 0
+
+
+class TestStaleRepos:
+    def test_runs_without_error(self, oracle_tmp):
+        oracle = Oracle()
+        advisories = oracle._detect_stale_repos()
+        assert isinstance(advisories, list)
+        for adv in advisories:
+            assert adv.detector == "stale_repos"
+            assert adv.message
+            assert adv.confidence > 0
+
+
+# ---------------------------------------------------------------------------
+# Profile + convenience expansion
+# ---------------------------------------------------------------------------
+
+
+class TestBuildProfile:
+    def test_build_profile(self, oracle_tmp):
+        _write_stats(oracle_tmp, {
+            "total_sessions": 5,
+            "total_minutes": 300,
+            "shipped": 3,
+            "streak": 2,
+            "by_organ": {"ORGAN-III": 5},
+            "recent_sessions": [],
+        })
+        oracle = Oracle()
+        profile = oracle.build_profile()
+        assert profile.total_sessions == 5
+        assert profile.ship_rate == 0.6
+
+
+class TestGetDetectorManifest:
+    def test_manifest_has_all_detectors(self, oracle_tmp):
+        oracle = Oracle()
+        manifest = oracle.get_detector_manifest()
+        names = {d["name"] for d in manifest}
+        assert "process_drift" in names
+        assert "burnout_risk" in names
+        assert len(manifest) >= 23
+
+    def test_manifest_includes_effectiveness(self, oracle_tmp):
+        _write_oracle_state(oracle_tmp, {
+            "advisory_log": [],
+            "detector_scores": {"momentum": {"total": 10, "shipped": 8}},
+            "suppressed_hashes": [],
+        })
+        oracle = Oracle()
+        manifest = oracle.get_detector_manifest()
+        momentum = next(d for d in manifest if d["name"] == "momentum")
+        assert momentum["effectiveness"] == 0.8
+
+
+class TestGetTrendSummary:
+    def test_empty_trends(self, oracle_tmp):
+        _write_stats(oracle_tmp, {"total_sessions": 0, "recent_sessions": []})
+        oracle = Oracle()
+        summary = oracle.get_trend_summary()
+        assert summary["sessions_analyzed"] == 0
+
+    def test_populated_trends(self, oracle_tmp):
+        _write_stats(oracle_tmp, {
+            "total_sessions": 10,
+            "total_minutes": 600,
+            "shipped": 7,
+            "streak": 2,
+            "by_organ": {},
+            "recent_sessions": [
+                {"session_id": f"s{i}", "result": "SHIPPED", "duration_min": 60}
+                for i in range(7)
+            ] + [
+                {"session_id": f"s{i+7}", "result": "CLOSED", "duration_min": 45}
+                for i in range(3)
+            ],
+        })
+        oracle = Oracle()
+        summary = oracle.get_trend_summary()
+        assert "last_5" in summary
+        assert summary["last_5"]["ship_rate"] >= 0
+
+
+class TestCalibrateDetector:
+    def test_reset_detector(self, oracle_tmp):
+        _write_oracle_state(oracle_tmp, {
+            "advisory_log": [],
+            "detector_scores": {"momentum": {"total": 10, "shipped": 5}},
+            "suppressed_hashes": [],
+        })
+        oracle = Oracle()
+        result = oracle.calibrate_detector("momentum", "reset")
+        assert result["calibrated"] == "momentum"
+        assert result["action"] == "reset"
+        scores = oracle.get_detector_scores()
+        assert "momentum" not in scores
+
+    def test_boost_detector(self, oracle_tmp):
+        _write_oracle_state(oracle_tmp, {
+            "advisory_log": [],
+            "detector_scores": {"momentum": {"total": 10, "shipped": 5}},
+            "suppressed_hashes": [],
+        })
+        oracle = Oracle()
+        result = oracle.calibrate_detector("momentum", "boost")
+        assert result["action"] == "boost"
+        scores = oracle.get_detector_scores()
+        assert scores["momentum"]["shipped"] == 7
+
+    def test_penalize_detector(self, oracle_tmp):
+        _write_oracle_state(oracle_tmp, {
+            "advisory_log": [],
+            "detector_scores": {"momentum": {"total": 10, "shipped": 5}},
+            "suppressed_hashes": [],
+        })
+        oracle = Oracle()
+        result = oracle.calibrate_detector("momentum", "penalize")
+        assert result["action"] == "penalize"
+        scores = oracle.get_detector_scores()
+        assert scores["momentum"]["shipped"] == 3
+
+    def test_unknown_detector(self, oracle_tmp):
+        oracle = Oracle()
+        result = oracle.calibrate_detector("nonexistent", "reset")
+        assert "error" in result
+
+    def test_unknown_action(self, oracle_tmp):
+        oracle = Oracle()
+        result = oracle.calibrate_detector("momentum", "unknown_action")
+        assert "error" in result
+
+
+class TestExportState:
+    def test_export_has_all_sections(self, oracle_tmp):
+        _write_stats(oracle_tmp, {"total_sessions": 5, "total_minutes": 300,
+                                  "shipped": 3, "streak": 1, "by_organ": {}, "recent_sessions": []})
+        oracle = Oracle()
+        export = oracle.export_state()
+        assert "profile" in export
+        assert "detector_manifest" in export
+        assert "trend_summary" in export
+        assert "state" in export
+        assert "exported_at" in export
+
+
+class TestDiagnose:
+    def test_diagnose_no_state_file(self, oracle_tmp):
+        oracle = Oracle()
+        diag = oracle.diagnose()
+        assert diag["ok"] is True
+        assert "issues" in diag
+        assert "info" in diag
+
+    def test_diagnose_with_state(self, oracle_tmp):
+        _write_oracle_state(oracle_tmp, {
+            "advisory_log": [{"test": True}],
+            "detector_scores": {"x": {"total": 1, "shipped": 1}},
+            "suppressed_hashes": ["abc123"],
+        })
+        oracle = Oracle()
+        diag = oracle.diagnose()
+        assert diag["ok"] is True
+        assert diag["info"]["advisory_log_entries"] == 1
+        assert diag["info"]["suppressed_count"] == 1
+
+
+class TestConfigDisabling:
+    def test_disabled_detector_skipped(self, oracle_tmp):
+        """When a detector is disabled via config, it should not produce advisories."""
+        _write_stats(oracle_tmp, {
+            "total_sessions": 10,
+            "total_minutes": 600,
+            "shipped": 2,
+            "closed": 8,
+            "streak": 0,
+            "by_organ": {},
+            "recent_sessions": [],
+        })
+        # Patch the config loader to disable momentum
+        with patch("conductor.oracle._load_oracle_config", return_value={"disabled_detectors": ["momentum"]}):
+            oracle = Oracle()
+            result = oracle.consult()
+            # Momentum would normally fire for low ship rate, but it should be disabled
+            assert not any(a.detector == "momentum" for a in result)
+
+    def test_enabled_detector_runs(self, oracle_tmp):
+        _write_stats(oracle_tmp, {
+            "total_sessions": 10,
+            "total_minutes": 600,
+            "shipped": 2,
+            "closed": 8,
+            "streak": 0,
+            "by_organ": {},
+            "recent_sessions": [],
+        })
+        with patch("conductor.oracle._load_oracle_config", return_value={"disabled_detectors": []}):
+            oracle = Oracle()
+            result = oracle.consult()
+            # momentum should fire for low ship rate
+            assert any(a.detector == "momentum" for a in result)

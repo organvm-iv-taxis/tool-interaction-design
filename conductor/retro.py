@@ -26,7 +26,9 @@ def _load_session_logs() -> list[dict[str, Any]]:
                 data = yaml.safe_load(log_file.read_text())
                 if isinstance(data, dict):
                     logs.append(data)
-            except Exception:
+            except Exception as exc:
+                from .observability import log_event
+                log_event("retro.log_load_error", {"error": str(exc), "file": str(log_file)})
                 continue
     return logs
 
@@ -36,8 +38,9 @@ def _load_stats() -> dict[str, Any]:
     if STATS_FILE.exists():
         try:
             return json.loads(STATS_FILE.read_text())
-        except (json.JSONDecodeError, OSError):
-            pass
+        except (json.JSONDecodeError, OSError) as exc:
+            from .observability import log_event
+            log_event("retro.stats_load_error", {"error": str(exc), "path": str(STATS_FILE)})
     return {}
 
 

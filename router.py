@@ -37,16 +37,34 @@ except ImportError:
     print("PyYAML required: pip install pyyaml", file=sys.stderr)
     sys.exit(1)
 
-try:
-    from conductor.contracts import assert_contract
-    from conductor.plugins import load_plugin_clusters
-    from conductor.policy import load_policy
-    from conductor.schemas import validate_document
-except Exception:  # pragma: no cover - router can run standalone
-    assert_contract = lambda *_args, **_kwargs: None  # type: ignore[assignment]
-    load_plugin_clusters = lambda: []  # type: ignore[assignment]
-    load_policy = lambda: None  # type: ignore[assignment]
-    validate_document = lambda *_args, **_kwargs: []  # type: ignore[assignment]
+# ---------------------------------------------------------------------------
+# Extension hooks — injected by conductor.router_extensions when available.
+# Router runs standalone with these no-op defaults (only needs PyYAML).
+# ---------------------------------------------------------------------------
+
+assert_contract = lambda *_args, **_kwargs: None  # type: ignore[assignment]
+load_plugin_clusters = lambda: []  # type: ignore[assignment]
+load_policy = lambda: None  # type: ignore[assignment]
+validate_document = lambda *_args, **_kwargs: []  # type: ignore[assignment]
+
+
+def inject_extensions(
+    *,
+    contract_fn=None,
+    plugin_fn=None,
+    policy_fn=None,
+    schema_fn=None,
+) -> None:
+    """Allow conductor (or any host) to inject real implementations."""
+    global assert_contract, load_plugin_clusters, load_policy, validate_document
+    if contract_fn is not None:
+        assert_contract = contract_fn
+    if plugin_fn is not None:
+        load_plugin_clusters = plugin_fn
+    if policy_fn is not None:
+        load_policy = policy_fn
+    if schema_fn is not None:
+        validate_document = schema_fn
 
 
 # =============================================================================

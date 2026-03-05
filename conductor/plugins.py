@@ -90,7 +90,9 @@ def _as_str_list(value: Any) -> list[str]:
 def _strict_plugin_failures() -> bool:
     try:
         return bool(load_policy().fail_on_warnings)
-    except Exception:
+    except Exception as exc:
+        from .observability import log_event
+        log_event("plugins.policy_load_error", {"error": str(exc)})
         return False
 
 

@@ -17,12 +17,19 @@ SESSIONS_DIR = BASE / "sessions"
 TEMPLATES_DIR = BASE / "templates"
 GENERATED_DIR = BASE / "generated"
 EXPORTS_DIR = BASE / "exports"
-SESSION_STATE_FILE = BASE / ".conductor-session.json"
-STATS_FILE = BASE / ".conductor-stats.json"
-WORK_REGISTRY_FILE = BASE / ".conductor-work-registry.json"
-PATTERN_HISTORY_FILE = BASE / ".conductor-pattern-history.jsonl"
-ORACLE_STATE_FILE = BASE / ".conductor-oracle-state.json"
 CONFIG_FILE = BASE / ".conductor.yaml"
+
+# ---------------------------------------------------------------------------
+# State directory — all runtime state lives under .conductor/
+# ---------------------------------------------------------------------------
+
+STATE_DIR = BASE / ".conductor"
+SESSION_STATE_FILE = STATE_DIR / "session.json"
+STATS_FILE = STATE_DIR / "stats.json"
+WORK_REGISTRY_FILE = STATE_DIR / "work-registry.json"
+PATTERN_HISTORY_FILE = STATE_DIR / "pattern-history.jsonl"
+ORACLE_STATE_FILE = STATE_DIR / "oracle" / "state.json"
+WISDOM_DIR = Path(__file__).parent / "wisdom"
 
 # Workspace paths (mirror organvm-engine conventions)
 WORKSPACE = Path(os.environ.get("ORGANVM_WORKSPACE_DIR", str(Path.home() / "Workspace")))
