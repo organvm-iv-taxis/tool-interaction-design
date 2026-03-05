@@ -34,6 +34,7 @@ from .constants import (
     resolve_organ_key,
 )
 from .doctor import run_doctor
+from .executor import WorkflowExecutor
 from .governance import GovernanceRuntime
 from .handoff import create_handoff_envelope, edge_health_report, get_trace_bundle, simulate_route_handoff, validate_handoff_payload
 from .integrity import IntegrityIssue, IntegrityReport, run_integrity_checks
@@ -104,6 +105,7 @@ __all__ = [
     "IntegrityIssue",
     "IntegrityReport",
     "run_doctor",
+    "WorkflowExecutor",
     "migrate_registry",
     "migrate_governance",
     "log_event",

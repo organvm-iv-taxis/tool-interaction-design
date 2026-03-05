@@ -13,11 +13,15 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from .constants import (
+    PHASE_INSTRUMENTS,
     PHASE_ROLES,
+    ROLE_ACTIONS,
+    WORKFLOW_DSL_PATH,
     organ_short,
     get_phase_clusters,
 )
 from .contracts import assert_contract
+from .executor import WorkflowExecutor
 from .governance import GovernanceRuntime
 from .observability import get_metrics, log_event
 from .session import Session, SessionEngine, _load_stats
@@ -32,6 +36,7 @@ class Patchbay:
         self.engine = engine or SessionEngine(ontology)
         self.gov = GovernanceRuntime()
         self.wq = WorkQueue(self.gov)
+        self.executor = WorkflowExecutor(WORKFLOW_DSL_PATH)
 
     def briefing(self, organ_filter: str | None = None) -> dict:
         """Full system briefing. Returns structured data.
@@ -43,6 +48,8 @@ class Patchbay:
 
         for key, fn in [
             ("session", lambda: self._session_section()),
+            ("orchestra", lambda: self._orchestra_section()),
+            ("score", lambda: self.executor.get_briefing()),
             ("pulse", lambda: self._pulse_section(organ_filter)),
             ("queue", lambda: self._queue_section(organ_filter)),
             ("stats", lambda: self._stats_section()),
@@ -105,6 +112,27 @@ class Patchbay:
             "last_result": last_info.get("result") if last_info else None,
             "last_duration": last_info.get("duration_minutes") if last_info else None,
             "last_organ": last_info.get("organ") if last_info else None,
+        }
+
+    def _orchestra_section(self) -> dict:
+        """AI orchestra briefing for the current session phase."""
+        try:
+            session = self.engine._load_session()
+        except Exception:
+            session = None
+
+        if not session:
+            return {"active": False}
+
+        phase = session.current_phase
+        return {
+            "active": True,
+            "phase": phase,
+            "role": PHASE_ROLES.get(phase, "N/A"),
+            "instrument": PHASE_INSTRUMENTS.get(phase, "N/A"),
+            "allowed": ROLE_ACTIONS.get(phase, {}).get("allowed", []),
+            "forbidden": ROLE_ACTIONS.get(phase, {}).get("forbidden", []),
+            "clusters": get_phase_clusters().get(phase, []),
         }
 
     def _pulse_section(self, organ_filter: str | None = None) -> dict:
@@ -347,10 +375,7 @@ class Patchbay:
             lines.append(f"  {sess['session_id']}")
             lines.append(f"  {organ_short(sess['organ'])} | {sess['repo']} | \"{sess['scope']}\"")
             phase = sess["current_phase"]
-            lines.append(f"  Phase: {phase} ({sess['duration_minutes']}m) | Role: {sess.get('ai_role', 'N/A')}")
-            clusters = sess.get("clusters", [])
-            if clusters:
-                lines.append(f"  Clusters: {', '.join(clusters)}")
+            lines.append(f"  Phase: {phase} ({sess['duration_minutes']}m)")
             # Phase history
             history_parts = []
             for ph in sess.get("phase_history", []):
@@ -367,6 +392,30 @@ class Patchbay:
                 result = sess.get("last_result", "?")
                 dur = sess.get("last_duration", "?")
                 lines.append(f"  Last closed: {last_id} ({result}, {dur}m)")
+
+        # Orchestra (AI-centric role briefing)
+        orch = data.get("orchestra", {})
+        if orch.get("active"):
+            lines.append("")
+            lines.append("  AI ORCHESTRA BRIEFING")
+            lines.append("  " + "-" * 68)
+            lines.append(f"  Role:       {orch['role']}")
+            lines.append(f"  Instrument: {orch['instrument']}")
+            lines.append(f"  Clusters:   {', '.join(orch['clusters'])}")
+            if orch.get("allowed"):
+                lines.append("  Allowed:    " + ", ".join(orch["allowed"]))
+            if orch.get("forbidden"):
+                lines.append("  Forbidden:  " + ", ".join(orch["forbidden"]))
+
+        # Score (Active Workflow)
+        score = data.get("score", {})
+        if score.get("active"):
+            lines.append("")
+            lines.append("  WORKFLOW SCORE")
+            lines.append("  " + "-" * 68)
+            lines.append(f"  Workflow:     {score['workflow']}")
+            lines.append(f"  Current Step: {score['current_step']}")
+            lines.append(f"  Progress:     {score['progress']} ({score['status']})")
 
         # Pulse
         pulse = data.get("pulse", {})

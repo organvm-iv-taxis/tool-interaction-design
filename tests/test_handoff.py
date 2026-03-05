@@ -107,6 +107,7 @@ def test_simulate_route_handoff_fallback_path(tmp_path) -> None:
     assert result["trace"]["status"] == "fallback"
     assert result["route_decision"]["decision"] == "fallback"
     assert result["route_decision"]["selected_path"]
+    assert "fallback_tools" in result["route_decision"]
 
 
 def test_simulate_route_handoff_invalid_cluster_fails(tmp_path) -> None:

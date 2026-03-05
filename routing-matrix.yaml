@@ -1052,6 +1052,43 @@ routes:
       - source: search_issues
         target: "calculate-metrics.py"
 
+  # ===========================================================================
+  # CROSS-DOMAIN EXPANSION (v1.1)
+  # ===========================================================================
+
+  - id: search_to_design
+    from: web_search
+    to: visual_design
+    data_flow: TEXT → JSON
+    protocol: MCP → MCP
+    automatable: true
+    description: "Design inspiration and component research feeds design context"
+    exemplars:
+      - source: perplexity_research
+        target: get_design_context
+
+  - id: design_to_thinking
+    from: visual_design
+    to: sequential_thinking
+    data_flow: JSON → TEXT
+    protocol: MCP → MCP
+    automatable: true
+    description: "Design specs drive reasoning about implementation complexity"
+    exemplars:
+      - source: get_design_context
+        target: sequentialthinking
+
+  - id: thinking_to_governance
+    from: sequential_thinking
+    to: governance_engine
+    data_flow: TEXT → JSON
+    protocol: MCP → FILESYSTEM
+    automatable: true
+    description: "System reasoning drives policy updates and WIP adjustments"
+    exemplars:
+      - source: sequentialthinking
+        target: "calculate-metrics.py"
+
 alternatives:
     - cluster: web_search
       tools_ranked:

@@ -145,6 +145,7 @@ def simulate_route_handoff(
     selected_path: list[str] = []
     candidate_paths: list[list[str]] = []
     direct_routes_payload: list[dict[str, Any]] = []
+    fallback_tools: list[str] = []
     reason = "No route found."
 
     source = ontology.clusters.get(source_cluster) if ontology else None
@@ -172,14 +173,29 @@ def simulate_route_handoff(
             reason = "Direct route available."
         else:
             # Repair step: fallback to graph path if no direct route exists.
-            retry_count = 1
-            candidate_paths = engine.find_path(source.domain, target.domain)
+            candidate_paths = engine.find_cluster_paths(source_cluster, target_cluster)
+            if not candidate_paths:
+                candidate_paths = engine.find_path(source.domain, target.domain)
+
+            alternatives = engine.get_alternatives(source_cluster)
+            if alternatives:
+                fallback_tools = list(alternatives.tools_ranked[:3])
+                retry_count = len(fallback_tools)
+            else:
+                retry_count = 1
+
             if candidate_paths:
                 status = "fallback"
                 fallback_used = True
                 failure_bucket = ""
                 selected_path = candidate_paths[0]
-                reason = "No direct route; selected fallback multi-hop path."
+                if fallback_tools:
+                    reason = (
+                        "No direct route; selected fallback multi-hop path and prepared "
+                        "alternative tool retry sequence."
+                    )
+                else:
+                    reason = "No direct route; selected fallback multi-hop path."
 
     latency_ms = round((time.perf_counter() - started) * 1000.0, 3)
     route_decision = {
@@ -188,6 +204,7 @@ def simulate_route_handoff(
         "decision": "direct" if status == "ok" else "fallback" if status == "fallback" else "fail",
         "selected_path": selected_path,
         "candidate_paths": candidate_paths,
+        "fallback_tools": fallback_tools,
         "reason": reason,
         "timestamp": _now_iso(),
     }
@@ -203,6 +220,7 @@ def simulate_route_handoff(
         "retry_count": retry_count,
         "fallback_used": fallback_used,
         "context_loss": False,
+        "fallback_tools": fallback_tools,
         "timestamp": _now_iso(),
     }
     _record_trace(trace)
@@ -227,6 +245,7 @@ def simulate_route_handoff(
         "route_decision": route_decision,
         "trace": trace,
         "direct_routes": direct_routes_payload,
+        "fallback_tools": fallback_tools,
     }
 
 

@@ -35,10 +35,41 @@ def _write_corpus(corpus: Path) -> None:
                 "organs": {
                     "ORGAN-III": {
                         "repositories": [
-                            {"name": "r1", "promotion_status": "CANDIDATE"},
-                            {"name": "r2", "promotion_status": "CANDIDATE"},
-                            {"name": "r3", "promotion_status": "CANDIDATE"},
-                            {"name": "r4", "promotion_status": "PUBLIC_PROCESS"},
+                            {
+                                "name": "r1",
+                                "promotion_status": "CANDIDATE",
+                                "documentation_status": "DEPLOYED",
+                                "ci_workflow": "ci.yml",
+                                "implementation_status": "ACTIVE",
+                            },
+                            {
+                                "name": "r2",
+                                "promotion_status": "CANDIDATE",
+                                "documentation_status": "DEPLOYED",
+                                "ci_workflow": "ci.yml",
+                                "implementation_status": "ACTIVE",
+                            },
+                            {
+                                "name": "r3",
+                                "promotion_status": "LOCAL",
+                                "documentation_status": "DEPLOYED",
+                                "ci_workflow": "ci.yml",
+                                "implementation_status": "ACTIVE",
+                            },
+                            {
+                                "name": "r4",
+                                "promotion_status": "PUBLIC_PROCESS",
+                                "documentation_status": "DEPLOYED",
+                                "ci_workflow": "ci.yml",
+                                "implementation_status": "ACTIVE",
+                            },
+                            {
+                                "name": "r5",
+                                "promotion_status": "PUBLIC_PROCESS",
+                                "documentation_status": "DEPLOYED",
+                                "ci_workflow": "ci.yml",
+                                "implementation_status": "ACTIVE",
+                            },
                         ]
                     }
                 },
@@ -103,6 +134,35 @@ def test_doctor_apply_migrates_schema_version(tmp_path) -> None:
     assert governance["schema_version"] == "1"
 
 
+def test_wip_auto_promote_cli_apply(tmp_path) -> None:
+    corpus = tmp_path / "corpus"
+    _write_corpus(corpus)
+
+    preview = run(
+        "wip",
+        "auto-promote",
+        "--format",
+        "json",
+        env={"ORGANVM_CORPUS_DIR": str(corpus)},
+    )
+    assert preview.returncode == 0
+    preview_payload = json.loads(preview.stdout)
+    assert preview_payload["summary"]["dry_run"] is True
+    assert preview_payload["summary"]["eligible"] >= 1
+
+    apply = run(
+        "wip",
+        "auto-promote",
+        "--apply",
+        "--format",
+        "json",
+        env={"ORGANVM_CORPUS_DIR": str(corpus)},
+    )
+    assert apply.returncode == 0
+    apply_payload = json.loads(apply.stdout)
+    assert apply_payload["summary"]["promoted"] >= 1
+
+
 def test_plugins_doctor_json_contract_shape() -> None:
     result = run("plugins", "doctor", "--format", "json")
     assert result.returncode == 0
@@ -158,3 +218,43 @@ def test_route_simulate_and_edge_health_cli_json() -> None:
     assert health_result.returncode == 0
     health_payload = json.loads(health_result.stdout)
     assert set(health_payload.keys()) >= {"total_traces", "handoff_success_rate", "schema_pass_rate"}
+
+
+def test_workflow_cli_runtime_lifecycle() -> None:
+    state_file = ROOT / ".conductor-workflow-state.json"
+    state_file.unlink(missing_ok=True)
+    try:
+        start_result = run(
+            "workflow",
+            "start",
+            "--name",
+            "research-to-spec",
+            "--input-json",
+            '{"problem":"workflow smoke test"}',
+            "--format",
+            "json",
+        )
+        assert start_result.returncode == 0
+        start_payload = json.loads(start_result.stdout)
+        assert start_payload["workflow"] == "research-to-spec"
+        assert start_payload["current_step"]
+
+        step_result = run(
+            "workflow",
+            "step",
+            "--name",
+            start_payload["current_step"],
+            "--format",
+            "json",
+        )
+        assert step_result.returncode == 0
+        step_payload = json.loads(step_result.stdout)
+        assert step_payload["status"] in {"CONTINUE", "CHECKPOINT", "FINISHED"}
+
+        status_result = run("workflow", "status", "--format", "json")
+        assert status_result.returncode == 0
+        status_payload = json.loads(status_result.stdout)
+        assert status_payload["active"] is True
+    finally:
+        run("workflow", "clear")
+        state_file.unlink(missing_ok=True)

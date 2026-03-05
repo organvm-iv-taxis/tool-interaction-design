@@ -6,11 +6,12 @@ import argparse
 import json
 import os
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
 
-from .constants import ONTOLOGY_PATH, ROUTING_PATH, ConductorError, resolve_organ_key
+from .constants import ONTOLOGY_PATH, ROUTING_PATH, WORKFLOW_DSL_PATH, ConductorError, resolve_organ_key
 from .doctor import assert_doctor_ok, render_doctor_text, run_doctor
 from .governance import GovernanceRuntime
 from .handoff import edge_health_report, get_trace_bundle, simulate_route_handoff, validate_handoff_payload
@@ -74,6 +75,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_promote.add_argument("repo", help="Repository name")
     p_promote.add_argument("state", help="Target state (CANDIDATE, PUBLIC_PROCESS, etc.)")
     p_promote.add_argument("--yes", "-y", action="store_true", help="Skip confirmation prompt")
+    p_auto_promote = wip_sub.add_parser("auto-promote", help="Auto-promote healthy repos while respecting WIP limits")
+    p_auto_promote.add_argument(
+        "--apply",
+        action="store_true",
+        help="Apply promotions (default is dry-run preview)",
+    )
+    p_auto_promote.add_argument("--format", choices=["text", "json"], default="text", help="Output format")
 
     p_enforce = sub.add_parser("enforce", help="Generate enforcement artifacts")
     enforce_sub = p_enforce.add_subparsers(dest="enforce_command", required=True)
@@ -120,6 +128,27 @@ def build_parser() -> argparse.ArgumentParser:
     p_validate.add_argument("file", type=str)
     p_validate.add_argument("--strict", action="store_true", help="Treat warnings as validation failures")
     p_validate.add_argument("--format", choices=["text", "json"], default="text", help="Output format")
+
+    p_workflow = sub.add_parser("workflow", help="Workflow DSL runtime commands")
+    workflow_sub = p_workflow.add_subparsers(dest="workflow_command", required=True)
+    workflow_sub.add_parser("list", help="List available workflow names")
+    p_workflow_start = workflow_sub.add_parser("start", help="Start workflow execution state")
+    p_workflow_start.add_argument("--name", required=True, help="Workflow name from workflow-dsl.yaml")
+    p_workflow_start.add_argument("--session-id", help="Optional session id (default: active session or generated)")
+    p_workflow_start.add_argument("--input-json", help="Optional JSON payload for workflow input")
+    p_workflow_start.add_argument("--format", choices=["text", "json"], default="text", help="Output format")
+    p_workflow_status = workflow_sub.add_parser("status", help="Show workflow execution status")
+    p_workflow_status.add_argument("--format", choices=["text", "json"], default="text", help="Output format")
+    p_workflow_step = workflow_sub.add_parser("step", help="Execute one workflow step")
+    p_workflow_step.add_argument("--name", required=True, help="Step name to execute")
+    p_workflow_step.add_argument("--output-json", help="Optional JSON payload for step output")
+    p_workflow_step.add_argument(
+        "--checkpoint-action",
+        choices=["approve", "modify", "abort"],
+        help="Checkpoint decision when the step is gated",
+    )
+    p_workflow_step.add_argument("--format", choices=["text", "json"], default="text", help="Output format")
+    workflow_sub.add_parser("clear", help="Clear persisted workflow execution state")
 
     p_doctor = sub.add_parser("doctor", help="Run conductor integrity diagnostics")
     p_doctor.add_argument("--workflow", type=Path, default=Path("workflow-dsl.yaml"), help="Workflow file to validate")
@@ -239,6 +268,26 @@ def _dispatch(args):
             gov.wip_check()
         elif args.wip_command == "promote":
             gov.wip_promote(args.repo, args.state)
+        elif args.wip_command == "auto-promote":
+            report = gov.auto_promote(dry_run=not args.apply)
+            if args.format == "json":
+                print(json.dumps(report, indent=2))
+            else:
+                summary = report.get("summary", {})
+                print("Auto-promotion report")
+                print(
+                    f"  dry_run={summary.get('dry_run')} "
+                    f"eligible={summary.get('eligible')} "
+                    f"promoted={summary.get('promoted')} "
+                    f"policy_bundle={summary.get('policy_bundle')}"
+                )
+                rows = report.get("promoted") if args.apply else report.get("proposed")
+                label = "promoted" if args.apply else "proposed"
+                for row in rows or []:
+                    print(
+                        f"  {label}: [{row.get('organ')}] {row.get('repo')} "
+                        f"{row.get('current')} -> {row.get('target')}"
+                    )
 
     elif args.command == "enforce":
         gov = GovernanceRuntime()
@@ -340,6 +389,95 @@ def _dispatch(args):
             sys.exit(1)
         from router import cmd_validate
         cmd_validate(args, ontology, engine)
+
+    elif args.command == "workflow":
+        from .executor import WorkflowExecutor
+
+        executor = WorkflowExecutor(WORKFLOW_DSL_PATH)
+
+        if args.workflow_command == "list":
+            workflows = executor.list_workflows()
+            for name in workflows:
+                print(name)
+            if not workflows:
+                raise ConductorError("No workflows found in workflow DSL.")
+        elif args.workflow_command == "start":
+            input_payload = None
+            if args.input_json:
+                try:
+                    input_payload = json.loads(args.input_json)
+                except json.JSONDecodeError as exc:
+                    raise ConductorError(f"--input-json is not valid JSON: {exc}") from exc
+
+            session_id = args.session_id
+            if not session_id:
+                try:
+                    active = SessionEngine(ontology)._load_session()
+                except Exception:
+                    active = None
+                if active:
+                    session_id = active.session_id
+                else:
+                    session_id = datetime.now(timezone.utc).strftime("adhoc-%Y%m%d%H%M%S")
+
+            state = executor.start_workflow(args.name, session_id=session_id, global_input=input_payload)
+            payload = {
+                "workflow": state.workflow_name,
+                "session_id": state.session_id,
+                "status": state.status,
+                "current_step": state.current_step,
+                "progress": f"0/{len(state.steps)}",
+            }
+            if args.format == "json":
+                print(json.dumps(payload, indent=2))
+            else:
+                print(f"workflow={payload['workflow']} session_id={payload['session_id']}")
+                print(
+                    f"  status={payload['status']} current_step={payload['current_step']} "
+                    f"progress={payload['progress']}"
+                )
+        elif args.workflow_command == "status":
+            payload = executor.get_briefing()
+            if args.format == "json":
+                print(json.dumps(payload, indent=2))
+            else:
+                if not payload.get("active"):
+                    print("No active workflow execution state.")
+                else:
+                    context = payload.get("current_context", {})
+                    print(f"workflow={payload.get('workflow')} status={payload.get('status')}")
+                    print(f"  current_step={payload.get('current_step')} progress={payload.get('progress')}")
+                    if context.get("cluster"):
+                        print(
+                            f"  cluster={context.get('cluster')} "
+                            f"tool={context.get('tool')} checkpoint={context.get('checkpoint')}"
+                        )
+        elif args.workflow_command == "step":
+            output_payload = None
+            if args.output_json:
+                try:
+                    output_payload = json.loads(args.output_json)
+                except json.JSONDecodeError as exc:
+                    raise ConductorError(f"--output-json is not valid JSON: {exc}") from exc
+            payload = executor.run_step(
+                step_name=args.name,
+                tool_output=output_payload,
+                checkpoint_action=args.checkpoint_action,
+            )
+            if args.format == "json":
+                print(json.dumps(payload, indent=2))
+            else:
+                print(f"status={payload.get('status')} step={args.name}")
+                if payload.get("next_step"):
+                    print(
+                        f"  next_step={payload.get('next_step')} "
+                        f"checkpoint={payload.get('checkpoint')}"
+                    )
+                if payload.get("allowed_actions"):
+                    print(f"  allowed_actions={','.join(payload.get('allowed_actions', []))}")
+        elif args.workflow_command == "clear":
+            executor.clear_state()
+            print("Cleared workflow execution state.")
 
     elif args.command == "doctor":
         report = run_doctor(workflow_path=args.workflow, format_name=args.format, apply=args.apply)
