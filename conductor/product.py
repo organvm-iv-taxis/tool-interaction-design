@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import shutil
 from collections import Counter, defaultdict
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -407,6 +408,126 @@ echo "Dependencies installed. You can now enable the extension in Gemini CLI."
         print(f"  1. cd {output}")
         print(f"  2. ./install.sh")
         print(f"  3. gemini extensions install .\n")
+
+    def export_fleet_dashboard(self, output_dir: Optional[Path] = None) -> None:
+        """Generate a static HTML dashboard aggregating all telemetry and WIP states."""
+        output = output_dir or EXPORTS_DIR / "fleet-dashboard"
+        output.mkdir(parents=True, exist_ok=True)
+        
+        from .patchbay import Patchbay
+        from .observability import get_metrics, compute_trend_report
+        pb = Patchbay(ontology=None, engine=None)
+        
+        # We must sync the queue so the registry is up to date
+        pb.briefing()
+        
+        pulse = pb._pulse_section()
+        stats = pb._stats_section()
+        queue = pb._queue_section()
+        trends = compute_trend_report()
+        obs = get_metrics()
+
+        html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ORGANVM Fleet Admiral Dashboard</title>
+    <style>
+        body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #0d1117; color: #e2e8f0; margin: 0; padding: 20px; }}
+        .container {{ max-width: 1200px; margin: 0 auto; }}
+        h1, h2, h3 {{ color: #63b3ed; }}
+        .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-bottom: 20px; }}
+        .card {{ background: #1a202c; border: 1px solid #2d3748; border-radius: 8px; padding: 20px; }}
+        .stat {{ font-size: 2em; font-weight: bold; color: #48bb78; }}
+        .stat.warning {{ color: #ecc94b; }}
+        .stat.danger {{ color: #f56565; }}
+        table {{ width: 100%; border-collapse: collapse; margin-top: 10px; }}
+        th, td {{ text-align: left; padding: 8px; border-bottom: 1px solid #2d3748; }}
+        th {{ color: #a0aec0; font-weight: normal; }}
+        .tag {{ display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 0.8em; margin-right: 4px; }}
+        .tag-critical {{ background: #742a2a; color: #fed7d7; }}
+        .tag-warn {{ background: #744210; color: #fef08a; }}
+        .tag-ok {{ background: #22543d; color: #c6f6d5; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>ORGANVM Fleet Admiral Dashboard</h1>
+        <p>Generated: {datetime.now(timezone.utc).isoformat()}</p>
+        
+        <div class="grid">
+            <div class="card">
+                <h2>System Health</h2>
+                <div class="stat {'danger' if trends['status'] == 'critical' else 'warning' if trends['status'] == 'warn' else 'ok'}">{trends['status'].upper()}</div>
+                <p>Recent Failure Rate: {trends['recent']['failure_rate']*100:.1f}%</p>
+                <p>Total Repos: {pulse['total_repos']}</p>
+            </div>
+            <div class="card">
+                <h2>WIP Limits</h2>
+                <div class="stat {'danger' if pulse['violations_count'] > 0 else 'ok'}">{pulse['violations_count']}</div>
+                <p>Organs in Violation</p>
+                <p>Total Candidate Repos: {pulse['total_candidate']}</p>
+            </div>
+            <div class="card">
+                <h2>Delivery Metrics</h2>
+                <div class="stat">{stats['ship_rate']}%</div>
+                <p>Lifetime Ship Rate ({stats['shipped']}/{stats['total_sessions']} sessions)</p>
+                <p>Current Streak: {stats['streak']}</p>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Work Queue (Top 10)</h2>
+            <table>
+                <tr><th>ID</th><th>Priority</th><th>Organ</th><th>Description</th><th>Status</th><th>Owner</th></tr>"""
+        
+        for item in queue.get('items', []):
+            p_class = "tag-critical" if item['priority'] == "CRITICAL" else "tag-warn" if item['priority'] == "HIGH" else "tag-ok"
+            s_class = "tag-warn" if item['status'] == "CLAIMED" else "tag-ok" if item['status'] == "RESOLVED" else ""
+            html += f"""
+                <tr>
+                    <td><code>{item['id']}</code></td>
+                    <td><span class="tag {p_class}">{item['priority']}</span></td>
+                    <td>{item['organ']}</td>
+                    <td>{item['description']}</td>
+                    <td><span class="tag {s_class}">{item['status']}</span></td>
+                    <td>{item['owner'] or '-'}</td>
+                </tr>"""
+
+        html += """
+            </table>
+        </div>
+        
+        <div class="card">
+            <h2>Organ Pulse</h2>
+            <table>
+                <tr><th>Organ</th><th>Total</th><th>Local</th><th>Candidate</th><th>Public Process</th><th>Graduated</th><th>Archived</th><th>Flags</th></tr>"""
+                
+        for key, o in sorted(pulse.get('organs', {}).items()):
+            flags = ", ".join([f"<span class='tag tag-danger'>{f}</span>" if ">" in f else f"<span class='tag tag-warn'>{f}</span>" for f in o.get("flags", [])])
+            html += f"""
+                <tr>
+                    <td><strong>{o['short']}</strong></td>
+                    <td>{o['total']}</td>
+                    <td>{o['local']}</td>
+                    <td>{o['candidate']}</td>
+                    <td>{o['public_process']}</td>
+                    <td>{o['graduated']}</td>
+                    <td>{o['archived']}</td>
+                    <td>{flags}</td>
+                </tr>"""
+
+        html += """
+            </table>
+        </div>
+    </div>
+</body>
+</html>"""
+        
+        index_file = output / "index.html"
+        index_file.write_text(html)
+        print(f"\n  Fleet Dashboard generated: {index_file}\n")
 
     def export_audit_report(self, organ: Optional[str] = None) -> None:
         """Generate a structured audit report."""

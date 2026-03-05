@@ -20,10 +20,10 @@ Convert high-powered orchestration into disciplined, repeatable software deliver
 - [ ] Run recurring recovery drills and measure recovery time.
 
 ## Weeks 11-13 (Growth)
-- [ ] Package process assets into reusable operator kits.
-- [ ] Run services lane (implementation/governance hardening).
-- [ ] Run products lane (templates/checklists/policy packs).
-- [ ] Run advisory lane (operating-system coaching with KPI reporting).
+- [x] Package process assets into reusable operator kits.
+- [x] Run services lane (implementation/governance hardening).
+- [x] Run products lane (templates/checklists/policy packs).
+- [x] Run advisory lane (operating-system coaching with KPI reporting).
 
 ## KPI Targets
 - Lead time down by 25% from baseline.
