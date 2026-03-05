@@ -944,12 +944,10 @@ class TestWipCheckPublicProcess:
         assert "PUBLIC_PROCESS" in out
 
     def test_wip_check_no_violation_under_limit(self, mini_registry, capsys):
-        """wip_check shows no violations when under limits."""
-        # mini_registry has 3 CANDIDATE (at limit) and 1 PUBLIC_PROCESS (at limit)
-        # but both are AT the limit not over it, so:
-        # CANDIDATE: 3 > MAX(3)? No (not strictly greater). Actually MAX is 3, so 3 > 3 is false.
-        # Wait, the check is `cand > MAX_CANDIDATE_PER_ORGAN` which is `3 > 3` = False
-        # PUBLIC_PROCESS: 1 > MAX(1)? `1 > 1` = False
+        """wip_check shows warnings (not violations) when at limits."""
+        # mini_registry has 3 CANDIDATE (at limit 3) and 1 PUBLIC_PROCESS (at limit 1).
+        # Both are AT the limit — not over — so no violations.
+        # But both are >= 80% of their limit, so early warnings fire.
         reg_path, gov_path, _ = mini_registry
         with patch.object(conductor.governance, "REGISTRY_PATH", reg_path), \
              patch.object(conductor.governance, "GOVERNANCE_PATH", gov_path):
@@ -957,7 +955,8 @@ class TestWipCheckPublicProcess:
 
         gov.wip_check()
         out = capsys.readouterr().out
-        assert "No WIP violations" in out
+        assert "WIP VIOLATIONS" not in out
+        assert "WIP WARNINGS" in out
 
     def test_promote_blocked_by_public_process_limit(self, tmp_path):
         """Promoting to PUBLIC_PROCESS blocked when at limit."""

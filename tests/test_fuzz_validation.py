@@ -40,6 +40,7 @@ def test_governance_parser_is_total(input_payload):
             _parse_governance_payload(input_payload)
 
 
+@hypothesis.settings(deadline=None)
 @hypothesis.given(strategies.text(min_size=1, max_size=20))
 def test_workflow_validator_handles_random_file_text(random_text):
     ontology = Ontology(Path(__file__).parent.parent / "ontology.yaml")

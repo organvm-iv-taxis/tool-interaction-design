@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import time
 import uuid
-from collections import Counter
+from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -288,6 +288,38 @@ def edge_health_report(window: int = 200) -> dict[str, Any]:
     }
     assert_contract("tool_edge_health_v1", payload)
     return payload
+
+
+def cluster_health_metrics(window: int = 500) -> dict[str, float]:
+    """Compute success rate (0.0-1.0) per cluster ID based on recent traces.
+    
+    Uses both source and target cluster roles in traces.
+    """
+    traces = _tail(_read_jsonl(TRACE_LOG_FILE), window)
+    handoffs = {h["trace_id"]: h for h in _read_jsonl(HANDOFF_LOG_FILE)}
+    
+    cluster_stats: dict[str, dict[str, int]] = defaultdict(lambda: {"total": 0, "success": 0})
+    
+    for t in traces:
+        tid = t.get("trace_id")
+        h = handoffs.get(tid)
+        if not h: continue
+        
+        src = h.get("source_cluster")
+        tgt = h.get("target_cluster")
+        ok = t.get("status") in {"ok", "fallback"}
+        
+        for cid in [src, tgt]:
+            if cid:
+                cluster_stats[cid]["total"] += 1
+                if ok:
+                    cluster_stats[cid]["success"] += 1
+                    
+    return {
+        cid: round(stats["success"] / stats["total"], 4)
+        for cid, stats in cluster_stats.items()
+        if stats["total"] > 0
+    }
 
 
 def assert_handoff_payload(payload: dict[str, Any]) -> None:

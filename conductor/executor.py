@@ -43,6 +43,7 @@ class WorkflowState:
     checkpoint_actions: dict[str, str] = field(default_factory=dict)
     status: str = "ACTIVE"  # ACTIVE, CHECKPOINT, COMPLETED, FAILED
     pending_checkpoint: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class WorkflowExecutor:
@@ -51,7 +52,23 @@ class WorkflowExecutor:
     def __init__(self, workflow_path: Path, state_file: Path | None = None):
         self.workflow_path = workflow_path
         self.spec = self._load_spec()
-        self.state_file = state_file or (BASE / ".conductor-workflow-state.json")
+        # Default fallback, but methods now prefer workflow-specific files
+        self.default_state_file = state_file or (BASE / ".conductor-workflow-state.json")
+
+    def _get_state_path(self, workflow_name: str | None = None) -> Path:
+        """Return the specific path for a workflow's execution state."""
+        if not workflow_name:
+            # Check if there's a link to an 'active' workflow
+            active_link = BASE / ".conductor-active-workflow"
+            if active_link.exists():
+                workflow_name = active_link.read_text().strip()
+            else:
+                return self.default_state_file
+        
+        return BASE / f".conductor-workflow-{workflow_name}.json"
+
+    def _set_active_workflow(self, workflow_name: str) -> None:
+        (BASE / ".conductor-active-workflow").write_text(workflow_name)
 
     def _load_spec(self) -> dict[str, Any]:
         if not self.workflow_path.exists():
@@ -90,11 +107,12 @@ class WorkflowExecutor:
                 mapping[step["name"]] = step
         return mapping
 
-    def load_state(self) -> WorkflowState | None:
-        if not self.state_file.exists():
+    def load_state(self, workflow_name: str | None = None) -> WorkflowState | None:
+        path = self._get_state_path(workflow_name)
+        if not path.exists():
             return None
         try:
-            data = json.loads(self.state_file.read_text())
+            data = json.loads(path.read_text())
             raw_steps = data.get("steps", {})
             steps = {
                 name: StepState(**sdata)
@@ -112,12 +130,15 @@ class WorkflowExecutor:
                 checkpoint_actions=data.get("checkpoint_actions", {}),
                 status=str(data.get("status", "ACTIVE")),
                 pending_checkpoint=data.get("pending_checkpoint"),
+                metadata=data.get("metadata", {}),
             )
         except Exception as exc:
-            log_event("executor.load_state_failed", {"error": str(exc)})
+            log_event("executor.load_state_failed", {"error": str(exc), "path": str(path)})
             return None
 
     def save_state(self, state: WorkflowState) -> None:
+        path = self._get_state_path(state.workflow_name)
+        self._set_active_workflow(state.workflow_name)
         payload = {
             "workflow_name": state.workflow_name,
             "session_id": state.session_id,
@@ -128,6 +149,7 @@ class WorkflowExecutor:
             "checkpoint_actions": state.checkpoint_actions,
             "status": state.status,
             "pending_checkpoint": state.pending_checkpoint,
+            "metadata": state.metadata,
             "steps": {
                 name: {
                     "name": step.name,
@@ -140,10 +162,14 @@ class WorkflowExecutor:
                 for name, step in state.steps.items()
             },
         }
-        atomic_write(self.state_file, json.dumps(payload, indent=2))
+        atomic_write(path, json.dumps(payload, indent=2))
 
-    def clear_state(self) -> None:
-        self.state_file.unlink(missing_ok=True)
+    def clear_state(self, workflow_name: str | None = None) -> None:
+        path = self._get_state_path(workflow_name)
+        path.unlink(missing_ok=True)
+        active_link = BASE / ".conductor-active-workflow"
+        if active_link.exists() and (not workflow_name or active_link.read_text().strip() == workflow_name):
+            active_link.unlink()
 
     def _dependencies_satisfied(self, state: WorkflowState, step_name: str, steps: dict[str, dict[str, Any]]) -> bool:
         step = steps.get(step_name, {})
@@ -468,6 +494,7 @@ class WorkflowExecutor:
         step_name: str,
         tool_output: Any = None,
         checkpoint_action: str | None = None,
+        workflow_name: str | None = None,
     ) -> dict[str, Any]:
         """Advance the workflow by executing one step.
 
@@ -475,7 +502,7 @@ class WorkflowExecutor:
         output (or resolved `input`) and persists that value as output.
         `checkpoint` behavior: checkpointed steps pause until explicit action.
         """
-        state = self.load_state()
+        state = self.load_state(workflow_name)
         if not state:
             raise ConductorError("No active workflow state found. Run start_workflow first.")
 
@@ -586,8 +613,8 @@ class WorkflowExecutor:
         )
         return result
 
-    def get_current_step_context(self) -> dict[str, Any]:
-        state = self.load_state()
+    def get_current_step_context(self, workflow_name: str | None = None) -> dict[str, Any]:
+        state = self.load_state(workflow_name)
         if not state:
             return {"active": False}
 
@@ -622,15 +649,15 @@ class WorkflowExecutor:
             "input": self._resolve_step_input(state, workflow, step_name),
         }
 
-    def get_briefing(self) -> dict[str, Any]:
+    def get_briefing(self, workflow_name: str | None = None) -> dict[str, Any]:
         """Briefing payload used by patchbay and MCP surfaces."""
-        state = self.load_state()
+        state = self.load_state(workflow_name)
         if not state:
             return {"active": False}
 
         total_steps = len(state.steps)
         completed_steps = sum(1 for step in state.steps.values() if step.status == "COMPLETED")
-        context = self.get_current_step_context()
+        context = self.get_current_step_context(workflow_name)
 
         return {
             "active": True,
@@ -641,4 +668,35 @@ class WorkflowExecutor:
             "pending_checkpoint": state.pending_checkpoint,
             "progress": f"{completed_steps}/{total_steps}",
             "current_context": context,
+            "suggested_tool_call": self.get_suggested_tool_call(workflow_name) if state.current_step else None,
+        }
+
+    def get_suggested_tool_call(self, workflow_name: str | None = None) -> dict[str, Any] | None:
+        """Suggest the concrete MCP tool call for the current step."""
+        state = self.load_state(workflow_name)
+        if not state or not state.current_step:
+            return None
+
+        workflow = self._get_workflow(state.workflow_name)
+        if not workflow:
+            return None
+
+        step_spec = self._step_map(workflow).get(state.current_step, {})
+        tool_name = step_spec.get("tool")
+        if not tool_name:
+            return None
+
+        # Resolve arguments
+        raw_args = step_spec.get("arguments", {})
+        resolved_args = self._resolve_value(raw_args, state)
+
+        # Special handling for common tools
+        # If 'input' is in arguments, it's already resolved. 
+        # If not, and the tool is known to take an input, we might inject it.
+        
+        return {
+            "step": state.current_step,
+            "tool": tool_name,
+            "arguments": resolved_args,
+            "explanation": step_spec.get("description", f"Execute {tool_name} for step {state.current_step}"),
         }

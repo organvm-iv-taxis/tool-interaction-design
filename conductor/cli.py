@@ -96,6 +96,24 @@ def build_parser() -> argparse.ArgumentParser:
     p_audit.add_argument("--create-issues", action="store_true", help="File GitHub issues for findings")
     p_audit.add_argument("--format", choices=["text", "json"], default="text", help="Output format")
 
+    # ----- Work Registry commands -----
+    p_queue = sub.add_parser("queue", help="Work item registry management")
+    queue_sub = p_queue.add_subparsers(dest="queue_command", required=True)
+    p_q_claim = queue_sub.add_parser("claim", help="Claim a work item")
+    p_q_claim.add_argument("item_id", help="Item ID to claim")
+    p_q_claim.add_argument("--owner", help="Optional owner name (defaults to 'agent')")
+    
+    p_q_yield = queue_sub.add_parser("yield", help="Yield a claimed work item")
+    p_q_yield.add_argument("item_id", help="Item ID to yield")
+    
+    p_q_resolve = queue_sub.add_parser("resolve", help="Mark a work item as resolved")
+    p_q_resolve.add_argument("item_id", help="Item ID to resolve")
+
+    p_auto = sub.add_parser("auto", help="Autonomous worker daemon")
+    p_auto.add_argument("--daemon", action="store_true", help="Run in continuous loop")
+    p_auto.add_argument("--interval", type=int, default=60, help="Check interval in seconds")
+    p_auto.add_argument("--limit", type=int, default=1, help="Max tasks to perform")
+
     # ----- Product commands -----
     p_export = sub.add_parser("export", help="Export artifacts")
     export_sub = p_export.add_subparsers(dest="export_command", required=True)
@@ -128,6 +146,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_validate.add_argument("file", type=str)
     p_validate.add_argument("--strict", action="store_true", help="Treat warnings as validation failures")
     p_validate.add_argument("--format", choices=["text", "json"], default="text", help="Output format")
+
+    p_compose = sub.add_parser("compose", help="Synthesize a JIT workflow mission")
+    p_compose.add_argument("--goal", required=True, help="High-level goal description")
+    p_compose.add_argument("--from", dest="from_cluster", required=True, help="Starting tool cluster")
+    p_compose.add_argument("--to", dest="to_cluster", required=True, help="Target tool cluster")
+    p_compose.add_argument("--session-id", help="Optional session ID")
+    p_compose.add_argument("--format", choices=["text", "json"], default="text", help="Output format")
 
     p_workflow = sub.add_parser("workflow", help="Workflow DSL runtime commands")
     workflow_sub = p_workflow.add_subparsers(dest="workflow_command", required=True)
@@ -209,6 +234,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_patch.add_argument("--json", action="store_true", dest="json_output",
                          help="Machine-readable JSON output")
     p_patch.add_argument("--organ", help="Filter to one organ (e.g., III, META)")
+    p_patch.add_argument("--watch", action="store_true", help="Real-time watch mode (updates every 5s)")
+
+    p_graph = sub.add_parser("graph", help="Generate Galactic Registry Graph (Mermaid.js)")
+    p_graph.add_argument("--live", action="store_true", help="Watch mode for live terminal updates")
+    p_graph.add_argument("--output", type=Path, help="Write output to file")
 
     sub.add_parser("clusters", help="List all clusters")
     sub.add_parser("domains", help="List all domains")
@@ -262,6 +292,7 @@ def _dispatch(args):
             gov.registry_sync(fix=args.fix, dry_run=args.dry_run)
 
     elif args.command == "wip":
+        from .governance import GovernanceRuntime
         confirm_fn = (lambda _: True) if getattr(args, "yes", False) else None
         gov = GovernanceRuntime(confirm_fn=confirm_fn)
         if args.wip_command == "check":
@@ -305,6 +336,79 @@ def _dispatch(args):
         else:
             gov.audit(organ=args.organ, create_issues=args.create_issues)
 
+    elif args.command == "queue":
+        from .work_item import WorkRegistry
+        wr = WorkRegistry()
+        if args.queue_command == "claim":
+            owner = args.owner or "agent"
+            if wr.claim(args.item_id, owner):
+                print(f"  Claimed: {args.item_id} by {owner}")
+            else:
+                print(f"  FAILED to claim: {args.item_id} (not found or already claimed)")
+        elif args.queue_command == "yield":
+            if wr.yield_item(args.item_id):
+                print(f"  Yielded: {args.item_id}")
+            else:
+                print(f"  FAILED to yield: {args.item_id}")
+        elif args.queue_command == "resolve":
+            if wr.resolve(args.item_id):
+                print(f"  Resolved: {args.item_id}")
+            else:
+                print(f"  FAILED to resolve: {args.item_id}")
+
+    elif args.command == "auto":
+        from .work_item import WorkRegistry
+        from .patchbay import Patchbay
+        
+        def _run_once():
+            pb = Patchbay(ontology=ontology, engine=SessionEngine(ontology))
+            # briefing() calls sync() internally
+            data = pb.briefing()
+            items = data.get("queue", {}).get("items", [])
+            open_items = [i for i in items if i["status"] == "OPEN"]
+            
+            if not open_items:
+                print("  No open tasks found.")
+                return False
+            
+            top = open_items[0]
+            print(f"  Autonomous worker picking top task: {top['id']} - {top['description']}")
+            
+            # 1. Claim
+            wr = pb.wr
+            if not wr.claim(top["id"], owner="conductor-auto"):
+                print(f"  FAILED to claim task {top['id']}")
+                return False
+            
+            print(f"  Task claimed. Spawning session for {top['repo'] or top['organ']}...")
+            
+            # 2. Execution Skeleton (Epoch II.2)
+            # In a real run, we'd call se.start() and then execute a workflow
+            # For the first pass, we just simulate the 'intent'
+            print(f"  [EXECUTION] Would run: {top['suggested_command']}")
+            
+            # 3. Resolve (for now, immediately auto-resolving to demonstrate the loop)
+            # In the final implementation, this only happens after 'PROVE' phase
+            wr.resolve(top["id"])
+            print(f"  Task resolved.")
+            return True
+
+        if getattr(args, "daemon", False):
+            import time
+            tasks_done = 0
+            try:
+                while tasks_done < args.limit:
+                    if _run_once():
+                        tasks_done += 1
+                    if tasks_done >= args.limit:
+                        break
+                    print(f"  Waiting {args.interval}s for next check...")
+                    time.sleep(args.interval)
+            except KeyboardInterrupt:
+                print("\n  Daemon stopped.")
+        else:
+            _run_once()
+
     elif args.command == "export":
         gov = GovernanceRuntime()
         pe = ProductExtractor(gov)
@@ -319,27 +423,67 @@ def _dispatch(args):
         pe.mine_patterns(export_essay=args.export_essay)
 
     elif args.command == "patch":
+        from .patchbay import Patchbay
         organ_filter = resolve_organ_key(args.organ) if args.organ else None
         try:
             pb = Patchbay(ontology=ontology, engine=SessionEngine(ontology))
         except Exception as e:
             print(f"  ERROR: Patchbay initialization failed: {e}", file=sys.stderr)
             sys.exit(1)
-        data = pb.briefing(organ_filter=organ_filter)
 
-        # Filter to one section if requested
-        if args.section:
-            data = {
-                "timestamp": data["timestamp"],
-                args.section: data.get(args.section, {}),
-            }
+        def _do_briefing():
+            data = pb.briefing(organ_filter=organ_filter)
+            if args.section:
+                data = {
+                    "timestamp": data["timestamp"],
+                    args.section: data.get(args.section, {}),
+                }
+            if args.json_output:
+                return pb.format_json(data)
+            elif args.section:
+                return pb.format_section_text(data)
+            else:
+                return pb.format_text(data)
 
-        if args.json_output:
-            print(pb.format_json(data))
-        elif args.section:
-            print(pb.format_section_text(data))
+        if getattr(args, "watch", False):
+            import time
+            try:
+                while True:
+                    # Use escape codes to clear screen and move cursor to top-left
+                    sys.stdout.write("\033[2J\033[H")
+                    print(_do_briefing())
+                    print("\n  [Watching... Press Ctrl+C to exit]")
+                    time.sleep(5)
+            except KeyboardInterrupt:
+                print("\n  Watch mode exited.")
         else:
-            print(pb.format_text(data))
+            print(_do_briefing())
+
+    elif args.command == "graph":
+        from .graph import RegistryGraph
+        from .governance import GovernanceRuntime
+        gov = GovernanceRuntime()
+        rg = RegistryGraph(gov)
+        
+        def _do_graph():
+            gov._load()  # Refresh data
+            return rg.generate_mermaid()
+            
+        if args.output:
+            args.output.write_text(_do_graph())
+            print(f"  Graph written to: {args.output}")
+        elif args.live:
+            import time
+            try:
+                while True:
+                    sys.stdout.write("\033[2J\033[H")
+                    print(_do_graph())
+                    print("\n  [Watching... Press Ctrl+C to exit]")
+                    time.sleep(5)
+            except KeyboardInterrupt:
+                print("\n  Live graph mode exited.")
+        else:
+            print(_do_graph())
 
     elif args.command == "route":
         if not engine:
@@ -389,6 +533,41 @@ def _dispatch(args):
             sys.exit(1)
         from router import cmd_validate
         cmd_validate(args, ontology, engine)
+
+    elif args.command == "compose":
+        if not engine or not ontology:
+            print("  ERROR: Ontology/routing files not found.", file=sys.stderr)
+            sys.exit(1)
+        from .compiler import WorkflowCompiler
+        compiler = WorkflowCompiler(engine, ontology)
+        
+        session_id = args.session_id
+        if not session_id:
+            try:
+                active = SessionEngine(ontology)._load_session()
+                session_id = active.session_id if active else "adhoc-compose"
+            except Exception:
+                session_id = "adhoc-compose"
+
+        state = compiler.compile_mission(
+            goal=args.goal,
+            start_cluster=args.from_cluster,
+            end_cluster=args.to_cluster,
+            session_id=session_id
+        )
+        
+        if args.format == "json":
+            print(json.dumps(state.to_dict(), indent=2))
+        else:
+            print("\n  Mission Synthesized")
+            print("  " + "=" * 50)
+            print(f"  Goal: {args.goal}")
+            print(f"  Path: {args.from_cluster} -> {args.to_cluster}")
+            print(f"  ID:   {state.workflow_name}")
+            print("\n  Compiled Score:")
+            print(compiler.generate_description(state))
+            print("\n  Run `conductor workflow status` to begin execution.")
+            print()
 
     elif args.command == "workflow":
         from .executor import WorkflowExecutor
@@ -502,6 +681,7 @@ def _dispatch(args):
                 raise ConductorError("Plugin doctor found issues.")
 
     elif args.command == "policy":
+        from .governance import GovernanceRuntime
         if args.policy_command == "simulate":
             gov = GovernanceRuntime()
             report = simulate_policy(args.bundle, gov.registry)

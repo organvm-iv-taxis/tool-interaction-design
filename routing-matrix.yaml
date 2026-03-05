@@ -1089,6 +1089,264 @@ routes:
       - source: sequentialthinking
         target: "calculate-metrics.py"
 
+  # ===========================================================================
+  # CROSS-DOMAIN EXPANSION (v1.1)
+  # ===========================================================================
+
+  - id: analysis_to_thinking
+    from: code_analysis_mcp
+    to: sequential_thinking
+    data_flow: JSON → TEXT
+    protocol: MCP → MCP
+    automatable: true
+    description: "Complex analysis results drive high-level reasoning"
+    exemplars:
+      - source: analyze_python_package
+        target: sequentialthinking
+
+  - id: analysis_to_sentry
+    from: code_analysis_mcp
+    to: sentry_monitoring
+    data_flow: JSON → JSON
+    protocol: MCP → MCP
+    automatable: true
+    description: "Local analysis findings enrich error monitoring context"
+    exemplars:
+      - source: analyze_security_and_patterns
+        target: update_issue
+
+  - id: git_to_thinking
+    from: git_core
+    to: sequential_thinking
+    data_flow: TEXT → TEXT
+    protocol: CLI → MCP
+    automatable: true
+    description: "Git history and diffs drive architectural reasoning"
+    exemplars:
+      - source: "git log"
+        target: sequentialthinking
+
+  - id: github_to_thinking
+    from: github_platform
+    to: sequential_thinking
+    data_flow: JSON → TEXT
+    protocol: MCP → MCP
+    automatable: true
+    description: "Community feedback and issues drive approach planning"
+    exemplars:
+      - source: pull_request_read
+        target: sequentialthinking
+
+  - id: vercel_to_monitoring
+    from: vercel_platform
+    to: sentry_monitoring
+    data_flow: JSON → JSON
+    protocol: MCP → MCP
+    automatable: true
+    description: "Deployment events trigger monitoring alert windows"
+    exemplars:
+      - source: deploy_to_vercel
+        target: create_project
+
+  - id: cloudflare_to_monitoring
+    from: cloudflare_platform
+    to: sentry_monitoring
+    data_flow: JSON → JSON
+    protocol: CLI → MCP
+    automatable: true
+    exemplars:
+      - source: "wrangler deploy"
+        target: create_project
+
+  - id: container_to_thinking
+    from: container_orchestration
+    to: sequential_thinking
+    data_flow: STREAM → TEXT
+    protocol: CLI → MCP
+    automatable: true
+    description: "Container runtime logs drive troubleshooting reasoning"
+    exemplars:
+      - source: "docker logs"
+        target: sequentialthinking
+
+  - id: audio_to_thinking
+    from: audio_production
+    to: sequential_thinking
+    data_flow: CODE → TEXT
+    protocol: GUI → MCP
+    automatable: false
+    description: "SuperCollider/Pd logic drives reasoning about signal flow"
+    exemplars:
+      - source: "SuperCollider Code"
+        target: sequentialthinking
+
+  - id: visual_to_thinking
+    from: visual_design
+    to: sequential_thinking
+    data_flow: JSON → TEXT
+    protocol: MCP → MCP
+    automatable: true
+    description: "Design context informs reasoning about UI implementation"
+    exemplars:
+      - source: get_design_context
+        target: sequentialthinking
+
+  - id: diagram_to_thinking
+    from: diagramming
+    to: sequential_thinking
+    data_flow: DIAGRAM → TEXT
+    protocol: MCP → MCP
+    automatable: true
+    description: "System diagrams inform architectural reasoning"
+    exemplars:
+      - source: get_diagram_summary
+        target: sequentialthinking
+
+  - id: search_to_design
+    from: web_search
+    to: visual_design
+    data_flow: TEXT → JSON
+    protocol: MCP → MCP
+    automatable: true
+    description: "Search results feed design inspiration and context"
+    exemplars:
+      - source: tavily_extract
+        target: get_design_context
+
+  - id: search_to_thinking
+    from: web_search
+    to: sequential_thinking
+    data_flow: TEXT → TEXT
+    protocol: MCP → MCP
+    automatable: true
+    exemplars:
+      - source: perplexity_research
+        target: sequentialthinking
+
+  - id: docs_to_thinking
+    from: documentation
+    to: sequential_thinking
+    data_flow: TEXT → TEXT
+    protocol: MCP → MCP
+    automatable: true
+    exemplars:
+      - source: "get-library-docs"
+        target: sequentialthinking
+
+  - id: kg_to_thinking
+    from: knowledge_graph
+    to: sequential_thinking
+    data_flow: JSON → TEXT
+    protocol: MCP → MCP
+    automatable: true
+    exemplars:
+      - source: read_graph
+        target: sequentialthinking
+
+  - id: neon_to_thinking
+    from: neon_database
+    to: sequential_thinking
+    data_flow: JSON → TEXT
+    protocol: MCP → MCP
+    automatable: true
+    description: "Database schema and performance data drive optimization reasoning"
+    exemplars:
+      - source: list_slow_queries
+        target: sequentialthinking
+
+  - id: data_to_thinking
+    from: data_tools
+    to: sequential_thinking
+    data_flow: TEXT → TEXT
+    protocol: CLI → MCP
+    automatable: true
+    exemplars:
+      - source: jq
+        target: sequentialthinking
+
+  - id: jupyter_to_thinking
+    from: jupyter_notebooks
+    to: sequential_thinking
+    data_flow: JSON → TEXT
+    protocol: MCP → MCP
+    automatable: true
+    exemplars:
+      - source: execute_cell
+        target: sequentialthinking
+
+  - id: security_to_thinking
+    from: security_scanning
+    to: sequential_thinking
+    data_flow: JSON → TEXT
+    protocol: CLI → MCP
+    automatable: true
+    exemplars:
+      - source: trivy
+        target: sequentialthinking
+
+  - id: browser_to_thinking
+    from: browser_chrome
+    to: sequential_thinking
+    data_flow: TEXT → TEXT
+    protocol: BROWSER_AUTO → MCP
+    automatable: true
+    exemplars:
+      - source: read_console_messages
+        target: sequentialthinking
+
+  - id: processes_to_thinking
+    from: process_management
+    to: sequential_thinking
+    data_flow: STREAM → TEXT
+    protocol: MCP → MCP
+    automatable: true
+    exemplars:
+      - source: read_process_output
+        target: sequentialthinking
+
+  - id: shell_to_thinking
+    from: shell_environment
+    to: sequential_thinking
+    data_flow: TEXT → TEXT
+    protocol: CLI → MCP
+    automatable: true
+    exemplars:
+      - source: zsh
+        target: sequentialthinking
+
+  - id: thinking_to_tasks
+    from: sequential_thinking
+    to: task_management
+    data_flow: TEXT → JSON
+    protocol: MCP → MCP
+    automatable: true
+    description: "Reasoning outcomes become trackable tasks"
+    exemplars:
+      - source: sequentialthinking
+        target: TaskCreate
+
+  - id: thinking_to_git
+    from: sequential_thinking
+    to: git_core
+    data_flow: TEXT → CODE
+    protocol: MCP → CLI
+    automatable: true
+    description: "Final reasoning drives atomic commits"
+    exemplars:
+      - source: sequentialthinking
+        target: git_commit
+
+  - id: thinking_to_github
+    from: sequential_thinking
+    to: github_platform
+    data_flow: TEXT → JSON
+    protocol: MCP → MCP
+    automatable: true
+    description: "Reasoning summaries shared as PR descriptions"
+    exemplars:
+      - source: sequentialthinking
+        target: create_pull_request
+
 alternatives:
     - cluster: web_search
       tools_ranked:

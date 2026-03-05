@@ -234,6 +234,7 @@ class RoutingEngine:
         self.ontology = ontology
         self.routes: dict[str, Route] = {}
         self.alternatives: list[Alternative] = []
+        self._health_scores: dict[str, float] = {}  # cluster_id -> success_rate (0.0 to 1.0)
 
         for r in data.get("routes", []):
             route = Route(
@@ -268,6 +269,17 @@ class RoutingEngine:
         for route in self.routes.values():
             self._adj[route.from_cluster].append(route.to_cluster)
 
+    def inject_health_metrics(self, metrics: dict[str, float]) -> None:
+        """Inject real-time success rates for clusters to bias pathfinding."""
+        self._health_scores.update(metrics)
+        # Invalidate caches when health changes
+        self._path_cache.clear()
+        self._cluster_path_cache.clear()
+
+    def get_cluster_health(self, cluster_id: str) -> float:
+        """Return success rate (0.0-1.0). Default to 1.0 (optimistic)."""
+        return self._health_scores.get(cluster_id, 1.0)
+
     def find_routes(self, from_cluster: str, to_cluster: str) -> list[Route]:
         """Find direct routes between two clusters."""
         return [
@@ -283,7 +295,10 @@ class RoutingEngine:
         max_depth: int | None = None,
         max_paths: int | None = None,
     ) -> list[list[str]]:
-        """BFS to find cluster-level paths between two cluster IDs."""
+        """BFS to find cluster-level paths between two cluster IDs.
+        
+        Ranked by 'Cost' where cost = length / average_health.
+        """
         cache_key = (from_cluster, to_cluster)
         if max_depth is None and max_paths is None and cache_key in self._cluster_path_cache:
             return [list(path) for path in self._cluster_path_cache[cache_key]]
@@ -298,7 +313,7 @@ class RoutingEngine:
         results: list[list[str]] = []
         seen_path_signatures: set[tuple[str, ...]] = set()
 
-        while queue and len(results) < path_limit:
+        while queue and len(results) < path_limit * 2:  # Over-fetch for re-ranking
             path = queue.popleft()
             current = path[-1]
             signature = tuple(path)
@@ -313,12 +328,26 @@ class RoutingEngine:
             if len(path) > depth_limit:
                 continue
 
-            for neighbor in self._adj.get(current, []):
+            # Sort neighbors by health if available
+            neighbors = sorted(
+                self._adj.get(current, []),
+                key=lambda n: self.get_cluster_health(n),
+                reverse=True
+            )
+            
+            for neighbor in neighbors:
                 if neighbor in path:
                     continue
                 queue.append(path + [neighbor])
 
-        results.sort(key=len)
+        # Rank results by aggregate health score
+        def _path_score(p: list[str]) -> float:
+            if not p: return 0.0
+            avg_health = sum(self.get_cluster_health(c) for c in p) / len(p)
+            # Preference for shorter, healthier paths
+            return len(p) / (avg_health + 0.001)
+
+        results.sort(key=_path_score)
         trimmed = results[:path_limit]
         if max_depth is None and max_paths is None:
             self._cluster_path_cache[cache_key] = [list(path) for path in trimmed]

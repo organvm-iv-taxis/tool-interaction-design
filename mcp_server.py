@@ -61,7 +61,12 @@ from conductor.constants import (
 from conductor.contracts import assert_contract
 from conductor.executor import WorkflowExecutor
 from conductor.governance import GovernanceRuntime
-from conductor.handoff import edge_health_report, get_trace_bundle, validate_handoff_payload
+from conductor.handoff import (
+    cluster_health_metrics,
+    edge_health_report,
+    get_trace_bundle,
+    validate_handoff_payload,
+)
 from conductor.patchbay import Patchbay
 from conductor.session import SessionEngine
 
@@ -163,6 +168,14 @@ def _fallback_sequence(engine: RoutingEngine, path: list[str]) -> list[dict[str,
 def route_to(from_cluster: str, to_cluster: str) -> str:
     engine = get_engine()
     ontology = get_ontology()
+    
+    # Inject real-time health telemetry
+    try:
+        health = cluster_health_metrics(window=200)
+        engine.inject_health_metrics(health)
+    except Exception:
+        health = {}
+
     source = ontology.clusters.get(from_cluster)
     target = ontology.clusters.get(to_cluster)
 
@@ -177,14 +190,16 @@ def route_to(from_cluster: str, to_cluster: str) -> str:
     if not direct_routes and not cluster_paths and not domain_paths:
         return _encode_mcp_payload({"error": f"No route found: {from_cluster} -> {to_cluster}"})
 
-    path_rows = [
-        {
+    path_rows = []
+    for path in cluster_paths:
+        # Calculate path health
+        path_health = round(sum(engine.get_cluster_health(c) for c in path) / len(path), 4)
+        path_rows.append({
             "clusters": path,
             "hops": max(0, len(path) - 1),
             "legs": _path_legs(engine, path),
-        }
-        for path in cluster_paths
-    ]
+            "reliability_score": path_health,
+        })
 
     fallback_sequences = _fallback_sequence(engine, cluster_paths[0]) if cluster_paths else []
 
@@ -199,6 +214,11 @@ def route_to(from_cluster: str, to_cluster: str) -> str:
                 "domain_paths": domain_paths,
             },
             "fallback_sequences": fallback_sequences,
+            "telemetry": {
+                "health_metrics_applied": bool(health),
+                "source_health": engine.get_cluster_health(from_cluster),
+                "target_health": engine.get_cluster_health(to_cluster),
+            }
         }
     )
 
@@ -400,6 +420,49 @@ def handoff_validate(payload: dict[str, Any]) -> str:
         return _encode_mcp_payload({"error": str(e)})
 
 
+def compose_mission(goal: str, from_cluster: str, to_cluster: str) -> str:
+    """Synthesize a JIT workflow mission (Score) from a routing path."""
+    engine = get_engine()
+    ontology = get_ontology()
+    
+    if not engine or not ontology:
+        return _encode_mcp_payload({"error": "Routing engine not initialized"})
+        
+    try:
+        # Inject health for shadow tracing
+        health = cluster_health_metrics(window=200)
+        engine.inject_health_metrics(health)
+    except Exception:
+        pass
+
+    from conductor.compiler import WorkflowCompiler
+    compiler = WorkflowCompiler(engine, ontology)
+    
+    try:
+        active = SessionEngine(ontology)._load_session()
+        session_id = active.session_id if active else "adhoc-compose-mcp"
+    except Exception:
+        session_id = "adhoc-compose-mcp"
+
+    try:
+        state = compiler.compile_mission(
+            goal=goal,
+            start_cluster=from_cluster,
+            end_cluster=to_cluster,
+            session_id=session_id
+        )
+        return _encode_mcp_payload({
+            "mission_id": state.workflow_name,
+            "session_id": state.session_id,
+            "hardened": state.metadata.get("hardened", False),
+            "shadow_trace_health": state.metadata.get("shadow_trace_health", 1.0),
+            "description": compiler.generate_description(state),
+            "next_action": "Call conductor_workflow_step to execute the first step."
+        })
+    except Exception as e:
+        return _encode_mcp_payload({"error": f"Failed to compile mission: {str(e)}"})
+
+
 # ---------------------------------------------------------------------------
 # MCP Server setup
 # ---------------------------------------------------------------------------
@@ -496,6 +559,19 @@ TOOLS = [
             "required": ["payload"],
         },
     ),
+    Tool(
+        name="conductor_compose_mission",
+        description="Synthesize a dynamic JIT Workflow Score based on a high-level goal and routing path.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "goal": {"type": "string", "description": "High-level goal description"},
+                "from_cluster": {"type": "string", "description": "Starting tool cluster ID"},
+                "to_cluster": {"type": "string", "description": "Target tool cluster ID"},
+            },
+            "required": ["goal", "from_cluster", "to_cluster"],
+        },
+    ),
 ]
 
 DISPATCH = {
@@ -509,6 +585,7 @@ DISPATCH = {
     "conductor_edge_health": lambda args: edge_health(int((args or {}).get("window", 200))),
     "conductor_trace_get": lambda args: trace_get((args or {})["trace_id"]),
     "conductor_handoff_validate": lambda args: handoff_validate((args or {})["payload"]),
+    "conductor_compose_mission": lambda args: compose_mission((args or {})["goal"], (args or {})["from_cluster"], (args or {})["to_cluster"]),
 }
 
 

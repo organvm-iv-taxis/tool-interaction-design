@@ -25,6 +25,7 @@ from .executor import WorkflowExecutor
 from .governance import GovernanceRuntime
 from .observability import get_metrics, log_event
 from .session import Session, SessionEngine, _load_stats
+from .work_item import WorkRegistry
 from .workqueue import WorkItem, WorkQueue
 
 
@@ -36,6 +37,7 @@ class Patchbay:
         self.engine = engine or SessionEngine(ontology)
         self.gov = GovernanceRuntime()
         self.wq = WorkQueue(self.gov)
+        self.wr = WorkRegistry()
         self.executor = WorkflowExecutor(WORKFLOW_DSL_PATH)
 
     def briefing(self, organ_filter: str | None = None) -> dict:
@@ -44,6 +46,13 @@ class Patchbay:
         Each section degrades gracefully — a single section failure
         does not prevent other sections from rendering.
         """
+        # Sync persistent registry with dynamic queue before briefing
+        try:
+            computed = self.wq.compute(organ_filter)
+            self.wr.sync(computed)
+        except Exception:
+            pass
+
         result: dict = {"timestamp": datetime.now(timezone.utc).isoformat()}
 
         for key, fn in [
@@ -183,12 +192,22 @@ class Patchbay:
         }
 
     def _queue_section(self, organ_filter: str | None = None) -> dict:
-        """Work queue — top items."""
-        items = self.wq.compute(organ_filter)
+        """Work queue — showing persistent state and ownership."""
+        # Note: sync was already called in briefing()
+        items = sorted(self.wr.items.values(), key=lambda x: -x.score)
+        
+        if organ_filter:
+            items = [i for i in items if i.organ == organ_filter]
+
         return {
             "total": len(items),
+            "open_count": sum(1 for i in items if i.status == "OPEN"),
+            "claimed_count": sum(1 for i in items if i.status == "CLAIMED"),
             "items": [
                 {
+                    "id": item.id,
+                    "status": item.status,
+                    "owner": item.owner,
                     "priority": item.priority,
                     "category": item.category,
                     "organ": item.organ,
@@ -196,7 +215,7 @@ class Patchbay:
                     "description": item.description,
                     "suggested_command": item.suggested_command,
                     "score": item.score,
-                    "rationale": item.rationale,
+                    "rationale": item.metadata.get("rationale", {}),
                 }
                 for item in items[:10]
             ],
@@ -323,10 +342,12 @@ class Patchbay:
             lines.append("  " + "-" * 68)
             for item in queue_items:
                 icon = "!!" if item["priority"] == "CRITICAL" else "!" if item["priority"] == "HIGH" else "."
+                status_tag = f" [{item['status']}]" if item["status"] != "OPEN" else ""
+                owner_tag = f" ({item['owner']})" if item["owner"] else ""
                 if item.get("repo"):
-                    lines.append(f"  {icon:<3} {item['repo']}: {item['description']}")
+                    lines.append(f"  {icon:<3} {item['id']} | {item['repo']}: {item['description']}{status_tag}{owner_tag}")
                 else:
-                    lines.append(f"  {icon:<3} {organ_short(item['organ'])}: {item['description']}")
+                    lines.append(f"  {icon:<3} {item['id']} | {organ_short(item['organ'])}: {item['description']}{status_tag}{owner_tag}")
                 lines.append(f"      -> {item['suggested_command']}")
             lines.append("  " + "-" * 68)
 
@@ -468,10 +489,12 @@ class Patchbay:
             for item in queue_items[:5]:
                 icon = "!!" if item["priority"] == "CRITICAL" else "!" if item["priority"] == "HIGH" else "."
                 organ_short_name = organ_short(item["organ"])
+                status_tag = f" [{item['status']}]" if item["status"] != "OPEN" else ""
+                owner_tag = f" ({item['owner']})" if item["owner"] else ""
                 if item.get("repo"):
-                    lines.append(f"  {icon:<3} {item['repo']}: {item['description']}")
+                    lines.append(f"  {icon:<3} {item['id']} | {item['repo']}: {item['description']}{status_tag}{owner_tag}")
                 else:
-                    lines.append(f"  {icon:<3} {organ_short_name}: {item['description']}")
+                    lines.append(f"  {icon:<3} {item['id']} | {organ_short_name}: {item['description']}{status_tag}{owner_tag}")
                 lines.append(f"      -> {item['suggested_command']}")
             lines.append("  " + "-" * 68)
 

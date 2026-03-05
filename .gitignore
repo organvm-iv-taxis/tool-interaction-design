@@ -22,6 +22,9 @@ Thumbs.db
 
 # Conductor runtime
 .conductor-session.json
+.conductor-active-workflow
+.conductor-work-registry.json
+.conductor-workflow-*.json
 .conductor-observability.jsonl
 .conductor-observability-metrics.json
 .conductor-observability-report*.json
