@@ -168,3 +168,12 @@ class WisdomCorpus:
     def domains(self) -> list[str]:
         self._ensure_loaded()
         return sorted(set(e.domain for e in self._entries))
+
+    @property
+    def domain_counts(self) -> dict[str, int]:
+        """Exact entry counts grouped by domain."""
+        self._ensure_loaded()
+        counts: dict[str, int] = {}
+        for entry in self._entries:
+            counts[entry.domain] = counts.get(entry.domain, 0) + 1
+        return dict(sorted(counts.items()))

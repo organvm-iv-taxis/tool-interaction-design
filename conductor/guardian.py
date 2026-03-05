@@ -73,8 +73,12 @@ class GuardianAngel:
             standalone = self._generate_standalone_wisdom(ctx)
             advisories.extend(standalone)
 
-        # Record wisdom shown and add mastery notes
-        for adv in advisories:
+        # Sort and trim first, then record only advisories the caller sees.
+        advisories.sort(key=lambda a: a.sort_key())
+        visible_advisories = advisories[:max_advisories]
+
+        # Record wisdom shown and add mastery notes for visible advisories only.
+        for adv in visible_advisories:
             if adv.wisdom_id:
                 self.oracle._record_wisdom_shown(adv.wisdom_id)
                 mastery = self.oracle._load_mastery()
@@ -83,9 +87,7 @@ class GuardianAngel:
                 if times > 1 and not adv.mastery_note:
                     adv.mastery_note = f"You've encountered this principle {times} times."
 
-        # Sort and trim
-        advisories.sort(key=lambda a: a.sort_key())
-        return advisories[:max_advisories]
+        return visible_advisories
 
     # ------------------------------------------------------------------
     # whisper — lightweight ambient guidance
@@ -319,10 +321,7 @@ class GuardianAngel:
         return {
             "total_entries": self.corpus.count,
             "domains": self.corpus.domains,
-            "by_domain": {
-                domain: len(self.corpus.query(domain=domain, limit=100))
-                for domain in self.corpus.domains
-            },
+            "by_domain": self.corpus.domain_counts,
         }
 
     # ------------------------------------------------------------------

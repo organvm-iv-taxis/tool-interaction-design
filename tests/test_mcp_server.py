@@ -65,6 +65,22 @@ def test_conductor_orchestra_briefing_dispatch():
     mock_orchestra.assert_called_once_with()
 
 
+def test_conductor_guardian_corpus_dispatch_accepts_none_arguments():
+    with patch.object(mcp_server, "guardian_corpus", return_value='{"total_entries": 71}') as mock_guardian_corpus:
+        result = mcp_server.DISPATCH["conductor_guardian_corpus"](None)
+
+    assert result == '{"total_entries": 71}'
+    mock_guardian_corpus.assert_called_once_with(None)
+
+
+def test_conductor_guardian_corpus_dispatch_forwards_search_argument():
+    with patch.object(mcp_server, "guardian_corpus", return_value='{"count": 2}') as mock_guardian_corpus:
+        result = mcp_server.DISPATCH["conductor_guardian_corpus"]({"search": "tdd"})
+
+    assert result == '{"count": 2}'
+    mock_guardian_corpus.assert_called_once_with("tdd")
+
+
 def test_route_to_returns_pathfinding_shape():
     payload = json.loads(mcp_server.route_to("web_search", "knowledge_graph"))
     assert "pathfinding" in payload
@@ -75,3 +91,21 @@ def test_route_to_returns_pathfinding_shape():
 def test_main_returns_one_when_mcp_unavailable():
     with patch.object(mcp_server, "MCP_IMPORT_ERROR", ImportError("missing mcp")):
         assert mcp_server.main() == 1
+
+
+def test_encode_mcp_payload_falls_back_when_contract_validation_fails():
+    with patch.object(mcp_server, "assert_contract", side_effect=RuntimeError("jsonschema missing")):
+        encoded = mcp_server._encode_mcp_payload({"ok": True})
+
+    payload = json.loads(encoded)
+    assert "error" in payload
+    assert "contract validation failed" in payload["error"]
+
+
+def test_encode_mcp_payload_preserves_upstream_error_in_fallback():
+    with patch.object(mcp_server, "assert_contract", side_effect=RuntimeError("jsonschema missing")):
+        encoded = mcp_server._encode_mcp_payload({"error": "boom"})
+
+    payload = json.loads(encoded)
+    assert "error" in payload
+    assert payload.get("upstream_error") == "boom"

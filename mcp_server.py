@@ -110,8 +110,16 @@ def get_session() -> dict | None:
 
 def _encode_mcp_payload(payload: dict[str, Any]) -> str:
     """Validate and encode standard MCP JSON responses."""
-    assert_contract("mcp_tool_response", payload)
-    return json.dumps(payload, indent=2)
+    try:
+        assert_contract("mcp_tool_response", payload)
+        return json.dumps(payload, indent=2)
+    except Exception as exc:
+        fallback: dict[str, Any] = {
+            "error": f"mcp_tool_response contract validation failed: {exc}",
+        }
+        if isinstance(payload, dict) and "error" in payload:
+            fallback["upstream_error"] = str(payload.get("error"))
+        return json.dumps(fallback, indent=2)
 
 
 # ---------------------------------------------------------------------------
@@ -658,6 +666,17 @@ def guardian_mastery() -> str:
         return _encode_mcp_payload({"error": str(e)})
 
 
+def guardian_corpus(search: str | None = None) -> str:
+    """Browse or search the Guardian wisdom corpus."""
+    try:
+        from conductor.guardian import GuardianAngel
+        guardian = GuardianAngel()
+        result = guardian.corpus_search(search)
+        return _encode_mcp_payload(result)
+    except Exception as e:
+        return _encode_mcp_payload({"error": str(e)})
+
+
 def workflow_status() -> str:
     from conductor.executor import WorkflowExecutor
     from conductor.constants import WORKFLOW_DSL_PATH
@@ -909,6 +928,16 @@ TOOLS = [
         inputSchema={"type": "object", "properties": {}},
     ),
     Tool(
+        name="conductor_guardian_corpus",
+        description="Browse or search the Guardian wisdom corpus with optional query text.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "search": {"type": "string", "description": "Optional search query (e.g., 'tdd', 'mvp', 'scylla')"},
+            },
+        },
+    ),
+    Tool(
         name="conductor_workflow_status",
         description="Get the briefing of the current active workflow (including current step, status, and suggested tool call).",
         inputSchema={"type": "object", "properties": {}},
@@ -952,6 +981,7 @@ DISPATCH = {
     "conductor_guardian_teach": lambda args: guardian_teach((args or {})["topic"]),
     "conductor_guardian_landscape": lambda args: guardian_landscape((args or {})["decision"], (args or {}).get("context")),
     "conductor_guardian_mastery": lambda args: guardian_mastery(),
+    "conductor_guardian_corpus": lambda args: guardian_corpus((args or {}).get("search")),
     "conductor_workflow_status": lambda args: workflow_status(),
     "conductor_workflow_step": lambda args: workflow_step((args or {}).get("tool_output"), (args or {}).get("checkpoint_action")),
 }

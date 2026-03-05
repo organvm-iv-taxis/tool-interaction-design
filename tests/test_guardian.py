@@ -230,6 +230,14 @@ class TestWisdomCorpus:
         assert "business" in domains
         assert "philosophical" in domains
 
+    def test_domain_counts(self, wisdom_dir):
+        corpus = WisdomCorpus(wisdom_dir)
+        assert corpus.domain_counts == {
+            "business": 1,
+            "engineering": 1,
+            "philosophical": 1,
+        }
+
     def test_empty_corpus(self, tmp_path):
         empty_dir = tmp_path / "empty_wisdom"
         empty_dir.mkdir()
@@ -283,6 +291,39 @@ class TestGuardianAngel:
         guardian.corpus = WisdomCorpus(wisdom_dir)
         advisories = guardian.counsel(max_advisories=2)
         assert len(advisories) <= 2
+
+    def test_counsel_records_only_visible_wisdom(self, oracle_tmp, wisdom_dir):
+        _write_stats(oracle_tmp, {"total_sessions": 0})
+        guardian = GuardianAngel()
+        guardian.corpus = WisdomCorpus(wisdom_dir)
+        with patch.object(
+            guardian.oracle,
+            "consult",
+            return_value=[
+                Advisory(
+                    category="wisdom",
+                    severity="critical",
+                    message="High-priority wisdom",
+                    detector="test",
+                    wisdom_id="test.tdd",
+                ),
+                Advisory(
+                    category="wisdom",
+                    severity="info",
+                    message="Lower-priority wisdom",
+                    detector="test",
+                    wisdom_id="test.mvp",
+                ),
+            ],
+        ):
+            advisories = guardian.counsel(max_advisories=1)
+
+        assert len(advisories) == 1
+        assert advisories[0].wisdom_id == "test.tdd"
+        mastery = guardian.oracle._load_mastery()
+        encountered = mastery.get("encountered", {})
+        assert "test.tdd" in encountered
+        assert "test.mvp" not in encountered
 
     def test_counsel_without_wisdom(self, oracle_tmp, wisdom_dir):
         _write_stats(oracle_tmp, {"total_sessions": 0})
@@ -429,6 +470,54 @@ class TestGuardianAngel:
         result = guardian.corpus_search()
         assert result["total_entries"] == 3
         assert "by_domain" in result
+        assert result["by_domain"]["engineering"] == 1
+        assert result["by_domain"]["business"] == 1
+        assert result["by_domain"]["philosophical"] == 1
+
+    def test_corpus_search_overview_counts_above_100(self, oracle_tmp, tmp_path):
+        _write_stats(oracle_tmp, {"total_sessions": 0})
+        wd = tmp_path / "wisdom_large"
+        wd.mkdir()
+        import yaml
+
+        engineering_entries = [
+            {
+                "id": f"eng.{i}",
+                "domain": "engineering",
+                "principle": f"Engineering Principle {i}",
+                "summary": "Summary",
+                "teaching": "Teaching",
+                "metaphor": "Metaphor",
+                "triggers": ["engineering"],
+                "phase_relevance": ["BUILD"],
+                "severity_hint": "info",
+                "tags": ["engineering"],
+            }
+            for i in range(120)
+        ]
+        business_entries = [
+            {
+                "id": f"biz.{i}",
+                "domain": "business",
+                "principle": f"Business Principle {i}",
+                "summary": "Summary",
+                "teaching": "Teaching",
+                "metaphor": "Metaphor",
+                "triggers": ["business"],
+                "phase_relevance": ["SHAPE"],
+                "severity_hint": "info",
+                "tags": ["business"],
+            }
+            for i in range(5)
+        ]
+        (wd / "large.yaml").write_text(yaml.dump(engineering_entries + business_entries))
+
+        guardian = GuardianAngel()
+        guardian.corpus = WisdomCorpus(wd)
+        result = guardian.corpus_search()
+        assert result["total_entries"] == 125
+        assert result["by_domain"]["engineering"] == 120
+        assert result["by_domain"]["business"] == 5
 
 
 # ---------------------------------------------------------------------------
