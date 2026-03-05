@@ -12,6 +12,7 @@ from .constants import (
     MAX_PUBLIC_PROCESS_PER_ORGAN,
     ONTOLOGY_PATH,
     ORGANS,
+    PATTERN_HISTORY_FILE,
     PHASE_CLUSTERS,
     PHASE_ROLES,
     PHASES,
@@ -40,9 +41,10 @@ from .handoff import create_handoff_envelope, edge_health_report, get_trace_bund
 from .integrity import IntegrityIssue, IntegrityReport, run_integrity_checks
 from .migrate import migrate_governance, migrate_registry
 from .observability import log_event
+from .oracle import Advisory, Oracle
 from .patchbay import Patchbay
 from .policy import Policy, load_policy
-from .product import ProductExtractor
+from .product import ProductExtractor, correlate_patterns_with_outcomes
 from .schemas import SchemaIssue, assert_valid_document, load_schema, validate_document
 from .session import Session, SessionEngine
 from .workqueue import WorkItem, WorkQueue
@@ -59,6 +61,7 @@ __all__ = [
     "MAX_PUBLIC_PROCESS_PER_ORGAN",
     "ONTOLOGY_PATH",
     "ORGANS",
+    "PATTERN_HISTORY_FILE",
     "PHASE_CLUSTERS",
     "PHASE_ROLES",
     "PHASES",
@@ -84,7 +87,10 @@ __all__ = [
     "organ_short",
     "resolve_organ_key",
     # Classes
+    "Advisory",
+    "Oracle",
     "GovernanceRuntime",
+    "correlate_patterns_with_outcomes",
     "create_handoff_envelope",
     "simulate_route_handoff",
     "validate_handoff_payload",

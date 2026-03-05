@@ -463,6 +463,29 @@ def compose_mission(goal: str, from_cluster: str, to_cluster: str) -> str:
         return _encode_mcp_payload({"error": f"Failed to compile mission: {str(e)}"})
 
 
+def oracle_consult(context: dict[str, Any] | None = None) -> str:
+    """Consult the Oracle for contextual advisories."""
+    try:
+        from conductor.oracle import Oracle
+        oracle = Oracle()
+        advisories = oracle.consult(context or {})
+        return _encode_mcp_payload({
+            "count": len(advisories),
+            "advisories": [
+                {
+                    "category": a.category,
+                    "severity": a.severity,
+                    "message": a.message,
+                    "recommendation": a.recommendation,
+                    "context": a.context,
+                }
+                for a in advisories
+            ],
+        })
+    except Exception as e:
+        return _encode_mcp_payload({"error": str(e)})
+
+
 def workflow_status() -> str:
     from conductor.executor import WorkflowExecutor
     from conductor.constants import WORKFLOW_DSL_PATH
@@ -602,6 +625,16 @@ TOOLS = [
         },
     ),
     Tool(
+        name="conductor_oracle",
+        description="Consult the Oracle for contextual advisories — process drift, risk detection, momentum, growth opportunities.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "context": {"type": "object", "description": "Optional context (current phase, recent actions, specific question)"},
+            },
+        },
+    ),
+    Tool(
         name="conductor_workflow_status",
         description="Get the briefing of the current active workflow (including current step, status, and suggested tool call).",
         inputSchema={"type": "object", "properties": {}},
@@ -631,6 +664,7 @@ DISPATCH = {
     "conductor_trace_get": lambda args: trace_get((args or {})["trace_id"]),
     "conductor_handoff_validate": lambda args: handoff_validate((args or {})["payload"]),
     "conductor_compose_mission": lambda args: compose_mission((args or {})["goal"], (args or {})["from_cluster"], (args or {})["to_cluster"]),
+    "conductor_oracle": lambda args: oracle_consult((args or {}).get("context")),
     "conductor_workflow_status": lambda args: workflow_status(),
     "conductor_workflow_step": lambda args: workflow_step((args or {}).get("tool_output"), (args or {}).get("checkpoint_action")),
 }

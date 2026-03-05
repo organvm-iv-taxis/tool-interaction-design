@@ -31,6 +31,7 @@ Thumbs.db
 .conductor-handoffs.jsonl
 .conductor-traces.jsonl
 .conductor-route-decisions.jsonl
+.conductor-pattern-history.jsonl
 sessions/
 generated/
 exports/

@@ -20,6 +20,7 @@ from .constants import (
     PROMOTION_STATES,
     PROMOTION_TRANSITIONS,
     REGISTRY_PATH,
+    WORKSPACE,
     GovernanceError,
     atomic_write,
     organ_short,
@@ -421,20 +422,58 @@ class GovernanceRuntime:
         )
         print()
 
-    # ----- Staleness (batched via GraphQL) -----
+    # ----- Health Signals -----
 
     @staticmethod
-    def _health_signals(repo: dict[str, Any]) -> dict[str, bool]:
-        docs_ok = str(repo.get("documentation_status", "")).upper() == "DEPLOYED"
-        ci_ok = bool(str(repo.get("ci_workflow", "")).strip())
-        impl_ok = str(repo.get("implementation_status", "")).upper() in {
-            "ACTIVE",
-            "COMPLETE",
-            "COMPLETED",
-            "READY",
-            "MATURE",
-            "STABLE",
-        }
+    def _find_repo_path(repo_name: str, organ_key: str = "") -> Path | None:
+        """Search the workspace for a repo directory, using organ_key to narrow the search."""
+        # If organ_key is provided, look in the matching organ directory first
+        if organ_key:
+            for meta in ORGANS.values():
+                if meta["registry_key"] == organ_key:
+                    candidate = WORKSPACE / meta["dir"] / repo_name
+                    if candidate.is_dir():
+                        return candidate
+
+        # Fallback: scan all organ directories
+        for meta in ORGANS.values():
+            candidate = WORKSPACE / meta["dir"] / repo_name
+            if candidate.is_dir():
+                return candidate
+
+        # Check root workspace (personal projects, etc.)
+        candidate = WORKSPACE / repo_name
+        if candidate.is_dir():
+            return candidate
+
+        return None
+
+    @staticmethod
+    def _health_signals(repo: dict[str, Any], organ_key: str = "") -> dict[str, bool]:
+        """Assess repo health using filesystem checks with registry fallback."""
+        repo_name = repo.get("name", "")
+        repo_path = GovernanceRuntime._find_repo_path(repo_name, organ_key)
+
+        if repo_path and repo_path.is_dir():
+            # Filesystem-based checks
+            readme = repo_path / "README.md"
+            docs_ok = readme.is_file() and readme.stat().st_size > 500
+
+            workflows_dir = repo_path / ".github" / "workflows"
+            ci_ok = workflows_dir.is_dir() and any(workflows_dir.iterdir())
+
+            pkg_name = repo_name.replace("-", "_")
+            src_dirs = [d for d in ["src", "lib", pkg_name] if (repo_path / d).is_dir()]
+            test_dirs = [d for d in ["tests", "test"] if (repo_path / d).is_dir()]
+            impl_ok = bool(src_dirs) and bool(test_dirs)
+        else:
+            # Fallback to registry field checks
+            docs_ok = str(repo.get("documentation_status", "")).upper() == "DEPLOYED"
+            ci_ok = bool(str(repo.get("ci_workflow", "")).strip())
+            impl_ok = str(repo.get("implementation_status", "")).upper() in {
+                "ACTIVE", "COMPLETE", "COMPLETED", "READY", "MATURE", "STABLE",
+            }
+
         return {
             "docs_ok": docs_ok,
             "ci_ok": ci_ok,
@@ -467,7 +506,7 @@ class GovernanceRuntime:
             else:
                 continue
 
-            signals = self._health_signals(repo)
+            signals = self._health_signals(repo, organ_key)
             if not all(signals.values()):
                 continue
 

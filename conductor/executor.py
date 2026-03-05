@@ -29,6 +29,9 @@ class StepState:
     end_time: float = 0.0
     output: Any = None
     error: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+    iteration: int = 0
+    max_iterations: int = 0
 
 
 @dataclass
@@ -158,6 +161,9 @@ class WorkflowExecutor:
                     "end_time": step.end_time,
                     "output": step.output,
                     "error": step.error,
+                    "metadata": step.metadata,
+                    "iteration": step.iteration,
+                    "max_iterations": step.max_iterations,
                 }
                 for name, step in state.steps.items()
             },
@@ -264,7 +270,15 @@ class WorkflowExecutor:
             if fn_name == "failure":
                 return step is not None and step.status == "FAILED"
             if fn_name in {"all_passed", "any_passed"}:
-                # Parallel branch aggregation is represented by parent step completion in this prototype.
+                # Check for fan_out branches: {step_name}__branch_*
+                branch_steps = [
+                    s for name, s in state.steps.items()
+                    if name.startswith(f"{step_name}__branch_")
+                ]
+                if branch_steps:
+                    if fn_name == "all_passed":
+                        return all(s.status == "COMPLETED" for s in branch_steps)
+                    return any(s.status == "COMPLETED" for s in branch_steps)
                 return step is not None and step.status == "COMPLETED"
             action = state.checkpoint_actions.get(step_name, "").lower()
             return action in {"approve", "modify"}
@@ -430,23 +444,61 @@ class WorkflowExecutor:
                 value = self._walk_path(value, remainder)
 
         for transform in transforms:
-            if transform == "text":
+            t = transform.strip()
+            if t == "text":
                 if isinstance(value, (dict, list)):
                     value = json.dumps(value)
                 else:
                     value = "" if value is None else str(value)
-            elif transform == "json":
+            elif t == "json":
                 if isinstance(value, str):
                     try:
                         value = json.loads(value)
                     except json.JSONDecodeError:
                         pass
-            elif transform == "first" and isinstance(value, list):
+            elif t == "first" and isinstance(value, list):
                 value = value[0] if value else None
-            elif transform == "last" and isinstance(value, list):
+            elif t == "last" and isinstance(value, list):
                 value = value[-1] if value else None
-            elif transform == "count" and isinstance(value, (list, dict, str)):
+            elif t == "count" and isinstance(value, (list, dict, str)):
                 value = len(value)
+            elif t == "lines":
+                value = str(value).splitlines() if value is not None else []
+            elif t == "flatten" and isinstance(value, list):
+                flat: list[Any] = []
+                for item in value:
+                    if isinstance(item, list):
+                        flat.extend(item)
+                    else:
+                        flat.append(item)
+                value = flat
+            elif t == "unique" and isinstance(value, list):
+                seen: set[Any] = set()
+                unique: list[Any] = []
+                for item in value:
+                    key = json.dumps(item, sort_keys=True) if isinstance(item, (dict, list)) else item
+                    if key not in seen:
+                        seen.add(key)
+                        unique.append(item)
+                value = unique
+            elif t == "sort" and isinstance(value, list):
+                try:
+                    value = sorted(value)
+                except TypeError:
+                    pass
+            elif t.startswith("filter(") and t.endswith(")") and isinstance(value, list):
+                pred = t[7:-1].strip()
+                pred = self._strip_quotes(pred)
+                value = [item for item in value if pred in str(item)]
+            elif t.startswith("join(") and t.endswith(")") and isinstance(value, list):
+                sep = self._strip_quotes(t[5:-1].strip())
+                value = sep.join(str(item) for item in value)
+            elif t.startswith("take(") and t.endswith(")") and isinstance(value, list):
+                try:
+                    n = int(t[5:-1].strip())
+                    value = value[:n]
+                except ValueError:
+                    pass
 
         return value
 
@@ -489,6 +541,158 @@ class WorkflowExecutor:
             return self._resolve_value(step.get("input"), state)
         return self._pipe_input(state, step_name)
 
+    def _fail_step(self, state: WorkflowState, step_name: str, error: str) -> None:
+        """Mark a step as FAILED and record the error."""
+        step = state.steps[step_name]
+        step.status = "FAILED"
+        step.error = error
+        step.end_time = time.time()
+
+    @staticmethod
+    def _parse_error_strategy(strategy: str | None) -> tuple[str, int]:
+        """Parse on_error strategy string. Returns (strategy_type, param)."""
+        if not strategy:
+            return ("fail", 0)
+        s = strategy.strip().lower()
+        match = re.fullmatch(r"retry\((\d+)\)", s)
+        if match:
+            return ("retry", int(match.group(1)))
+        if s == "fallback":
+            return ("fallback", 0)
+        if s == "skip":
+            return ("skip", 0)
+        return ("fail", 0)
+
+    def _run_fan_out(
+        self, state: WorkflowState, step_name: str, step_spec: dict[str, Any],
+        workflow: dict[str, Any], steps: dict[str, dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Execute fan_out branches sequentially and aggregate results."""
+        branches = step_spec.get("branches", [])
+        if not isinstance(branches, list) or not branches:
+            raise ConductorError(f"fan_out step '{step_name}' must have a 'branches' list")
+
+        state.steps[step_name].status = "RUNNING"
+        state.steps[step_name].start_time = time.time()
+        branch_outputs: list[Any] = []
+
+        for i, branch in enumerate(branches):
+            branch_name = f"{step_name}__branch_{i}"
+            branch_cluster = branch.get("cluster", "unknown") if isinstance(branch, dict) else str(branch)
+            branch_input = branch.get("input") if isinstance(branch, dict) else None
+
+            state.steps[branch_name] = StepState(name=branch_name)
+            if branch_name not in state.step_order:
+                idx = state.step_order.index(step_name) + 1 + i
+                state.step_order.insert(idx, branch_name)
+
+            state.steps[branch_name].status = "RUNNING"
+            state.steps[branch_name].start_time = time.time()
+            resolved = self._resolve_value(branch_input, state) if branch_input else self._pipe_input(state, step_name)
+            state.steps[branch_name].output = resolved
+            state.steps[branch_name].status = "COMPLETED"
+            state.steps[branch_name].end_time = time.time()
+            state.bindings[branch_name] = resolved
+            branch_outputs.append(resolved)
+
+        # Fan-in: aggregate
+        fan_in_name = f"{step_name}__fan_in"
+        state.steps[fan_in_name] = StepState(name=fan_in_name)
+        state.steps[fan_in_name].status = "COMPLETED"
+        state.steps[fan_in_name].start_time = time.time()
+        state.steps[fan_in_name].end_time = time.time()
+        state.steps[fan_in_name].output = branch_outputs
+        state.bindings[fan_in_name] = branch_outputs
+
+        # Complete parent step
+        state.steps[step_name].output = branch_outputs
+        state.steps[step_name].status = "COMPLETED"
+        state.steps[step_name].end_time = time.time()
+        state.bindings[step_name] = branch_outputs
+
+        next_step = self._find_next_ready_step(state, steps)
+        if next_step:
+            state.current_step = next_step
+            next_spec = steps.get(next_step, {})
+            result = {
+                "status": "CONTINUE",
+                "next_step": next_step,
+                "checkpoint": bool(next_spec.get("checkpoint")),
+                "input": self._resolve_step_input(state, workflow, next_step),
+                "branches_completed": len(branches),
+                "aggregated_output": branch_outputs,
+            }
+        else:
+            state.current_step = None
+            state.status = "COMPLETED"
+            result = {"status": "FINISHED", "branches_completed": len(branches), "aggregated_output": branch_outputs}
+
+        self.save_state(state)
+        log_event("executor.fan_out_completed", {"workflow": state.workflow_name, "step": step_name, "branches": len(branches)})
+        return result
+
+    def _run_loop(
+        self, state: WorkflowState, step_name: str, step_spec: dict[str, Any],
+        workflow: dict[str, Any], steps: dict[str, dict[str, Any]],
+        tool_output: Any = None,
+    ) -> dict[str, Any]:
+        """Execute a loop step until condition is met or max_iterations reached."""
+        max_iter = int(step_spec.get("max_iterations", 10))
+        until_condition = step_spec.get("until")
+        step = state.steps[step_name]
+        step.max_iterations = max_iter
+
+        step.status = "RUNNING"
+        step.start_time = step.start_time or time.time()
+
+        resolved_input = self._resolve_step_input(state, workflow, step_name)
+        output = resolved_input if tool_output is None else tool_output
+
+        step.iteration += 1
+        step.output = output
+        state.bindings[step_name] = output
+        step.metadata["last_iteration"] = step.iteration
+
+        # Check termination
+        done = step.iteration >= max_iter
+        if not done and until_condition:
+            done = self._condition_passes(state, until_condition)
+
+        if not done:
+            # Re-queue: keep as current step
+            self.save_state(state)
+            return {
+                "status": "LOOP_CONTINUE",
+                "step": step_name,
+                "iteration": step.iteration,
+                "max_iterations": max_iter,
+                "output": output,
+            }
+
+        # Loop complete
+        step.status = "COMPLETED"
+        step.end_time = time.time()
+
+        next_step = self._find_next_ready_step(state, steps)
+        if next_step:
+            state.current_step = next_step
+            next_spec = steps.get(next_step, {})
+            result: dict[str, Any] = {
+                "status": "CONTINUE",
+                "next_step": next_step,
+                "checkpoint": bool(next_spec.get("checkpoint")),
+                "input": self._resolve_step_input(state, workflow, next_step),
+                "iterations_completed": step.iteration,
+            }
+        else:
+            state.current_step = None
+            state.status = "COMPLETED"
+            result = {"status": "FINISHED", "iterations_completed": step.iteration}
+
+        self.save_state(state)
+        log_event("executor.loop_completed", {"workflow": state.workflow_name, "step": step_name, "iterations": step.iteration})
+        return result
+
     def run_step(
         self,
         step_name: str,
@@ -498,9 +702,8 @@ class WorkflowExecutor:
     ) -> dict[str, Any]:
         """Advance the workflow by executing one step.
 
-        `pipe` behavior: when output is omitted, the step receives previous completed
-        output (or resolved `input`) and persists that value as output.
-        `checkpoint` behavior: checkpointed steps pause until explicit action.
+        Supported primitives: pipe, gate, checkpoint, fan_out/fan_in, loop,
+        on_error/fallback, emit.
         """
         state = self.load_state(workflow_name)
         if not state:
@@ -511,18 +714,21 @@ class WorkflowExecutor:
             raise ConductorError(f"Workflow not found in spec: {state.workflow_name}")
 
         steps = self._step_map(workflow)
-        if step_name not in state.steps or step_name not in steps:
+        if step_name not in state.steps:
             raise ConductorError(f"Step '{step_name}' not found in workflow '{state.workflow_name}'")
+
+        # For dynamically-injected steps (fan_out branches etc.) that aren't in spec
+        step_spec = steps.get(step_name, {})
 
         if state.current_step and state.current_step != step_name:
             raise ConductorError(f"Current step is '{state.current_step}', not '{step_name}'")
 
         step = state.steps[step_name]
-        step_spec = steps[step_name]
 
         if not self._dependencies_satisfied(state, step_name, steps):
             raise ConductorError(f"Dependencies are not satisfied for step '{step_name}'")
 
+        # --- Checkpoint handling ---
         requires_checkpoint = bool(step_spec.get("checkpoint"))
         if requires_checkpoint:
             action = checkpoint_action.lower() if checkpoint_action else None
@@ -556,6 +762,7 @@ class WorkflowExecutor:
             state.pending_checkpoint = None
             state.status = "ACTIVE"
 
+        # --- Condition check ---
         condition = step_spec.get("condition")
         if not self._condition_passes(state, condition):
             self._mark_step_skipped(state, step_name)
@@ -577,9 +784,119 @@ class WorkflowExecutor:
             self.save_state(state)
             return result
 
+        # --- Primitive dispatch ---
+        step_type = step_spec.get("type", "pipe")
+
+        # fan_out
+        if step_type == "fan_out":
+            return self._run_fan_out(state, step_name, step_spec, workflow, steps)
+
+        # loop
+        if step_type == "loop":
+            return self._run_loop(state, step_name, step_spec, workflow, steps, tool_output)
+
+        # emit (side-effect only)
+        if step_type == "emit":
+            step.status = "RUNNING"
+            step.start_time = time.time()
+            resolved_input = self._resolve_step_input(state, workflow, step_name)
+            output = resolved_input if tool_output is None else tool_output
+            step.output = output
+            step.status = "COMPLETED"
+            step.end_time = time.time()
+            state.bindings[step_name] = output
+            log_event("executor.emit", {"workflow": state.workflow_name, "step": step_name, "payload": output})
+            next_step = self._find_next_ready_step(state, steps)
+            if next_step:
+                state.current_step = next_step
+                next_spec = steps.get(next_step, {})
+                result = {
+                    "status": "CONTINUE",
+                    "next_step": next_step,
+                    "checkpoint": bool(next_spec.get("checkpoint")),
+                    "input": self._resolve_step_input(state, workflow, next_step),
+                }
+            else:
+                state.current_step = None
+                state.status = "COMPLETED"
+                result = {"status": "FINISHED"}
+            self.save_state(state)
+            return result
+
+        # --- Standard pipe/gate execution with on_error support ---
         step.status = "RUNNING"
         step.start_time = step.start_time or time.time()
         resolved_input = self._resolve_step_input(state, workflow, step_name)
+
+        on_error = step_spec.get("on_error")
+        strategy_type, strategy_param = self._parse_error_strategy(on_error)
+
+        # If tool_output is an exception marker dict, handle error strategies
+        if isinstance(tool_output, dict) and tool_output.get("__error__"):
+            error_msg = str(tool_output.get("message", "Step failed"))
+
+            if strategy_type == "retry" and step.iteration < strategy_param:
+                step.iteration += 1
+                step.status = "PENDING"
+                self.save_state(state)
+                return {
+                    "status": "RETRY",
+                    "step": step_name,
+                    "attempt": step.iteration,
+                    "max_attempts": strategy_param,
+                    "input": resolved_input,
+                }
+
+            if strategy_type == "skip":
+                self._mark_step_skipped(state, step_name)
+                next_step = self._find_next_ready_step(state, steps)
+                if next_step:
+                    state.current_step = next_step
+                    next_spec = steps.get(next_step, {})
+                    result = {
+                        "status": "SKIPPED",
+                        "step": step_name,
+                        "reason": error_msg,
+                        "next_step": next_step,
+                        "checkpoint": bool(next_spec.get("checkpoint")),
+                        "input": self._resolve_step_input(state, workflow, next_step),
+                    }
+                else:
+                    state.current_step = None
+                    state.status = "COMPLETED"
+                    result = {"status": "FINISHED"}
+                self.save_state(state)
+                return result
+
+            if strategy_type == "fallback":
+                fallback_step = step_spec.get("fallback")
+                if fallback_step and fallback_step in steps:
+                    self._fail_step(state, step_name, error_msg)
+                    state.bindings[step_name] = None
+                    # Make fallback the current step
+                    if fallback_step not in state.step_order:
+                        idx = state.step_order.index(step_name) + 1
+                        state.step_order.insert(idx, fallback_step)
+                    if fallback_step not in state.steps:
+                        state.steps[fallback_step] = StepState(name=fallback_step)
+                    state.current_step = fallback_step
+                    self.save_state(state)
+                    log_event("executor.fallback_triggered", {"workflow": state.workflow_name, "step": step_name, "fallback": fallback_step})
+                    return {
+                        "status": "FALLBACK",
+                        "failed_step": step_name,
+                        "fallback_step": fallback_step,
+                        "error": error_msg,
+                        "input": self._resolve_step_input(state, workflow, fallback_step),
+                    }
+
+            # Default: fail the workflow
+            self._fail_step(state, step_name, error_msg)
+            state.current_step = None
+            state.status = "FAILED"
+            self.save_state(state)
+            return {"status": "FAILED", "step": step_name, "error": error_msg}
+
         output = resolved_input if tool_output is None else tool_output
 
         step.status = "COMPLETED"
@@ -590,7 +907,7 @@ class WorkflowExecutor:
         next_step = self._find_next_ready_step(state, steps)
         if next_step:
             state.current_step = next_step
-            next_spec = steps[next_step]
+            next_spec = steps.get(next_step, {})
             result = {
                 "status": "CONTINUE",
                 "next_step": next_step,

@@ -24,6 +24,7 @@ from .contracts import assert_contract
 from .executor import WorkflowExecutor
 from .governance import GovernanceRuntime
 from .observability import get_metrics, log_event
+from .oracle import Oracle
 from .session import Session, SessionEngine, _load_stats
 from .work_item import WorkRegistry
 from .workqueue import WorkItem, WorkQueue
@@ -62,6 +63,7 @@ class Patchbay:
             ("pulse", lambda: self._pulse_section(organ_filter)),
             ("queue", lambda: self._queue_section(organ_filter)),
             ("stats", lambda: self._stats_section()),
+            ("oracle", lambda: self._oracle_section()),
         ]:
             try:
                 result[key] = fn()
@@ -239,6 +241,23 @@ class Patchbay:
             "streak": streak,
             "recent_sessions": stats.get("recent_sessions", [])[-5:],
             "top_failure_reasons": obs_metrics.get("failure_buckets", {}),
+        }
+
+    def _oracle_section(self) -> dict:
+        """Advisory wisdom from the Oracle."""
+        oracle = Oracle()
+        advisories = oracle.consult()
+        return {
+            "count": len(advisories),
+            "advisories": [
+                {
+                    "category": a.category,
+                    "severity": a.severity,
+                    "message": a.message,
+                    "recommendation": a.recommendation,
+                }
+                for a in advisories
+            ],
         }
 
     def _suggest_next(self, organ_filter: str | None = None) -> str:
@@ -511,6 +530,20 @@ class Patchbay:
                 f"Ship rate: {stats.get('ship_rate', 0)}% | "
                 f"Streak: {stats.get('streak', 0)}"
             )
+
+        # Oracle advisories
+        oracle_data = data.get("oracle", {})
+        oracle_items = oracle_data.get("advisories", [])
+        if oracle_items:
+            lines.append("")
+            lines.append("  ORACLE")
+            lines.append("  " + "-" * 68)
+            severity_icons = {"warning": "!!", "caution": "! ", "info": "  "}
+            for adv in oracle_items[:5]:
+                icon = severity_icons.get(adv["severity"], "  ")
+                lines.append(f"  {icon} [{adv['category'].upper()}] {adv['message']}")
+                if adv.get("recommendation"):
+                    lines.append(f"     -> {adv['recommendation']}")
 
         # Suggested action (shown for both active and inactive sessions)
         suggested = data.get("suggested_action", "")

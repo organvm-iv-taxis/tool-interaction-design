@@ -225,6 +225,22 @@ class SessionEngine:
         if stats["total_sessions"] > 0:
             ship_rate = stats["shipped"] / stats["total_sessions"] * 100
             print(f"  Lifetime: {stats['total_sessions']} sessions, {stats['total_minutes']}m, {ship_rate:.0f}% ship rate")
+
+        # Oracle advisories at session start
+        try:
+            from .oracle import Oracle
+            oracle = Oracle()
+            advisories = oracle.consult(max_advisories=3)
+            if advisories:
+                print(f"\n  Oracle:")
+                for adv in advisories:
+                    icon = "!!" if adv.severity == "warning" else "! " if adv.severity == "caution" else "  "
+                    print(f"  {icon} {adv.message}")
+                    if adv.recommendation:
+                        print(f"     -> {adv.recommendation}")
+        except Exception:
+            pass
+
         print()
 
         return session
@@ -477,6 +493,34 @@ class SessionEngine:
         n = stats["total_sessions"]
         if n in (1, 5, 10, 25, 50, 100):
             print(f"  MILESTONE: {n} sessions completed!")
+
+        # Oracle retrospective advisories
+        try:
+            from .oracle import Oracle
+            oracle = Oracle()
+            advisories = oracle.consult(max_advisories=3)
+            if advisories:
+                print(f"\n  Oracle (retrospective):")
+                for adv in advisories:
+                    icon = "!!" if adv.severity == "warning" else "! " if adv.severity == "caution" else "  "
+                    print(f"  {icon} {adv.message}")
+                    if adv.recommendation:
+                        print(f"     -> {adv.recommendation}")
+        except Exception:
+            pass
+
+        # Record patterns for growth feedback loop
+        try:
+            from .oracle import Oracle as OracleForPatterns
+            oracle_p = OracleForPatterns()
+            detected = oracle_p._load_patterns()
+            if detected:
+                from .product import record_pattern
+                for pattern_name, _ in detected:
+                    record_pattern(pattern_name, session.session_id, session.result)
+        except Exception:
+            pass
+
         print()
 
     def _commit_breadcrumb(self, session: Session) -> None:

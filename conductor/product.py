@@ -12,6 +12,7 @@ from typing import Optional
 import yaml
 
 from .constants import (
+    BASE,
     ConductorError,
     EXPORTS_DIR,
     GENERATED_DIR,
@@ -20,6 +21,72 @@ from .constants import (
     TEMPLATES_DIR,
 )
 from .governance import GovernanceRuntime
+
+PATTERN_HISTORY_FILE = BASE / ".conductor-pattern-history.jsonl"
+
+
+def record_pattern(pattern_name: str, session_id: str, outcome: str) -> None:
+    """Append a pattern observation to the JSONL history file."""
+    entry = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "pattern": pattern_name,
+        "session_id": session_id,
+        "outcome": outcome,
+    }
+    try:
+        PATTERN_HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with PATTERN_HISTORY_FILE.open("a") as fh:
+            fh.write(json.dumps(entry, sort_keys=True) + "\n")
+    except OSError:
+        pass
+
+
+def load_pattern_history(window_days: int = 90) -> list[dict]:
+    """Read recent pattern observations from JSONL history."""
+    if not PATTERN_HISTORY_FILE.exists():
+        return []
+    entries: list[dict] = []
+    cutoff = datetime.now(timezone.utc).isoformat()[:10]  # simple date comparison
+    try:
+        for line in PATTERN_HISTORY_FILE.read_text().splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            entry = json.loads(line)
+            entries.append(entry)
+    except (OSError, json.JSONDecodeError):
+        pass
+    return entries
+
+
+def correlate_patterns_with_outcomes(history: list[dict] | None = None) -> dict[str, dict[str, Any]]:
+    """Cross-reference detected patterns with session outcomes.
+
+    Returns a dict mapping pattern names to their success statistics.
+    """
+    if history is None:
+        history = load_pattern_history()
+
+    correlations: dict[str, dict[str, Any]] = {}
+    for entry in history:
+        pat = entry.get("pattern", "")
+        outcome = entry.get("outcome", "UNKNOWN")
+        if pat not in correlations:
+            correlations[pat] = {"total": 0, "shipped": 0, "closed": 0, "other": 0}
+        correlations[pat]["total"] += 1
+        if outcome == "SHIPPED":
+            correlations[pat]["shipped"] += 1
+        elif outcome == "CLOSED":
+            correlations[pat]["closed"] += 1
+        else:
+            correlations[pat]["other"] += 1
+
+    # Calculate success rates
+    for pat, stats in correlations.items():
+        total = stats["total"]
+        stats["ship_rate"] = round(stats["shipped"] / total * 100, 1) if total else 0
+
+    return correlations
 
 
 class ProductExtractor:

@@ -829,7 +829,7 @@ class TestQueueTruncation:
             if "QUEUE" in line and "top" in line:
                 in_queue = True
                 continue
-            if in_queue and (line.strip().startswith("STATS") or line.strip().startswith("NEXT ACTION")):
+            if in_queue and (line.strip().startswith("STATS") or line.strip().startswith("NEXT ACTION") or line.strip().startswith("ORACLE")):
                 break
             if in_queue and line.strip().startswith("->"):
                 queue_commands.append(line)

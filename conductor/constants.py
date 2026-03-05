@@ -20,6 +20,7 @@ EXPORTS_DIR = BASE / "exports"
 SESSION_STATE_FILE = BASE / ".conductor-session.json"
 STATS_FILE = BASE / ".conductor-stats.json"
 WORK_REGISTRY_FILE = BASE / ".conductor-work-registry.json"
+PATTERN_HISTORY_FILE = BASE / ".conductor-pattern-history.jsonl"
 CONFIG_FILE = BASE / ".conductor.yaml"
 
 # Workspace paths (mirror organvm-engine conventions)
