@@ -463,6 +463,35 @@ def compose_mission(goal: str, from_cluster: str, to_cluster: str) -> str:
         return _encode_mcp_payload({"error": f"Failed to compile mission: {str(e)}"})
 
 
+def workflow_status() -> str:
+    from conductor.executor import WorkflowExecutor
+    from conductor.constants import WORKFLOW_DSL_PATH
+    executor = WorkflowExecutor(WORKFLOW_DSL_PATH)
+    briefing = executor.get_briefing()
+    return _encode_mcp_payload(briefing)
+
+def workflow_step(tool_output: Any = None, checkpoint_action: str | None = None) -> str:
+    from conductor.executor import WorkflowExecutor
+    from conductor.constants import WORKFLOW_DSL_PATH
+    executor = WorkflowExecutor(WORKFLOW_DSL_PATH)
+    briefing = executor.get_briefing()
+    if not briefing.get("active"):
+        return _encode_mcp_payload({"error": "No active workflow. Start one using conductor_compose_mission or conductor CLI."})
+    
+    current_step = briefing.get("current_step")
+    if not current_step:
+        return _encode_mcp_payload({"error": "Workflow is active but has no current step to execute.", "status": briefing.get("status")})
+    
+    try:
+        result = executor.run_step(
+            step_name=current_step,
+            tool_output=tool_output,
+            checkpoint_action=checkpoint_action
+        )
+        return _encode_mcp_payload(result)
+    except Exception as e:
+        return _encode_mcp_payload({"error": f"Failed to run step '{current_step}': {str(e)}"})
+
 # ---------------------------------------------------------------------------
 # MCP Server setup
 # ---------------------------------------------------------------------------
@@ -572,6 +601,22 @@ TOOLS = [
             "required": ["goal", "from_cluster", "to_cluster"],
         },
     ),
+    Tool(
+        name="conductor_workflow_status",
+        description="Get the briefing of the current active workflow (including current step, status, and suggested tool call).",
+        inputSchema={"type": "object", "properties": {}},
+    ),
+    Tool(
+        name="conductor_workflow_step",
+        description="Advance the active workflow by completing the current step, optionally providing the tool output or an action for checkpoints.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "tool_output": {"description": "Output from the tool executed for the step (if applicable)"},
+                "checkpoint_action": {"type": "string", "description": "For CHECKPOINT steps, provide 'approve', 'modify', or 'abort'."},
+            },
+        },
+    ),
 ]
 
 DISPATCH = {
@@ -586,6 +631,8 @@ DISPATCH = {
     "conductor_trace_get": lambda args: trace_get((args or {})["trace_id"]),
     "conductor_handoff_validate": lambda args: handoff_validate((args or {})["payload"]),
     "conductor_compose_mission": lambda args: compose_mission((args or {})["goal"], (args or {})["from_cluster"], (args or {})["to_cluster"]),
+    "conductor_workflow_status": lambda args: workflow_status(),
+    "conductor_workflow_step": lambda args: workflow_step((args or {}).get("tool_output"), (args or {}).get("checkpoint_action")),
 }
 
 

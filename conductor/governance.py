@@ -223,18 +223,187 @@ class GovernanceRuntime:
 
     def registry_sync(self, fix: bool = False, dry_run: bool = False) -> None:
         """Compare GitHub API repos vs registry, report delta. With --fix, auto-add missing."""
-        # ... [logic before save] ...
+        print(f"\n  Registry Sync {'(DRY RUN)' if dry_run else ''}")
+        print("  " + "=" * 50)
+
+        all_repos = self._all_repos()
+        registry_names = {repo.get("name") for _, repo in all_repos}
+        
+        # Group by org for batched queries
+        missing_repos = []
+        for short_key, meta in ORGANS.items():
+            org = meta["org"]
+            reg_key = meta["registry_key"]
+            
+            print(f"  Checking GitHub org: {org}...")
+            try:
+                result = subprocess.run(
+                    ["gh", "repo", "list", org, "--json", "name", "--limit", "200"],
+                    capture_output=True, text=True, timeout=30,
+                )
+                if result.returncode != 0:
+                    print(f"    WARNING: Could not list repos for {org}: {result.stderr.strip()}")
+                    continue
+                
+                gh_names = {r["name"] for r in json.loads(result.stdout)}
+                delta = gh_names - registry_names
+                
+                for name in sorted(delta):
+                    missing_repos.append((reg_key, name))
+                    print(f"    [MISSING] {name} (should be in {reg_key})")
+            except (subprocess.TimeoutExpired, FileNotFoundError):
+                print(f"    WARNING: gh CLI unavailable or timed out for {org}")
+
+        if not missing_repos:
+            print("\n  Registry is in sync with GitHub.")
+            return
+
+        print(f"\n  Found {len(missing_repos)} repos on GitHub missing from registry.")
+        
         if fix and not dry_run:
-            # (Assuming the implementation logic is present in the file)
-            # Locate the save point
-            pass
+            if not self.confirm_fn(f"Add {len(missing_repos)} missing repos to registry?"):
+                print("  Aborted.")
+                return
+
+            for reg_key, name in missing_repos:
+                organ_data = self.registry.get("organs", {}).get(reg_key)
+                if organ_data:
+                    organ_data.setdefault("repositories", []).append({
+                        "name": name,
+                        "promotion_status": "LOCAL",
+                        "tier": "standard",
+                        "documentation_status": "EMPTY",
+                        "implementation_status": "STUB",
+                        "ci_workflow": "",
+                        "dependencies": [],
+                        "last_validated": datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                    })
+
+            if self._registry_path.exists():
+                shutil.copy2(self._registry_path, self._registry_path.with_suffix(".json.bak"))
+            atomic_write(self._registry_path, json.dumps(self.registry, indent=2) + "\n")
+            print(f"  Added {len(missing_repos)} repos. Registry updated.")
+            self._trigger_work_registry_sync()
+        elif fix:
+            print(f"  Dry run: would add {len(missing_repos)} repos.")
+        else:
+            print("  Run with --fix to automatically add these to the registry.")
+        print()
+
+    def wip_check(self, organ: Optional[str] = None) -> None:
+        """Check all organs against WIP limits and report violations."""
+        print(f"\n  WIP Check: {organ or 'FULL SYSTEM'}")
+        print("  " + "=" * 50)
+
+        organs_to_check = {}
+        if organ:
+            key = resolve_organ_key(organ)
+            if key in self.registry.get("organs", {}):
+                organs_to_check[key] = self.registry["organs"][key]
+            else:
+                raise GovernanceError(f"Organ '{organ}' not found in registry.")
+        else:
+            organs_to_check = self.registry.get("organs", {})
+
+        violations = []
+        warnings = []
+        
+        for organ_key, organ_data in organs_to_check.items():
+            repos = organ_data.get("repositories", [])
+            counts = Counter(r.get("promotion_status", "UNKNOWN") for r in repos)
+            
+            cand = counts.get("CANDIDATE", 0)
+            pub = counts.get("PUBLIC_PROCESS", 0)
+            
+            cand_limit = self.max_candidate_per_organ
+            pub_limit = self.max_public_process_per_organ
+            
+            short = organ_short(organ_key)
+            
+            # CANDIDATE
+            if cand > cand_limit:
+                violations.append(f"[{short}] CAND>{cand_limit} ({cand}/{cand_limit})")
+            elif cand >= cand_limit * 0.8:
+                warnings.append(f"[{short}] CAND approaching limit ({cand}/{cand_limit})")
+            
+            # PUBLIC_PROCESS
+            if pub > pub_limit:
+                violations.append(f"[{short}] PUBLIC_PROCESS (PUB>{pub_limit}) violation: {pub}/{pub_limit}")
+            elif pub >= pub_limit * 0.8:
+                warnings.append(f"[{short}] PUBLIC_PROCESS (PUB) approaching limit ({pub}/{pub_limit})")
+
+        if violations:
+            print("\n  WIP VIOLATIONS")
+            print("  " + "-" * 20)
+            for v in violations:
+                print(f"  !! {v}")
+        
+        if warnings:
+            print("\n  WIP WARNINGS")
+            print("  " + "-" * 20)
+            for w in warnings:
+                print(f"  !  {w}")
+
+        if not violations and not warnings:
+            print("\n  All organs within WIP limits.")
+
+        print(f"\n  Total violations: {len(violations)}")
+        if violations:
+            print("  Suggestion: Promote or archive repos to clear the pipeline.")
+        print()
 
     def wip_promote(self, repo_name: str, target_state: str) -> None:
         """Promote a repo with WIP limit enforcement."""
-        # ... [validation logic] ...
+        target_state = target_state.upper()
+        if target_state not in PROMOTION_STATES:
+            raise GovernanceError(f"Invalid state: {target_state}. Must be one of: {', '.join(PROMOTION_STATES)}")
+
+        # Find repo
+        found_repo = None
+        found_organ_key = None
+        for organ_key, organ_data in self.registry.get("organs", {}).items():
+            for repo in organ_data.get("repositories", []):
+                if repo.get("name") == repo_name:
+                    found_repo = repo
+                    found_organ_key = organ_key
+                    break
+            if found_repo:
+                break
+
+        if not found_repo or not found_organ_key:
+            raise GovernanceError(f"Repo '{repo_name}' not found in registry.")
+
+        current = str(found_repo.get("promotion_status", "LOCAL")).upper()
+        if current == target_state:
+            print(f"  Repo '{repo_name}' is already in state {target_state}.")
+            return
+
+        # Validate transition
+        allowed = PROMOTION_TRANSITIONS.get(current, [])
+        if target_state not in allowed:
+            raise GovernanceError(f"Cannot transition '{repo_name}' from {current} to {target_state}. Allowed: {', '.join(allowed)}")
+
+        # Check WIP limits
+        if target_state in {"CANDIDATE", "PUBLIC_PROCESS"}:
+            organ_repos = self.registry["organs"][found_organ_key].get("repositories", [])
+            current_count = sum(1 for r in organ_repos if r.get("promotion_status") == target_state)
+            limit = self.max_candidate_per_organ if target_state == "CANDIDATE" else self.max_public_process_per_organ
+            
+            if current_count >= limit:
+                raise GovernanceError(f"WIP limit reached for {target_state} in {found_organ_key} ({current_count}/{limit}).")
+
+        # Confirm
+        if not self.confirm_fn(f"Promote {repo_name} from {current} to {target_state}?"):
+            print("  Aborted.")
+            log_event(
+                "governance.wip_promote",
+                {"repo": repo_name, "current": current, "target": target_state, "aborted": True},
+            )
+            return
+
         # After successful promotion:
-        repo["promotion_status"] = target_state
-        repo["last_validated"] = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        found_repo["promotion_status"] = target_state
+        found_repo["last_validated"] = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
         if self._registry_path.exists():
             shutil.copy2(self._registry_path, self._registry_path.with_suffix(".json.bak"))

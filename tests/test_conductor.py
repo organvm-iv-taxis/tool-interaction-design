@@ -985,6 +985,87 @@ class TestWipCheckPublicProcess:
             gov.wip_promote("candidate-repo", "PUBLIC_PROCESS")
 
 
+# ===========================================================================
+# Registry Sync (P2.3 / BS5)
+# ===========================================================================
+
+
+class TestRegistrySync:
+    def _make_gov(self, mini_registry, confirm_val=True):
+        reg_path, gov_path, _ = mini_registry
+        with patch.object(conductor.governance, "REGISTRY_PATH", reg_path), \
+             patch.object(conductor.governance, "GOVERNANCE_PATH", gov_path):
+            return GovernanceRuntime(confirm_fn=lambda _: confirm_val)
+
+    def test_registry_sync_dry_run_reports_missing(self, mini_registry, capsys):
+        """registry_sync reports repos on GitHub but missing from registry."""
+        gov = self._make_gov(mini_registry)
+        
+        # Mock gh repo list output differently for each organ
+        # We'll make it return 2 new repos for ORGAN-III and empty for others
+        def gh_side_effect(args, **kwargs):
+            if "labores-profani-crux" in args:  # ORGAN-III
+                return MagicMock(returncode=0, stdout=json.dumps([
+                    {"name": "repo-a"},  # already exists
+                    {"name": "repo-missing-1"},
+                    {"name": "repo-missing-2"},
+                ]))
+            return MagicMock(returncode=0, stdout="[]")
+        
+        with patch("conductor.governance.subprocess.run", side_effect=gh_side_effect):
+            gov.registry_sync(fix=False, dry_run=True)
+            
+        out = capsys.readouterr().out
+        assert "Found 2 repos on GitHub missing from registry." in out
+        assert "[MISSING] repo-missing-1" in out
+        assert "[MISSING] repo-missing-2" in out
+
+    def test_registry_sync_fix_adds_to_registry(self, mini_registry, capsys):
+        """registry_sync --fix adds missing repos to registry file."""
+        gov = self._make_gov(mini_registry, confirm_val=True)
+        reg_path, _, _ = mini_registry
+        
+        def gh_side_effect(args, **kwargs):
+            if "labores-profani-crux" in args:  # ORGAN-III (exists in mini_registry)
+                return MagicMock(returncode=0, stdout=json.dumps([
+                    {"name": "repo-a"},
+                    {"name": "new-repo"},
+                ]))
+            return MagicMock(returncode=0, stdout="[]")
+        
+        with patch("conductor.governance.subprocess.run", side_effect=gh_side_effect):
+            gov.registry_sync(fix=True, dry_run=False)
+            
+        # Verify it was added to the registry object
+        found = False
+        for _, repo in gov._all_repos():
+            if repo["name"] == "new-repo":
+                found = True
+                assert repo["promotion_status"] == "LOCAL"
+                break
+        assert found
+        
+        # Verify file was written
+        content = reg_path.read_text()
+        assert "new-repo" in content
+
+    def test_registry_sync_aborted_by_human(self, mini_registry, capsys):
+        """registry_sync --fix does nothing if human aborts."""
+        gov = self._make_gov(mini_registry, confirm_val=False)
+        reg_path, _, _ = mini_registry
+        original_content = reg_path.read_text()
+        
+        gh_output = json.dumps([{"name": "new-repo"}])
+        mock_result = MagicMock(returncode=0, stdout=gh_output, stderr="")
+        
+        with patch("conductor.governance.subprocess.run", return_value=mock_result):
+            gov.registry_sync(fix=True, dry_run=False)
+            
+        out = capsys.readouterr().out
+        assert "Aborted" in out
+        assert reg_path.read_text() == original_content
+
+
 class TestConductorCliValidate:
     def _run(self, *args):
         result = subprocess.run(

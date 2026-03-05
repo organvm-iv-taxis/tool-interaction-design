@@ -64,6 +64,7 @@ class Cluster:
     protocols: list[str]
     input_types: list[str]
     output_types: list[str]
+    capability_weights: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass
@@ -151,6 +152,7 @@ class Ontology:
         self.taxonomy = data.get("taxonomy", {})
         self.clusters: dict[str, Cluster] = {}
         self.relationship_types = data.get("relationship_types", [])
+        self.relationships = data.get("relationships", [])
 
         for c in data.get("clusters", []):
             cluster = Cluster(
@@ -162,6 +164,7 @@ class Ontology:
                 protocols=c.get("protocols", []),
                 input_types=c.get("input_types", []),
                 output_types=c.get("output_types", []),
+                capability_weights=c.get("capability_weights", {}),
             )
             self.clusters[cluster.id] = cluster
 

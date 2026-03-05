@@ -142,3 +142,18 @@ class WorkflowCompiler:
             step = state.steps[name]
             lines.append(f"  [{name}] -> {step.status}")
         return "\n".join(lines)
+
+    def get_swarm_objective(self, goal: str, state: WorkflowState) -> str:
+        """Generate a dense, actionable objective string for an autonomous agent/swarm."""
+        steps_summary = " -> ".join([f"{name}" for name in state.step_order])
+        hardened_note = " (HARDENED with validation checkpoints)" if state.metadata.get("hardened") else ""
+        
+        return (
+            f"GOAL: {goal}. MISSION_ID: {state.workflow_name}. "
+            f"EXECUTION_PATH: {steps_summary}{hardened_note}. "
+            f"INSTRUCTIONS: Use the Conductor OS MCP tools. "
+            f"1. Call 'conductor_workflow_status' to see current step. "
+            f"2. Execute the required tool for that cluster. "
+            f"3. Call 'conductor_workflow_step' with the output to advance. "
+            f"Repeat until status is COMPLETED. DO NOT STOP until the mission is finished."
+        )

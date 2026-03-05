@@ -249,6 +249,14 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("domains", help="List all domains")
     sub.add_parser("version", help="Show conductor version")
 
+    # ----- Wiring commands -----
+    p_wiring = sub.add_parser("wiring", help="Workspace-wide integration")
+    wiring_sub = p_wiring.add_subparsers(dest="wiring_command", required=True)
+    p_w_inject = wiring_sub.add_parser("inject", help="Inject Conductor hooks into all repositories")
+    p_w_inject.add_argument("--apply", action="store_true", help="Apply changes (default is dry-run)")
+    p_w_mcp = wiring_sub.add_parser("mcp", help="Configure global Conductor MCP server")
+    p_w_mcp.add_argument("--apply", action="store_true", help="Apply changes (default is dry-run)")
+
     return parser
 
 
@@ -364,10 +372,12 @@ def _dispatch(args):
     elif args.command == "auto":
         from .work_item import WorkRegistry
         from .patchbay import Patchbay
+        from .compiler import WorkflowCompiler
+        from .session import SessionEngine
+        import subprocess
         
         def _run_once():
             pb = Patchbay(ontology=ontology, engine=SessionEngine(ontology))
-            # briefing() calls sync() internally
             data = pb.briefing()
             items = data.get("queue", {}).get("items", [])
             open_items = [i for i in items if i["status"] == "OPEN"]
@@ -377,7 +387,7 @@ def _dispatch(args):
                 return False
             
             top = open_items[0]
-            print(f"  Autonomous worker picking top task: {top['id']} - {top['description']}")
+            print(f"  [SINGULARITY] Autonomous worker picking top task: {top['id']} - {top['description']}")
             
             # 1. Claim
             wr = pb.wr
@@ -385,18 +395,58 @@ def _dispatch(args):
                 print(f"  FAILED to claim task {top['id']}")
                 return False
             
-            print(f"  Task claimed. Spawning session for {top['repo'] or top['organ']}...")
+            # 2. JIT Compile the mission for this task
+            compiler = WorkflowCompiler(engine, ontology)
+            # Derive start/end from category
+            from_cluster = "code_analysis_mcp"
+            to_cluster = "github_platform" # default for most triage
+            if top["category"] == "stale":
+                from_cluster = "git_core"
             
-            # 2. Execution Skeleton (Epoch II.2)
-            # In a real run, we'd call se.start() and then execute a workflow
-            # For the first pass, we just simulate the 'intent'
-            print(f"  [EXECUTION] Would run: {top['suggested_command']}")
+            try:
+                state = compiler.compile_mission(
+                    goal=top["description"],
+                    start_cluster=from_cluster,
+                    end_cluster=to_cluster,
+                    session_id=f"auto-{top['id']}"
+                )
+                objective = compiler.get_swarm_objective(top["description"], state)
+                print(f"  Mission Compiled: {state.workflow_name}")
+                print(f"  [HARDENED: {state.metadata.get('hardened')}] Health: {state.metadata.get('shadow_trace_health'):.2f}")
+            except Exception as e:
+                print(f"  FAILED to compile mission: {e}")
+                wr.yield_item(top["id"])
+                return False
+
+            # 3. SWARM EXECUTION TRIGGER (The Singularity)
+            # We invoke the Gemini CLI itself to run the compiled mission
+            print(f"  [EXECUTION] Spawning autonomous swarm for mission: {state.workflow_name}...")
             
-            # 3. Resolve (for now, immediately auto-resolving to demonstrate the loop)
-            # In the final implementation, this only happens after 'PROVE' phase
-            wr.resolve(top["id"])
-            print(f"  Task resolved.")
-            return True
+            gemini_cmd = [
+                "gemini", 
+                "--non-interactive", 
+                objective
+            ]
+            
+            try:
+                # Note: In a real long-running daemon, we might run this in background
+                # For this implementation, we run it and wait for the resolution
+                result = subprocess.run(gemini_cmd, capture_output=True, text=True, timeout=600)
+                
+                if result.returncode == 0:
+                    print(f"  Swarm completed successfully.")
+                    wr.resolve(top["id"])
+                    print(f"  Task {top['id']} marked as RESOLVED.")
+                    return True
+                else:
+                    print(f"  Swarm execution FAILED (RC={result.returncode})")
+                    print(f"  Error: {result.stderr.strip()[:200]}...")
+                    wr.yield_item(top["id"])
+                    return False
+            except Exception as e:
+                print(f"  Execution exception: {e}")
+                wr.yield_item(top["id"])
+                return False
 
         if getattr(args, "daemon", False):
             import time
@@ -667,6 +717,24 @@ def _dispatch(args):
         elif args.workflow_command == "clear":
             executor.clear_state()
             print("Cleared workflow execution state.")
+
+    elif args.command == "wiring":
+        from .governance import GovernanceRuntime
+        from .wiring import WiringEngine
+        gov = GovernanceRuntime()
+        engine = WiringEngine(gov)
+        if args.wiring_command == "inject":
+            print("\n  Injecting Conductor hooks...")
+            results = engine.inject_all(dry_run=not args.apply)
+            print(f"  Done. Injected: {len(results['injected'])}, Skipped: {len(results['skipped'])}, Errors: {len(results['errors'])}")
+            if not args.apply:
+                print("  (Run with --apply to actually write files)")
+        elif args.wiring_command == "mcp":
+            print("\n  Setting up global MCP...")
+            msg = engine.global_mcp_setup(dry_run=not args.apply)
+            print(f"  {msg}")
+            if not args.apply:
+                print("  (Run with --apply to actually update settings)")
 
     elif args.command == "doctor":
         report = run_doctor(workflow_path=args.workflow, format_name=args.format, apply=args.apply)
