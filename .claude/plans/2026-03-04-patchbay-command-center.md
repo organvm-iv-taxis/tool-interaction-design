@@ -1,285 +1,269 @@
-# Plan: Activate Reference Links + Autonomous Link Checker
-
-**Date**: 2026-03-03
+# Plan: The Patchbay — Conductor's Command Center
 
 ## Context
 
-The previous hyperlinking plan is complete — body text has active `[[N]](#ref-N)` footnote links and proper noun hyperlinks. However, the **reference citation strings** rendered at the bottom of each essay are still plain text. The `references.html` partial outputs `{{ ref }}` verbatim — bare domain names like `indieweb.org/POSSE` and book titles are not clickable.
+The conductor system (3 layers, 62 tests, v0.4.0) is built. But starting work means navigating between `conductor session`, `conductor wip`, `conductor audit`, `conductor patterns`, `router.py`, registry JSON, stats files, etc. There's no single "patch in" point. The user wants one location — the patchbay — where the puppeteer sees all strings and can pull any of them. Every session starts the same way: `conductor patch`.
 
-Additionally, with ~150+ links now across 9 files, there's no automated way to detect broken links. Manual checking doesn't scale.
-
-**Goal**: (1) Make reference citations clickable. (2) Build an autonomous link checker that runs in CI and on schedule.
+The metaphor is from audio engineering. A patchbay is a panel of jacks. You walk up, see what's routed where, plug in cables, and start. You don't *live* in it — you read it, then act.
 
 ---
 
-## Part 1: Activate Reference Citations (4 essays)
+## Architecture
 
-### Approach
-
-Embed markdown links in the YAML reference strings and render them with Jekyll's `markdownify` filter. No schema change needed — references remain `list[string]`.
-
-### 1a. Template Change
-
-**File**: `public-process/_includes/references.html`
-
-Change line 7 from:
-```html
-<li id="ref-{{ forloop.index }}">{{ ref }}</li>
 ```
-To:
-```html
-<li id="ref-{{ forloop.index }}">{{ ref | markdownify | replace: '<p>', '' | replace: '</p>', '' | strip }}</li>
+conductor patch
+    |
+    +-- SessionEngine    → active session / last closed
+    +-- GovernanceRuntime → registry counts, WIP violations
+    +-- WorkQueue (NEW)  → prioritized action items from registry state
+    +-- ProductExtractor → lifetime stats, patterns
+    +-- Ontology         → routing intelligence for current task
+    |
+    v
+  Structured briefing (text or JSON)
 ```
 
-This renders markdown links and italics within citation strings while stripping the `<p>` wrapper that `markdownify` adds.
-
-### 1b. Update Reference Strings (40 citations across 4 essays)
-
-Embed `[text](url)` markdown links on the title/source of each citation. For URLs containing parentheses (Wikipedia), use angle-bracket syntax: `[text](<url>)`.
-
-#### Essay 1: `_posts/2026-02-21-the-distribution-problem.md`
-
-| # | Link target | URL |
-|---|-------------|-----|
-| 1 | POSSE | `https://indieweb.org/POSSE` |
-| 2 | tantek.com | `https://tantek.com/` |
-| 3 | "The Internet's Enshittification" | `https://pluralistic.net/2023/01/21/potemkin-ai/` |
-| 4 | *The Long Tail* | `https://en.wikipedia.org/wiki/The_Long_Tail_(book)` |
-| 5 | *Tribes* | `https://en.wikipedia.org/wiki/Tribes_(Seth_Godin_book)` |
-| 6 | RSS 2.0 Specification | `https://www.rssboard.org/rss-specification` |
-| 7 | RFC 4287 | `https://datatracker.ietf.org/doc/html/rfc4287` |
-| 8 | "The Web We Lost" | `https://anildash.com/2012/12/13/the_web_we_lost/` |
-| 9 | "The Web We Have to Save" | `https://medium.com/matter/the-web-we-have-to-save-2eb1fe15a426` |
-| 10 | *Ruined by Design* | `https://www.ruinedby.design/` |
-
-#### Essay 2: `_posts/2026-02-24-community-infrastructure-for-one.md`
-
-| # | Link target | URL |
-|---|-------------|-----|
-| 1 | *Communities of Practice* | `https://en.wikipedia.org/wiki/Community_of_practice` |
-| 2 | *Gödel, Escher, Bach* | `https://en.wikipedia.org/wiki/G%C3%B6del,_Escher,_Bach` |
-| 3 | *A Thousand Plateaus* | `https://en.wikipedia.org/wiki/A_Thousand_Plateaus` |
-| 4 | *Social Systems* | `https://en.wikipedia.org/wiki/Social_Systems_(book)` |
-| 5 | *Steps to an Ecology of Mind* | `https://en.wikipedia.org/wiki/Steps_to_an_Ecology_of_Mind` |
-| 6 | *The Lean Startup* | `https://en.wikipedia.org/wiki/The_Lean_Startup` |
-| 7 | *Working in Public* | `https://press.stripe.com/working-in-public` |
-| 8 | *Where Good Ideas Come From* | `https://en.wikipedia.org/wiki/Where_Good_Ideas_Come_From` |
-| 9 | *Deschooling Society* | `https://en.wikipedia.org/wiki/Deschooling_Society` |
-| 10 | *Bowling Alone* | `https://en.wikipedia.org/wiki/Bowling_Alone` |
-
-#### Essay 3: `_posts/2026-02-27-writing-as-system-architecture.md`
-
-| # | Link target | URL |
-|---|-------------|-----|
-| 1 | "Literate Programming" | `https://en.wikipedia.org/wiki/Literate_programming` |
-| 2 | "Documenting Architecture Decisions" | `https://cognitect.com/blog/2011/11/15/documenting-architecture-decisions` |
-| 3 | *Science and Sanity* | `https://en.wikipedia.org/wiki/Science_and_Sanity` |
-| 4 | *The Reflective Practitioner* | `https://en.wikipedia.org/wiki/The_Reflective_Practitioner` |
-| 5 | *Design Patterns* | `https://en.wikipedia.org/wiki/Design_Patterns` |
-| 6 | "Continuous Integration" | `https://martinfowler.com/articles/continuousIntegration.html` |
-| 7 | *The Data Warehouse Toolkit* | `https://en.wikipedia.org/wiki/The_Data_Warehouse_Toolkit` |
-| 8 | *The Mythical Man-Month* | `https://en.wikipedia.org/wiki/The_Mythical_Man-Month` |
-| 9 | *How Buildings Learn* | `https://en.wikipedia.org/wiki/How_Buildings_Learn` |
-| 10 | *A Pattern Language* | `https://en.wikipedia.org/wiki/A_Pattern_Language` |
-
-#### Essay 4: `_posts/2026-03-02-two-weeks-and-forty-six-essays.md`
-
-| # | Link target | URL |
-|---|-------------|-----|
-| 1 | "The Age of the Essay" | `https://paulgraham.com/essay.html` |
-| 2 | *Bird by Bird* | `https://en.wikipedia.org/wiki/Bird_by_Bird` |
-| 3 | *On Writing* | `https://en.wikipedia.org/wiki/On_Writing:_A_Memoir_of_the_Craft` |
-| 4 | *Deep Work* | `https://calnewport.com/deep-work/` |
-| 5 | *Agile Retrospectives* | `https://pragprog.com/titles/dlret/agile-retrospectives/` |
-| 6 | *On Writing Well* | `https://en.wikipedia.org/wiki/On_Writing_Well` |
-| 7 | "Politics and the English Language" | `https://en.wikipedia.org/wiki/Politics_and_the_English_Language` |
-| 8 | *Thinking, Fast and Slow* | `https://en.wikipedia.org/wiki/Thinking,_Fast_and_Slow` |
-| 9 | *The Pragmatic Programmer* | `https://en.wikipedia.org/wiki/The_Pragmatic_Programmer` |
-| 10 | *Extreme Programming Explained* | `https://en.wikipedia.org/wiki/Extreme_programming` |
+Two new modules. Zero new dependencies. Read-only command (never mutates state).
 
 ---
 
-## Part 2: Autonomous Link Checker
+## New Files
 
-### 2a. New Module: `src/link_checker.py`
+### 1. `conductor/workqueue.py` (~120 lines)
 
-**Location**: `essay-pipeline/src/link_checker.py`
+Computes a prioritized work queue from registry state. No stored file — computed fresh each invocation.
 
-**CLI**:
-```bash
-python -m src.link_checker \
-  --posts-dir ../public-process/_posts/ \
-  --logs-dir ../public-process/_logs/ \
-  --output link-report.json \
-  --timeout 10 \
-  --retries 2
+```python
+@dataclass
+class WorkItem:
+    priority: str          # CRITICAL, HIGH, MEDIUM, LOW
+    category: str          # wip_violation, stale, missing_ci, promotion_ready
+    organ: str
+    repo: str | None
+    description: str
+    suggested_command: str
+    score: int             # sort key (higher = more urgent)
+
+class WorkQueue:
+    def __init__(self, gov: GovernanceRuntime): ...
+    def compute(self, organ_filter: str | None = None) -> list[WorkItem]: ...
 ```
 
-**Architecture** (follows existing module patterns — argparse CLI, type hints, error collection):
+Scoring methods (in priority order):
+| Method | Score | Trigger |
+|--------|-------|---------|
+| `_wip_violations()` | 100 | Organ exceeds CANDIDATE or PUBLIC_PROCESS limit |
+| `_stale_candidates()` | 70 | CANDIDATE with `last_validated` > 30 days old |
+| `_missing_infrastructure()` | 40 | Repo with empty `ci_workflow` or `documentation_status` = EMPTY |
+| `_promotion_candidates()` | 20 | LOCAL repos with docs deployed (ready to promote) |
 
-```
-extract_urls(filepath) → list[UrlEntry]
-  - Parse markdown for [text](url) links
-  - Parse references YAML for embedded markdown links
-  - Filter out internal anchors (#ref-N), Jekyll post_url, mailto:
+Each item includes a `suggested_command` — a runnable `conductor` invocation.
 
-check_url(url, timeout, retries) → UrlResult
-  - HTTP HEAD with fallback to GET
-  - Follow redirects (report 301 permanent redirects)
-  - Return status: ok | redirect | broken | timeout | error
-  - Per-domain rate limiting (0.5s between requests to same host)
+### 2. `conductor/patchbay.py` (~250 lines)
 
-check_all(posts_dir, logs_dir, timeout, retries) → Report
-  - Walk all .md files, extract URLs, deduplicate
-  - Check each unique URL once
-  - Map results back to source files
+The command center. Composes all layers into a structured briefing.
 
-generate_report(report) → JSON
-  - Per-file breakdown of link statuses
-  - Summary: total links, ok, broken, redirected, timeout
-  - List of broken URLs with source file and line context
-```
+```python
+class Patchbay:
+    def __init__(self, ontology=None, engine=None): ...
 
-**Key design decisions**:
-- Use `httpx` (modern, sync HTTP client with connection pooling)
-- HEAD first, GET fallback (some servers reject HEAD)
-- Per-domain 0.5s delay to avoid hammering
-- Configurable timeout (default 10s) and retries (default 2)
-- Skip internal anchors, `post_url` tags, and `mailto:` links
-- Cache file (`~/.cache/link-checker.json`) with 7-day TTL to speed up repeated runs
+    def briefing(self, organ_filter=None) -> dict:
+        """Full system briefing."""
+        return {
+            "timestamp": ...,
+            "session": self._session_section(),
+            "pulse": self._pulse_section(organ_filter),
+            "queue": self._queue_section(organ_filter),
+            "stats": self._stats_section(),
+            "suggested_action": self._suggest_next(),
+        }
 
-### 2b. Dependency Addition
-
-**File**: `essay-pipeline/pyproject.toml`
-
-Add `httpx` to dependencies:
-```toml
-dependencies = ["pyyaml>=6.0", "httpx>=0.27"]
+    def format_text(self, data: dict) -> str: ...
+    def format_json(self, data: dict) -> str: ...
 ```
 
-Add script entry:
-```toml
-link-check = "src.link_checker:main"
+Key design decisions:
+- **No network calls.** Uses only local files (registry, session state, stats). Completes in <200ms.
+- **Plain text output.** No `rich`, no `curses`. Output readable by both human and Claude Code.
+- **Active session changes the view.** When a session is active, shows session context + routing suggestions instead of "suggested next action."
+
+### 3. Modified Files
+
+**`conductor/cli.py`** — Add `patch` subcommand:
+```
+conductor patch                  # Full briefing
+conductor patch pulse            # System pulse only
+conductor patch queue            # Work queue only
+conductor patch stats            # Lifetime stats only
+conductor patch --json           # Machine-readable output
+conductor patch --organ III      # Filter to one organ
 ```
 
-### 2c. Tests
+**`conductor/session.py`** — Extend `_update_stats()` to track:
+- `streak`: consecutive SHIPPED sessions (resets on CLOSED)
+- `last_session_id`: for "last closed" display
+- `recent_sessions`: last 10 `{session_id, result, organ, duration_minutes}` entries
 
-**File**: `essay-pipeline/tests/test_link_checker.py`
+**`conductor/__init__.py`** — Export `Patchbay`, `WorkQueue`, `WorkItem`. Bump `__version__` to `"0.5.0"`.
 
-Test cases:
-- `test_extract_urls_markdown_links` — finds `[text](url)` in body
-- `test_extract_urls_references` — finds links in YAML references
-- `test_extract_urls_skips_anchors` — ignores `#ref-N` and `post_url`
-- `test_extract_urls_skips_mailto` — ignores `mailto:` links
-- `test_check_url_ok` — mock 200 response
-- `test_check_url_redirect` — mock 301 response
-- `test_check_url_broken` — mock 404 response
-- `test_check_url_timeout` — mock timeout
-- `test_generate_report_json` — correct JSON structure
-- `test_full_scan_fixture` — integration test with fixture file
+**`mcp_server.py`** — Add `conductor_patch` tool returning JSON briefing.
 
-Use `pytest` with `httpx`'s built-in `MockTransport` for HTTP mocking (no extra dependency needed).
+---
 
-### 2d. CI Integration
+## Terminal Output
 
-**File**: `public-process/.github/workflows/link-check.yml` (new workflow)
+### No active session:
+```
+  PATCHBAY                                          2026-03-04 14:22 UTC
+  ======================================================================
 
-```yaml
-name: Link Health Check
+  SESSION: none active
+  Last closed: 2026-03-03-III-auth-middleware-a3f2c1 (SHIPPED, 47m)
 
-on:
-  schedule:
-    - cron: "0 8 * * 1"  # Monday 08:00 UTC (weekly)
-  workflow_dispatch:
+  PULSE
+  --------------------------------------------------------------------
+  ORGAN         REPOS  CAND  PUB   GRAD  ARCH   FLAGS
+  I  Theoria      20    11    4     0     3     CAND>3
+  II Poiesis      30    22    2     0     4     CAND>3
+  III Ergon       27    11   13     0     2     CAND>3, PUB>1
+  IV Taxis         7     5    2     0     0     CAND>3
+  V  Logos         2     1    1     0     0
+  VI Koinonia      6     0    6     0     0
+  VII Kerygma      4     0    0     4     0
+  META             7     5    1     0     1     CAND>3
+  --------------------------------------------------------------------
+  5 organs over WIP limit | 55 CANDIDATE system-wide
 
-jobs:
-  check-links:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/checkout@v6
-        with:
-          repository: organvm-v-logos/essay-pipeline
-          path: _pipeline
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - run: pip install -e _pipeline/
-      - name: Check all links
-        working-directory: _pipeline
-        run: |
-          python -m src.link_checker \
-            --posts-dir ../_posts/ \
-            --logs-dir ../_logs/ \
-            --output ../data/link-report.json \
-            --timeout 15 \
-            --retries 3
-      - name: Report broken links
-        if: failure()
-        run: |
-          echo "::warning::Broken links detected — see link-report.json"
-          cat data/link-report.json | python -c "
-          import json, sys
-          r = json.load(sys.stdin)
-          for u in r.get('broken', []):
-            print(f'::error file={u[\"file\"]},line={u[\"line\"]}::{u[\"url\"]} returned {u[\"status\"]}')
-          "
+  QUEUE (top 5 of 15)
+  --------------------------------------------------------------------
+  !!  ORGAN-II: 22 CANDIDATE (limit 3) — triage required
+      -> conductor audit --organ II
+  !!  ORGAN-III: 11 CANDIDATE (limit 3)
+      -> conductor audit --organ III
+  !   repo-x: stale CANDIDATE (last validated 45d ago)
+      -> conductor wip promote repo-x PUBLIC_PROCESS
+  .   repo-y: LOCAL, docs deployed — ready for CANDIDATE
+      -> conductor wip promote repo-y CANDIDATE
+  .   repo-z: missing CI workflow
+      -> add ci-python.yml
+  --------------------------------------------------------------------
+
+  STATS
+  --------------------------------------------------------------------
+  Sessions: 14 | Hours: 11.2 | Ship rate: 71% | Streak: 3
+
+  NEXT ACTION
+  --------------------------------------------------------------------
+  Triage ORGAN-II CANDIDATE backlog (22 repos, largest overage).
+  -> conductor session start --organ II --repo <pick> --scope "triage"
 ```
 
-**Behavior**: Runs weekly on Monday. `workflow_dispatch` allows manual triggering. Reports broken links as GitHub annotations. Does NOT block merges (external links can flake).
+### Active session:
+```
+  PATCHBAY                                          2026-03-04 14:22 UTC
+  ======================================================================
 
-Also add a **lightweight step** to `public-process/.github/workflows/ci.yml` that checks internal links only (fast, no network):
-```yaml
-- name: Check internal links
-  working-directory: _pipeline
-  run: |
-    python -m src.link_checker \
-      --posts-dir ../_posts/ \
-      --logs-dir ../_logs/ \
-      --internal-only \
-      --output /dev/null
+  SESSION: ACTIVE
+  --------------------------------------------------------------------
+  2026-03-04-III-auth-middleware-a3f2c1
+  ORGAN-III | classroom-rpg-aetheria | "Add auth middleware"
+  Phase: BUILD (23m) | Role: Implementer + Tester
+  Clusters: claude_code_core, code_execution, code_quality_cli, git_core
+  FRAME(8m) -> SHAPE(12m) -> BUILD(23m*)
+  -> Next: conductor session phase prove
+
+  PULSE (abbreviated)
+  --------------------------------------------------------------------
+  System: 111 repos | 5 organs over WIP | ORGAN-III: CAND>3, PUB>1
+
+  STATS
+  --------------------------------------------------------------------
+  Sessions: 14 | Hours: 11.2 | Ship rate: 71% | Streak: 3
 ```
 
 ---
 
-## Files Modified/Created
+## Auto-Patch Integration (multi-assistant)
 
-| File | Repo | Action |
-|------|------|--------|
-| `_includes/references.html` | public-process | Modify (add `markdownify` filter) |
-| `_posts/2026-02-21-the-distribution-problem.md` | public-process | Modify (reference strings) |
-| `_posts/2026-02-24-community-infrastructure-for-one.md` | public-process | Modify (reference strings) |
-| `_posts/2026-02-27-writing-as-system-architecture.md` | public-process | Modify (reference strings) |
-| `_posts/2026-03-02-two-weeks-and-forty-six-essays.md` | public-process | Modify (reference strings) |
-| `.github/workflows/link-check.yml` | public-process | Create (weekly link health) |
-| `.github/workflows/ci.yml` | public-process | Modify (add internal link check step) |
-| `src/link_checker.py` | essay-pipeline | Create |
-| `tests/test_link_checker.py` | essay-pipeline | Create |
-| `pyproject.toml` | essay-pipeline | Modify (add httpx, script entry) |
-| `data/essays-index.json` | public-process | Regenerate |
-| `data/logs-index.json` | public-process | Regenerate |
+The patchbay should auto-brief on session start, and work across AI assistants (Claude Code, Cursor, Windsurf, Copilot, etc.).
+
+### Layer A: Workspace instruction file
+
+Add to `/Users/4jp/Workspace/CLAUDE.md` (and any future `.cursorrules`, `AGENTS.md`, etc.):
+
+```markdown
+## Session Start Protocol
+
+Before beginning any work session in this workspace, run:
+    python3 -m conductor patch --json
+Read the output to understand system state, active sessions, and work queue.
+Use this context to inform your responses and suggestions.
+```
+
+This is assistant-agnostic — any AI that reads the workspace instruction file will execute the same command. The `--json` flag ensures structured output that any assistant can parse.
+
+### Layer B: Claude Code hook
+
+Configure a Claude Code `user_prompt_submit` hook in project settings that runs the patchbay on first prompt of a conversation. File: `/Users/4jp/.claude/projects/-Users-4jp-Workspace-tool-interaction-design/hooks.json`:
+
+```json
+{
+  "hooks": {
+    "user_prompt_submit": [
+      {
+        "matcher": "",
+        "command": "python3 -m conductor patch 2>/dev/null || true"
+      }
+    ]
+  }
+}
+```
+
+This prints the text briefing before Claude Code processes the first message. The `|| true` ensures it never blocks if conductor isn't installed.
+
+### Layer C: Shell alias (human-facing)
+
+Add to user's shell config (via chezmoi):
+```zsh
+alias patch="python3 -m conductor patch"
+alias pj="python3 -m conductor patch --json"
+```
+
+So the human can type `patch` at any terminal to get the briefing.
+
+---
+
+## Build Sequence
+
+1. **`workqueue.py`** — WorkItem dataclass + WorkQueue class with 4 scoring methods
+2. **`patchbay.py`** — Patchbay class composing all layers, text + JSON formatters
+3. **`cli.py`** — Add `patch` subcommand with pulse/queue/stats sub-views, `--json`, `--organ`
+4. **`session.py`** — Extend `_update_stats()` for streak, last_session_id, recent_sessions
+5. **`__init__.py`** — Exports + version bump
+6. **`mcp_server.py`** — Add `conductor_patch` MCP tool
+7. **`tests/test_patchbay.py`** — 12+ tests covering briefing, queue scoring, formatting, stats
+8. **Workspace CLAUDE.md** — Add Session Start Protocol section
+9. **Claude Code hooks** — Configure `user_prompt_submit` hook for auto-patch
+
+---
 
 ## Verification
 
 ```bash
-# 1. Jekyll build (test markdownify rendering)
-cd /Users/4jp/Workspace/organvm-v-logos/public-process
-bundle exec jekyll build --strict_front_matter
-# Spot-check _site/ HTML for <a> tags in reference sections
+# Unit tests
+source .venv/bin/activate && python -m pytest tests/ -v
 
-# 2. Validator still passes
-cd /Users/4jp/Workspace/organvm-v-logos/essay-pipeline
-source .venv/bin/activate
-python -m src.validator --posts-dir ../public-process/_posts/ --schema ../editorial-standards/schemas/frontmatter-schema.yaml
-python -m src.validator --posts-dir ../public-process/_logs/ --schema ../editorial-standards/schemas/log-schema.yaml --content-type log
+# Manual: full briefing with real registry
+python -m conductor patch
 
-# 3. Indexer still clean
-python -m src.indexer --posts-dir ../public-process/_posts/ --logs-dir ../public-process/_logs/ --output-dir ../public-process/data/
+# Manual: queue for one organ
+python -m conductor patch queue --organ III
 
-# 4. Link checker tests pass
-pytest tests/test_link_checker.py -v
+# Manual: JSON pipe
+python -m conductor patch --json | python -m json.tool
 
-# 5. Link checker runs against live content
-python -m src.link_checker --posts-dir ../public-process/_posts/ --logs-dir ../public-process/_logs/ --output /tmp/link-report.json --timeout 10
-cat /tmp/link-report.json | python -c "import json,sys; r=json.load(sys.stdin); print(f'{r[\"summary\"][\"total\"]} links, {r[\"summary\"][\"ok\"]} ok, {r[\"summary\"][\"broken\"]} broken')"
+# Manual: active session context
+python -m conductor session start --organ III --repo test --scope "test" --no-branch
+python -m conductor patch
+python -m conductor session close
 ```
