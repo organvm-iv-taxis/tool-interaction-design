@@ -537,6 +537,39 @@ class SessionEngine:
             from .observability import log_event
             log_event("session.oracle_advisory_error", {"error": str(exc)})
 
+        # SOP directive resolution at phase transition
+        try:
+            from organvm_engine.sop.discover import discover_sops
+            from organvm_engine.sop.resolver import resolve_all
+
+            # Map Conductor phases → SOP lifecycle phases
+            _conductor_to_sop_phase = {
+                "FRAME": "genesis",
+                "SHAPE": "foundation",
+                "BUILD": "hardening",
+                "PROVE": "hardening",
+            }
+            sop_phase = _conductor_to_sop_phase.get(target)
+            all_sops = discover_sops()
+            active = resolve_all(
+                all_sops,
+                repo=session.repo,
+                organ=session.organ,
+                phase=sop_phase,
+            )
+            if active:
+                print(f"\n  Active SOPs ({sop_phase or 'any'} phase):")
+                for sop in active[:8]:
+                    scope_tag = f"[{sop.scope}]" if sop.scope != "unknown" else ""
+                    print(f"    - {sop.sop_name or sop.filename} {scope_tag}")
+                if len(active) > 8:
+                    print(f"    ... and {len(active) - 8} more")
+        except ImportError:
+            pass  # organvm_engine not installed — skip SOP resolution
+        except Exception as exc:
+            from .observability import log_event
+            log_event("session.sop_resolution_error", {"error": str(exc)})
+
         print()
 
     def status(self) -> None:
