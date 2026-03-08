@@ -31,6 +31,10 @@ class Policy:
     trend_warn_rate: float
     trend_critical_rate: float
     trend_min_events: int
+    staleness_flagship_days: int
+    staleness_standard_days: int
+    staleness_stub_days: int
+    staleness_infrastructure_days: int
 
 
 def _coerce_int(value: Any, fallback: int) -> int:
@@ -77,6 +81,7 @@ def load_policy(bundle: str | None = None) -> Policy:
     validation = payload.get("validation", {})
     routing = payload.get("routing", {})
     observability = payload.get("observability", {})
+    staleness = payload.get("staleness", {})
 
     return Policy(
         name=str(payload.get("name", selected_bundle)),
@@ -91,7 +96,25 @@ def load_policy(bundle: str | None = None) -> Policy:
         trend_warn_rate=_coerce_float(observability.get("trend_warn_rate"), 0.2),
         trend_critical_rate=_coerce_float(observability.get("trend_critical_rate"), 0.4),
         trend_min_events=_coerce_int(observability.get("trend_min_events"), 25),
+        staleness_flagship_days=_coerce_int(staleness.get("flagship_days"), 14),
+        staleness_standard_days=_coerce_int(staleness.get("standard_days"), 30),
+        staleness_stub_days=_coerce_int(staleness.get("stub_days"), 90),
+        staleness_infrastructure_days=_coerce_int(staleness.get("infrastructure_days"), 60),
     )
+
+
+def get_staleness_days(tier: str, policy: Policy | None = None) -> int:
+    """Look up the staleness threshold in days for a given repo tier."""
+    if policy is None:
+        policy = load_policy()
+    tier_lower = tier.strip().lower()
+    mapping = {
+        "flagship": policy.staleness_flagship_days,
+        "standard": policy.staleness_standard_days,
+        "stub": policy.staleness_stub_days,
+        "infrastructure": policy.staleness_infrastructure_days,
+    }
+    return mapping.get(tier_lower, policy.staleness_standard_days)
 
 
 def simulate_policy(bundle: str | None, registry: dict[str, Any]) -> dict[str, Any]:

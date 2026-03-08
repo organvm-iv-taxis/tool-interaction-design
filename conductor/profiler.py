@@ -75,7 +75,15 @@ class OracleProfile:
         recent = stats.get("recent_sessions", [])
 
         # Preferred organs (top 3 by session count)
-        organ_counts = sorted(by_organ.items(), key=lambda x: x[1], reverse=True)
+        # by_organ values may be int counts or dicts with sub-counts
+        def _organ_count(v: Any) -> int:
+            if isinstance(v, (int, float)):
+                return int(v)
+            if isinstance(v, dict):
+                return v.get("count", v.get("sessions", 0))
+            return 0
+
+        organ_counts = sorted(by_organ.items(), key=lambda x: _organ_count(x[1]), reverse=True)
         preferred_organs = [k for k, _ in organ_counts[:3]]
 
         # Active hours from recent sessions

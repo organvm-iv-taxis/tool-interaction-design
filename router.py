@@ -150,6 +150,30 @@ class WorkflowValidationReport:
 
 
 # =============================================================================
+# TOOL NAME EXTRACTION (backward-compatible with all ontology formats)
+# =============================================================================
+
+
+def _extract_tool_name(tool) -> str:
+    """Extract a tool name from any ontology tool entry format.
+
+    Supports:
+      - New normalized format: {"name": "foo", "type": "cli"}
+      - Legacy dict format: {"cli": "foo"} / {"mcp": "bar"}
+      - Bare string: "foo"
+    """
+    if isinstance(tool, str):
+        return tool
+    if isinstance(tool, dict):
+        # New normalized format has a 'name' key
+        if "name" in tool:
+            return str(tool["name"])
+        # Legacy single-key dict format: {"cli": "ruff"}
+        return str(list(tool.values())[0]) if tool else ""
+    return str(tool)
+
+
+# =============================================================================
 # ONTOLOGY LOADER
 # =============================================================================
 
@@ -242,6 +266,53 @@ class Ontology:
 
     def capabilities(self) -> list[str]:
         return self.taxonomy.get("capabilities", [])
+
+    def search_tools(
+        self,
+        capability: str | None = None,
+        domain: str | None = None,
+        protocol: str | None = None,
+    ) -> list[dict]:
+        """Find tools matching ALL specified facets (intersection).
+
+        Filters clusters by capability, domain, and protocol (all case-insensitive).
+        Returns a list of dicts with cluster_id, tool_name, domain, capabilities,
+        protocols for each tool in matching clusters.
+        """
+        candidate_ids: set[str] | None = None
+
+        if capability is not None:
+            cap_upper = capability.upper()
+            cap_set = set(self._cap_index.get(cap_upper, []))
+            candidate_ids = cap_set if candidate_ids is None else candidate_ids & cap_set
+
+        if domain is not None:
+            domain_upper = domain.upper()
+            domain_set = set(self._domain_index.get(domain_upper, []))
+            candidate_ids = domain_set if candidate_ids is None else candidate_ids & domain_set
+
+        if protocol is not None:
+            proto_upper = protocol.upper()
+            proto_set = set(self._protocol_index.get(proto_upper, []))
+            candidate_ids = proto_set if candidate_ids is None else candidate_ids & proto_set
+
+        if candidate_ids is None:
+            # No filters specified — return all tools
+            candidate_ids = set(self.clusters.keys())
+
+        results: list[dict] = []
+        for cid in sorted(candidate_ids):
+            cluster = self.clusters[cid]
+            for t in cluster.tools:
+                tool_name = _extract_tool_name(t)
+                results.append({
+                    "cluster_id": cid,
+                    "tool_name": tool_name,
+                    "domain": cluster.domain,
+                    "capabilities": cluster.capabilities,
+                    "protocols": cluster.protocols,
+                })
+        return results
 
 
 # =============================================================================
@@ -916,6 +987,32 @@ def cmd_domains(args, ontology: Ontology, engine: RoutingEngine):
     print()
 
 
+def cmd_search(args, ontology: Ontology, engine: RoutingEngine):
+    """Compound faceted search across tools."""
+    results = ontology.search_tools(
+        capability=args.capability,
+        domain=args.domain,
+        protocol=args.protocol,
+    )
+
+    if not results:
+        filters = []
+        if args.capability:
+            filters.append(f"capability={args.capability}")
+        if args.domain:
+            filters.append(f"domain={args.domain}")
+        if args.protocol:
+            filters.append(f"protocol={args.protocol}")
+        print(f"\n  No tools found matching: {', '.join(filters) or '(no filters)'}\n")
+        return
+
+    print(f"\n  {'CLUSTER':<30} {'TOOL':<40} {'DOMAIN':<15}")
+    print(f"  {'─'*30} {'─'*40} {'─'*15}")
+    for r in results:
+        print(f"  {r['cluster_id']:<30} {r['tool_name']:<40} {r['domain']:<15}")
+    print(f"\n  {len(results)} tool(s) found across {len(set(r['cluster_id'] for r in results))} cluster(s)\n")
+
+
 def cmd_graph(args, ontology: Ontology, engine: RoutingEngine):
     """Output adjacency list as JSON for external visualization."""
     graph = {
@@ -998,6 +1095,12 @@ def main():
     # domains
     sub.add_parser("domains", help="List all domains")
 
+    # search
+    p_search = sub.add_parser("search", help="Compound faceted search across tools")
+    p_search.add_argument("--capability", help="Filter by capability (e.g., SEARCH)")
+    p_search.add_argument("--domain", help="Filter by domain (e.g., RESEARCH)")
+    p_search.add_argument("--protocol", help="Filter by protocol (e.g., MCP)")
+
     # graph
     sub.add_parser("graph", help="Output graph as JSON")
 
@@ -1016,6 +1119,7 @@ def main():
         "alternatives": cmd_alternatives,
         "clusters": cmd_clusters,
         "domains": cmd_domains,
+        "search": cmd_search,
         "graph": cmd_graph,
     }
 

@@ -4,7 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-A queryable taxonomy and routing system for 578 tools across Claude Code built-ins, MCP servers, macOS applications, Homebrew packages, and runtime ecosystems. The system maps tools into 64 clusters across 12 domains, defines data-flow routes between clusters, and provides a workflow DSL for composing multi-tool pipelines.
+The operational heart of ORGANVM's orchestration layer — a system that makes individual-to-enterprise amplification executable. Where `meta-organvm/VISION.md` declares that one person should be able to operate at institutional scale, the Conductor is **how** that actually works: routing 578 tools across 64 clusters so that a single practitioner can compose agent workflows, enforce governance, and ship across 8 organs without institutional headcount.
+
+Concretely: a queryable taxonomy and routing system for 578 tools across Claude Code built-ins, MCP servers, macOS applications, Homebrew packages, and runtime ecosystems. The system maps tools into 64 clusters across 12 domains, defines data-flow routes between clusters, and provides a workflow DSL for composing multi-tool pipelines.
 
 On top of this taxonomy sits the **Conductor OS** — an AI-conductor operating system that adds session lifecycle management, governance/WIP enforcement, workflow compilation and execution, observability, and a Patchbay command center.
 

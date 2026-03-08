@@ -32,6 +32,9 @@ from .handoff import (
     validate_handoff_payload,
 )
 
+# Risk Register
+from .risk_register import Risk, RiskRegistry
+
 # Policy
 from .policy import Policy, load_policy
 
@@ -68,6 +71,9 @@ __all__ = [
     "get_trace_bundle",
     "simulate_route_handoff",
     "validate_handoff_payload",
+    # Risk Register
+    "Risk",
+    "RiskRegistry",
     # Policy
     "Policy",
     "load_policy",

@@ -34,6 +34,26 @@ def build_parser() -> argparse.ArgumentParser:
     p_log_tool = session_sub.add_parser("log-tool", help="Record a tool use")
     p_log_tool.add_argument("tool_name", help="Name of the tool used")
 
+    p_record_output = session_sub.add_parser("record-output", help="Record a triple-serving output")
+    p_record_output.add_argument("category", choices=["product", "portfolio", "publication"],
+                                 help="Output category")
+    p_record_output.add_argument("description", help="Description of the output")
+
+    p_track_tokens = session_sub.add_parser("track-tokens", help="Track token consumption")
+    p_track_tokens.add_argument("count", type=int, help="Number of tokens consumed")
+    p_track_tokens.add_argument("--cost-per-1k", type=float, default=0.015,
+                                help="Cost per 1K tokens (default: 0.015)")
+
+    p_session_export = session_sub.add_parser("export", help="Export session archive")
+    p_session_export.add_argument("session_id", help="Session ID to export")
+    p_session_export.add_argument("--output", type=Path, help="Output directory")
+
+    # ----- Router search command -----
+    p_search = sub.add_parser("search", help="Compound faceted tool search")
+    p_search.add_argument("--capability", help="Filter by capability (e.g., SEARCH)")
+    p_search.add_argument("--domain", help="Filter by domain (e.g., RESEARCH)")
+    p_search.add_argument("--protocol", help="Filter by protocol (e.g., MCP)")
+
     # ----- Governance commands -----
     p_registry = sub.add_parser("registry", help="Registry operations")
     registry_sub = p_registry.add_subparsers(dest="registry_command", required=True)
@@ -60,6 +80,7 @@ def build_parser() -> argparse.ArgumentParser:
     enforce_sub = p_enforce.add_subparsers(dest="enforce_command", required=True)
     p_gen = enforce_sub.add_parser("generate", help="Generate rulesets and workflows")
     p_gen.add_argument("--dry-run", action="store_true", help="Show what would be generated")
+    enforce_sub.add_parser("github-rulesets", help="Generate GitHub Repository Rulesets from governance rules")
 
     p_stale = sub.add_parser("stale", help="Find stale CANDIDATE repos")
     p_stale.add_argument("--days", type=int, default=30, help="Days threshold (default: 30)")
@@ -82,6 +103,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_q_resolve = queue_sub.add_parser("resolve", help="Mark a work item as resolved")
     p_q_resolve.add_argument("item_id", help="Item ID to resolve")
 
+    p_q_push = queue_sub.add_parser("push", help="Create GitHub issues from top-priority queue items")
+    p_q_push.add_argument("--max", type=int, default=5, dest="max_items", help="Max items to push (default: 5)")
+    p_q_push.add_argument("--apply", action="store_true", help="Actually create issues (default is dry-run)")
+
     p_auto = sub.add_parser("auto", help="Autonomous worker daemon")
     p_auto.add_argument("--daemon", action="store_true", help="Run in continuous loop")
     p_auto.add_argument("--interval", type=int, default=60, help="Check interval in seconds")
@@ -100,6 +125,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_fleet.add_argument("--output", type=Path, help="Output directory")
     p_report = export_sub.add_parser("audit-report", help="Export audit report")
     p_report.add_argument("--organ", help="Organ key (default: full system)")
+    p_literate = export_sub.add_parser("literate", help="Export literate programming document from session")
+    p_literate.add_argument("session_id", help="Session ID to export")
+    p_literate.add_argument("--output", type=Path, help="Output file path")
 
     p_retro = sub.add_parser("retro", help="Generate retrospective from session and observability data")
     p_retro.add_argument("--last", type=int, default=0, help="Analyze only the last N sessions (default: all)")
@@ -166,6 +194,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_doctor.add_argument("--strict", action="store_true", help="Exit non-zero on any failing check")
     p_doctor.add_argument("--apply", action="store_true", help="Apply available schema autofixes before reporting")
     p_doctor.add_argument("--tools", action="store_true", help="Check which ontology tools are actually available")
+    p_doctor.add_argument("--mas-health", action="store_true", help="Run Modern Prometheus Protocol MAS health checks")
 
     p_plugins = sub.add_parser("plugins", help="Plugin diagnostics")
     plugin_sub = p_plugins.add_subparsers(dest="plugins_command", required=True)
@@ -215,7 +244,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     # ----- Patchbay command -----
     p_patch = sub.add_parser("patch", help="Patchbay — command center briefing")
-    p_patch.add_argument("section", nargs="?", choices=["pulse", "queue", "stats"],
+    p_patch.add_argument("section", nargs="?", choices=["pulse", "queue", "stats", "corpus"],
                          help="Show only one section (default: full briefing)")
     p_patch.add_argument("--json", action="store_true", dest="json_output",
                          help="Machine-readable JSON output")
@@ -280,6 +309,22 @@ def build_parser() -> argparse.ArgumentParser:
     p_oracle_corpus.add_argument("--search", help="Optional search query")
     p_oracle_corpus.add_argument("--format", choices=["text", "json"], default="text", help="Output format")
 
+    # ----- Risk register commands -----
+    p_risk = sub.add_parser("risk", help="Risk register management")
+    risk_sub = p_risk.add_subparsers(dest="risk_command", required=True)
+    p_risk_add = risk_sub.add_parser("add", help="Add a new risk")
+    p_risk_add.add_argument("--description", required=True, help="Risk description")
+    p_risk_add.add_argument("--probability", required=True, choices=["low", "medium", "high"])
+    p_risk_add.add_argument("--impact", required=True, choices=["low", "medium", "high"])
+    p_risk_add.add_argument("--mitigation", required=True, help="Mitigation plan")
+    p_risk_add.add_argument("--owner", required=True, help="Risk owner")
+    p_risk_list = risk_sub.add_parser("list", help="List risks")
+    p_risk_list.add_argument("--status", choices=["open", "mitigating", "resolved", "accepted"],
+                             help="Filter by status")
+    p_risk_list.add_argument("--format", choices=["text", "json", "markdown"], default="text")
+    p_risk_resolve = risk_sub.add_parser("resolve", help="Resolve a risk")
+    p_risk_resolve.add_argument("risk_id", help="Risk ID to resolve")
+
     # ----- Wiring commands -----
     p_wiring = sub.add_parser("wiring", help="Workspace-wide integration")
     wiring_sub = p_wiring.add_subparsers(dest="wiring_command", required=True)
@@ -287,5 +332,29 @@ def build_parser() -> argparse.ArgumentParser:
     p_w_inject.add_argument("--apply", action="store_true", help="Apply changes (default is dry-run)")
     p_w_mcp = wiring_sub.add_parser("mcp", help="Configure global Conductor MCP server")
     p_w_mcp.add_argument("--apply", action="store_true", help="Apply changes (default is dry-run)")
+
+    # ----- DORA metrics -----
+    p_dora = sub.add_parser("dora", help="DORA metrics from session data")
+    p_dora.add_argument("--days", type=int, default=30, help="Window in days (default: 30)")
+    p_dora.add_argument("--format", choices=["text", "json"], default="text", help="Output format")
+
+    # ----- Prompt registry -----
+    p_prompt = sub.add_parser("prompt", help="Prompt template version registry")
+    prompt_sub = p_prompt.add_subparsers(dest="prompt_command", required=True)
+    p_prompt_register = prompt_sub.add_parser("register", help="Register a new prompt template")
+    p_prompt_register.add_argument("--name", required=True, help="Prompt template name")
+    p_prompt_register.add_argument("--file", type=Path, required=True, help="Path to prompt content file")
+    p_prompt_register.add_argument("--models", nargs="+", default=["claude-opus-4-6"],
+                                   help="Compatible models (default: claude-opus-4-6)")
+    p_prompt_register.add_argument("--tags", nargs="*", default=[], help="Tags for categorization")
+    p_prompt_register.add_argument("--notes", default="", help="Performance notes")
+    p_prompt_list = prompt_sub.add_parser("list", help="List all prompt templates")
+    p_prompt_list.add_argument("--tag", help="Filter by tag")
+    p_prompt_list.add_argument("--model", help="Filter by model compatibility")
+    p_prompt_list.add_argument("--format", choices=["text", "json"], default="text", help="Output format")
+    p_prompt_get = prompt_sub.add_parser("get", help="Get a prompt template")
+    p_prompt_get.add_argument("name", help="Prompt template name")
+    p_prompt_get.add_argument("--version", help="Specific version (default: latest)")
+    p_prompt_get.add_argument("--format", choices=["text", "json"], default="text", help="Output format")
 
     return parser

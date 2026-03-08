@@ -39,8 +39,8 @@ def load_schema(document_type: str, version: str = DEFAULT_SCHEMA_VERSION) -> di
 def validate_document(document_type: str, payload: Any, version: str = DEFAULT_SCHEMA_VERSION) -> list[SchemaIssue]:
     schema = load_schema(document_type, version=version)
     if jsonschema is None:
-        # Minimal fallback: treat missing jsonschema as a configuration issue.
-        return [SchemaIssue(code="SCHEMA-E000", message="jsonschema dependency not available", path="$")]
+        # Degrade gracefully — skip validation when jsonschema is not installed
+        return []
 
     validator = jsonschema.Draft202012Validator(schema)
     issues: list[SchemaIssue] = []

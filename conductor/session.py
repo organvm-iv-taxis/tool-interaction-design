@@ -18,6 +18,7 @@ from .constants import (
     PHASES,
     PHASE_ROLES,
     SESSIONS_DIR,
+    SESSION_EVENTS_FILE,
     SESSION_STATE_FILE,
     STATS_FILE,
     TEMPLATES_DIR,
@@ -25,6 +26,7 @@ from .constants import (
     SessionError,
     atomic_write,
     get_phase_clusters,
+    load_circuit_breaker_config,
     organ_short,
     resolve_organ_key,
 )
@@ -40,6 +42,9 @@ except ImportError:
 # ---------------------------------------------------------------------------
 
 
+DEFAULT_PROVE_CHECKS = ["tests_verified", "no_regressions"]
+
+
 @dataclass
 class Session:
     session_id: str
@@ -51,6 +56,12 @@ class Session:
     phase_logs: list[dict] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     result: str = "IN_PROGRESS"
+    appetite_minutes: int = 0  # 0 = no time limit
+    prove_checks: list[str] = field(default_factory=lambda: list(DEFAULT_PROVE_CHECKS))
+    confirmed_checks: list[str] = field(default_factory=list)
+    outputs: dict[str, str] = field(default_factory=dict)  # product, portfolio, publication
+    tokens_consumed: int = 0
+    estimated_cost_usd: float = 0.0
 
     @property
     def duration_minutes(self) -> int:
@@ -67,11 +78,20 @@ class Session:
             "phase_logs": self.phase_logs,
             "warnings": self.warnings,
             "result": self.result,
+            "appetite_minutes": self.appetite_minutes,
+            "prove_checks": self.prove_checks,
+            "confirmed_checks": self.confirmed_checks,
+            "outputs": self.outputs,
+            "tokens_consumed": self.tokens_consumed,
+            "estimated_cost_usd": self.estimated_cost_usd,
         }
 
     @classmethod
     def from_dict(cls, d: dict) -> Session:
-        return cls(**d)
+        # Backward-compatible: old session dicts won't have prove_checks/confirmed_checks
+        known_fields = {f.name for f in cls.__dataclass_fields__.values()}
+        filtered = {k: v for k, v in d.items() if k in known_fields}
+        return cls(**filtered)
 
 
 # ---------------------------------------------------------------------------
@@ -154,8 +174,49 @@ def _slugify_scope(value: str, max_length: int = 40) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Event-sourced session log (append-only JSONL)
+# ---------------------------------------------------------------------------
+
+
+def _append_session_event(event_type: str, details: dict) -> None:
+    """Append a JSON line to the session events file (append-only log)."""
+    event = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "event_type": event_type,
+        **details,
+    }
+    try:
+        SESSION_EVENTS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with open(SESSION_EVENTS_FILE, "a") as f:
+            f.write(json.dumps(event) + "\n")
+    except OSError:
+        pass  # Best-effort — never crash session for event logging
+
+
+# ---------------------------------------------------------------------------
 # Session Engine
 # ---------------------------------------------------------------------------
+
+
+_SENSITIVE_KEYWORDS = {
+    "pii", "credentials", "tokens", "passwords", "secrets",
+    "api keys", "api key", "ssn", "email addresses", "social security",
+    "credit card", "private key", "secret key", "access token",
+    "auth token", "bearer token",
+}
+
+
+def _check_data_sensitivity(scope: str) -> list[str]:
+    """Scan scope description for sensitive data keywords. Returns warnings."""
+    warnings: list[str] = []
+    scope_lower = scope.lower()
+    for keyword in _SENSITIVE_KEYWORDS:
+        if keyword in scope_lower:
+            warnings.append(
+                f"Scope mentions sensitive data keyword '{keyword}'. "
+                "Ensure no sensitive data is committed or logged."
+            )
+    return warnings
 
 
 class SessionEngine:
@@ -184,7 +245,7 @@ class SessionEngine:
         if SESSION_STATE_FILE.exists():
             SESSION_STATE_FILE.unlink()
 
-    def start(self, organ: str, repo: str, scope: str, git_branch: bool = True) -> Session:
+    def start(self, organ: str, repo: str, scope: str, git_branch: bool = True, appetite_minutes: int = 0) -> Session:
         """Start a new session."""
         if self._load_session():
             raise SessionError("Session already active. Close it first with `conductor session close`.")
@@ -205,9 +266,24 @@ class SessionEngine:
             start_time=now,
             current_phase="FRAME",
             phase_logs=[{"name": "FRAME", "start_time": now, "end_time": 0, "tools_used": [], "commits": 0}],
+            appetite_minutes=appetite_minutes,
         )
+
+        # M13: Data classification gate — warn on sensitive keywords in scope
+        sensitivity_warnings = _check_data_sensitivity(scope)
+        if sensitivity_warnings:
+            session.warnings.extend(sensitivity_warnings)
+
         self._save_session(session)
         self._scaffold_templates(session)
+
+        # Event log: session start
+        _append_session_event("session.start", {
+            "session_id": session_id,
+            "organ": organ_key,
+            "repo": repo,
+            "scope": scope,
+        })
 
         # Git integration: create feature branch
         if git_branch:
@@ -297,13 +373,22 @@ class SessionEngine:
             "{{ date }}": date_str,
         }
 
-        for template_name in ["spec.md", "plan.md", "status.md"]:
+        for template_name in ["spec.md", "plan.md", "status.md", "adr.md"]:
             src = TEMPLATES_DIR / template_name
             if src.exists():
                 content = src.read_text()
                 for old, new in replacements.items():
                     content = content.replace(old, new)
                 (session_dir / template_name).write_text(content)
+
+    def confirm_check(self, check_name: str) -> None:
+        """Mark a prove check as confirmed."""
+        session = self._load_session()
+        if not session:
+            raise SessionError("No active session. Start one with `conductor session start`.")
+        if check_name not in session.confirmed_checks:
+            session.confirmed_checks.append(check_name)
+            self._save_session(session)
 
     def phase(self, target_phase: str) -> None:
         """Transition to a new phase."""
@@ -322,6 +407,60 @@ class SessionEngine:
             )
 
         now = time.time()
+
+        # M12: Circuit breaker warnings
+        cb_config = load_circuit_breaker_config()
+        for pl in session.phase_logs:
+            if pl["name"] == current and pl.get("end_time", 0) == 0:
+                phase_minutes = int((now - pl["start_time"]) / 60)
+                if phase_minutes > cb_config["max_phase_minutes"]:
+                    warning = (
+                        f"Phase {current} has been active for {phase_minutes}m "
+                        f"(limit: {cb_config['max_phase_minutes']}m). Consider moving forward."
+                    )
+                    session.warnings.append(warning)
+                break
+        session_minutes = int((now - session.start_time) / 60)
+        if session_minutes > cb_config["max_session_minutes"]:
+            warning = (
+                f"Session has been active for {session_minutes}m "
+                f"(limit: {cb_config['max_session_minutes']}m). Consider closing and starting fresh."
+            )
+            session.warnings.append(warning)
+
+        # M2: SHAPE->BUILD artifact gate (soft)
+        if current == "SHAPE" and target == "BUILD":
+            plan_path = SESSIONS_DIR / session.session_id / "plan.md"
+            has_plan = plan_path.exists() and plan_path.stat().st_size > 50
+            _append_session_event("session.gate_check", {
+                "session_id": session.session_id,
+                "gate": "shape_to_build_plan",
+                "passed": has_plan,
+                "plan_path": str(plan_path),
+            })
+            if not has_plan:
+                warning = (
+                    f"No plan.md found (or < 50 bytes) in sessions/{session.session_id}/. "
+                    "Consider writing a plan before building."
+                )
+                session.warnings.append(warning)
+
+        # M11: PROVE->DONE prove checklist (soft gate)
+        if current == "PROVE" and target == "DONE":
+            unconfirmed = [c for c in session.prove_checks if c not in session.confirmed_checks]
+            if unconfirmed:
+                warning = (
+                    f"Prove checks not confirmed: {', '.join(unconfirmed)}. "
+                    "Use `confirm_check()` to mark checks as passed."
+                )
+                session.warnings.append(warning)
+                _append_session_event("session.gate_check", {
+                    "session_id": session.session_id,
+                    "gate": "prove_checklist",
+                    "passed": False,
+                    "unconfirmed": unconfirmed,
+                })
+
         for pl in session.phase_logs:
             if pl["name"] == current and pl["end_time"] == 0:
                 pl["end_time"] = now
@@ -331,6 +470,11 @@ class SessionEngine:
             session.current_phase = "DONE"
             session.result = "SHIPPED"
             self._save_session(session)
+            _append_session_event("session.phase_transition", {
+                "session_id": session.session_id,
+                "from_phase": current,
+                "to_phase": "DONE",
+            })
             print(f"\n  Phase: {current} -> DONE")
             print(f"  Session marked SHIPPED. Run `conductor session close` to save log.")
             print()
@@ -345,6 +489,20 @@ class SessionEngine:
         })
         session.current_phase = target
         self._save_session(session)
+
+        # Event log: phase transition
+        _append_session_event("session.phase_transition", {
+            "session_id": session.session_id,
+            "from_phase": current,
+            "to_phase": target,
+        })
+
+        # Appetite check: warn if time-box exceeded
+        if session.appetite_minutes > 0 and session.duration_minutes > session.appetite_minutes:
+            over = session.duration_minutes - session.appetite_minutes
+            warning = f"Appetite exceeded by {over}m (limit: {session.appetite_minutes}m, elapsed: {session.duration_minutes}m)"
+            session.warnings.append(warning)
+            self._save_session(session)
 
         is_back = PHASES.index(target) < PHASES.index(current) if target in PHASES and current in PHASES else False
         direction = "(reshape)" if is_back else ""
@@ -399,6 +557,14 @@ class SessionEngine:
             print(f"  AI Role: {PHASE_ROLES[session.current_phase]}")
             print(f"  Active clusters: {', '.join(self.phase_clusters.get(session.current_phase, []))}")
 
+        if session.tokens_consumed > 0:
+            print(f"  Tokens: {session.tokens_consumed:,} | Est. cost: ${session.estimated_cost_usd:.4f}")
+
+        if session.outputs:
+            print(f"\n  Outputs recorded:")
+            for cat, desc in session.outputs.items():
+                print(f"    - {cat}: {desc}")
+
         if session.warnings:
             print(f"\n  Warnings ({len(session.warnings)}):")
             for w in session.warnings:
@@ -432,19 +598,70 @@ class SessionEngine:
                     pl["tools_used"].append(tool_name)
                 break
 
+        # Event log: tool use
+        _append_session_event("session.tool_use", {
+            "tool_name": tool_name,
+            "phase": session.current_phase,
+        })
+
+        # M15: Cluster usage tracking in observability
+        if tool_cluster:
+            try:
+                from .observability import log_cluster_activation
+                log_cluster_activation(tool_cluster, session.current_phase, session.session_id)
+            except Exception:
+                pass  # Best-effort — never break tool logging for observability
+
+        self._save_session(session)
+
+    def record_output(self, category: str, description: str) -> None:
+        """Record a triple-serving output (product, portfolio, publication)."""
+        valid_categories = ("product", "portfolio", "publication")
+        if category not in valid_categories:
+            raise SessionError(
+                f"Invalid output category '{category}'. "
+                f"Valid categories: {', '.join(valid_categories)}"
+            )
+
+        session = self._load_session()
+        if not session:
+            raise SessionError("No active session. Start one with `conductor session start`.")
+
+        session.outputs[category] = description
+        self._save_session(session)
+        print(f"  Output recorded [{category}]: {description}")
+
+    def track_tokens(self, count: int, cost_per_1k: float = 0.015) -> None:
+        """Track token consumption and estimated cost for the current session."""
+        session = self._load_session()
+        if not session:
+            raise SessionError("No active session. Start one with `conductor session start`.")
+
+        session.tokens_consumed += count
+        session.estimated_cost_usd += (count / 1000.0) * cost_per_1k
         self._save_session(session)
 
     def _find_tool_cluster(self, tool_name: str) -> Optional[str]:
-        """Find which cluster a tool belongs to (exact match, case-insensitive)."""
+        """Find which cluster a tool belongs to (exact match, case-insensitive).
+
+        Supports both normalized {name, type} and legacy ontology tool formats.
+        """
         if not self.ontology:
             return None
+        try:
+            from router import _extract_tool_name
+        except ImportError:
+            _extract_tool_name = None  # type: ignore[assignment]
+
         tool_lower = tool_name.lower()
         for cid, cluster in self.ontology.clusters.items():
             for t in cluster.tools:
-                if isinstance(t, str):
+                if _extract_tool_name is not None:
+                    name = _extract_tool_name(t)
+                elif isinstance(t, str):
                     name = t
                 elif isinstance(t, dict):
-                    name = str(list(t.values())[0]) if t else ""
+                    name = str(t.get("name", "")) if "name" in t else str(list(t.values())[0]) if t else ""
                 else:
                     name = str(t)
                 if tool_lower == name.lower():
@@ -495,6 +712,9 @@ class SessionEngine:
             "warnings": session.warnings,
             "result": session.result,
             "timestamp": datetime.now(timezone.utc).isoformat(),
+            "outputs": session.outputs,
+            "tokens_consumed": session.tokens_consumed,
+            "estimated_cost_usd": round(session.estimated_cost_usd, 6),
         }
 
         session_dir = SESSIONS_DIR / session.session_id
@@ -510,12 +730,30 @@ class SessionEngine:
 
         self._clear_session()
 
+        # Event log: session close
+        _append_session_event("session.close", {
+            "session_id": session.session_id,
+            "result": session.result,
+            "duration_minutes": log["duration_minutes"],
+        })
+
         print(f"\n  Session closed: {session.session_id}")
         print(f"  Duration: {log['duration_minutes']} minutes")
         print(f"  Result: {session.result}")
         print(f"  Log saved: {log_path}")
         if session.warnings:
             print(f"  Warnings: {len(session.warnings)}")
+
+        # Token/cost summary
+        if session.tokens_consumed > 0:
+            print(f"  Tokens: {session.tokens_consumed:,} | Est. cost: ${session.estimated_cost_usd:.4f}")
+
+        # Triple-serving output completeness check
+        all_categories = {"product", "portfolio", "publication"}
+        recorded = set(session.outputs.keys())
+        missing = all_categories - recorded
+        if missing:
+            print(f"  Outputs missing: {', '.join(sorted(missing))} (consider recording for full triple-serving)")
 
         # Cumulative stats line
         ship_rate = stats["shipped"] / stats["total_sessions"] * 100 if stats["total_sessions"] else 0

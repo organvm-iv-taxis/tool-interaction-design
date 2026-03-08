@@ -18,6 +18,9 @@ def handle(args, *, ontology, engine) -> None:
             pe.export_fleet_dashboard(output_dir=args.output)
         elif args.export_command == "audit-report":
             pe.export_audit_report(organ=args.organ)
+        elif args.export_command == "literate":
+            output = pe.export_literate(args.session_id, output_path=args.output)
+            print(f"  Literate export written to: {output}")
 
     elif args.command == "patterns":
         gov = GovernanceRuntime()

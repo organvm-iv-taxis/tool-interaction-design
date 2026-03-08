@@ -28,7 +28,10 @@ SESSION_STATE_FILE = STATE_DIR / "session.json"
 STATS_FILE = STATE_DIR / "stats.json"
 WORK_REGISTRY_FILE = STATE_DIR / "work-registry.json"
 PATTERN_HISTORY_FILE = STATE_DIR / "pattern-history.jsonl"
+SESSION_EVENTS_FILE = STATE_DIR / "session-events.jsonl"
 ORACLE_STATE_FILE = STATE_DIR / "oracle" / "state.json"
+RISK_REGISTRY_FILE = STATE_DIR / "risks.json"
+PROMPT_REGISTRY_DIR = STATE_DIR / "prompts"
 WISDOM_DIR = Path(__file__).parent / "wisdom"
 
 # Workspace paths (mirror organvm-engine conventions)
@@ -131,6 +134,18 @@ PROMOTION_TRANSITIONS: dict[str, list[str]] = {
 
 PROMOTION_STATES = {"LOCAL", "CANDIDATE", "PUBLIC_PROCESS", "GRADUATED", "ARCHIVED"}
 
+# Anti-pattern detection thresholds
+CONTEXT_SWITCH_THRESHOLD = 3  # unique organs in last N sessions to trigger warning
+CONTEXT_SWITCH_WINDOW = 5  # number of recent sessions to check
+INFRASTRUCTURE_GRAVITY_THRESHOLD = 0.70  # fraction of sessions targeting META/IV
+INFRASTRUCTURE_GRAVITY_WINDOW = 10  # sessions to check
+SESSION_FRAGMENTATION_THRESHOLD = 5  # minutes — sessions shorter than this are "fragmented"
+SESSION_FRAGMENTATION_WINDOW = 5  # number of recent sessions to check
+
+# Circuit breaker defaults (overridable via .conductor.yaml)
+MAX_PHASE_MINUTES = 120
+MAX_SESSION_MINUTES = 480
+
 # WIP limits (defaults — lowest precedence)
 #
 # Precedence chain (highest wins):
@@ -215,3 +230,12 @@ def get_phase_clusters() -> dict[str, list[str]]:
                 merged[phase_upper] = clusters
         return merged
     return PHASE_CLUSTERS
+
+
+def load_circuit_breaker_config() -> dict[str, int]:
+    """Load circuit breaker limits from .conductor.yaml, falling back to defaults."""
+    config = load_config()
+    return {
+        "max_phase_minutes": int(config.get("max_phase_minutes", MAX_PHASE_MINUTES)),
+        "max_session_minutes": int(config.get("max_session_minutes", MAX_SESSION_MINUTES)),
+    }

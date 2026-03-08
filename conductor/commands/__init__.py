@@ -12,6 +12,7 @@ from . import (
     governance_cmd,
     oracle_cmd,
     queue_cmd,
+    risk_cmd,
     routing_cmd,
     session_cmd,
     system_cmd,
@@ -34,6 +35,7 @@ COMMAND_HANDLERS: dict[str, object] = {
     "validate": routing_cmd,
     "clusters": routing_cmd,
     "domains": routing_cmd,
+    "search": routing_cmd,
     "export": export_cmd,
     "patterns": export_cmd,
     "patch": system_cmd,
@@ -49,6 +51,9 @@ COMMAND_HANDLERS: dict[str, object] = {
     "wiring": system_cmd,
     "version": system_cmd,
     "oracle": oracle_cmd,
+    "risk": risk_cmd,
+    "dora": system_cmd,
+    "prompt": system_cmd,
 }
 
 

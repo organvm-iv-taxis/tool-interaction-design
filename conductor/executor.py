@@ -73,6 +73,7 @@ class StepState:
     metadata: dict[str, Any] = field(default_factory=dict)
     iteration: int = 0
     max_iterations: int = 0
+    agent: str = ""
 
 
 @dataclass
@@ -222,6 +223,7 @@ class WorkflowExecutor:
                     "metadata": step.metadata,
                     "iteration": step.iteration,
                     "max_iterations": step.max_iterations,
+                    "agent": step.agent,
                 }
                 for name, step in state.steps.items()
             },

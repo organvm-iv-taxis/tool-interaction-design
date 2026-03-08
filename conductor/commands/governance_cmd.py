@@ -46,6 +46,12 @@ def handle(args, *, ontology, engine) -> None:
         gov = GovernanceRuntime()
         if args.enforce_command == "generate":
             gov.enforce_generate(dry_run=args.dry_run)
+        elif args.enforce_command == "github-rulesets":
+            rulesets = gov.generate_github_rulesets()
+            print(f"  Generated {len(rulesets)} GitHub rulesets.")
+            for org_name in rulesets:
+                print(f"    - {org_name}")
+            print(f"  Output: generated/github-rulesets/")
 
     elif args.command == "stale":
         gov = GovernanceRuntime()

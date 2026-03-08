@@ -20,6 +20,8 @@ def handle(args, *, ontology, engine) -> None:
         _handle_clusters(args, ontology=ontology, engine=engine)
     elif args.command == "domains":
         _handle_domains(args, ontology=ontology, engine=engine)
+    elif args.command == "search":
+        _handle_search(args, ontology=ontology, engine=engine)
 
 
 def _require_engine(engine):
@@ -84,3 +86,9 @@ def _handle_domains(args, *, ontology, engine) -> None:
     _require_engine(engine)
     from router import cmd_domains
     cmd_domains(args, ontology, engine)
+
+
+def _handle_search(args, *, ontology, engine) -> None:
+    _require_engine(engine)
+    from router import cmd_search
+    cmd_search(args, ontology, engine)

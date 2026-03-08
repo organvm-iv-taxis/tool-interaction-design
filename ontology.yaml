@@ -2,8 +2,8 @@ version: '1.1'
 created: '2026-03-03'
 updated: '2026-03-03'
 surface_count: 592
-surface_count_note: 592 distinct tools enumerated across 67 clusters in 12 domains.
-  Additional ~90 Skills invoke these tools but are a meta-layer, not counted separately.
+surface_count_note: 592 distinct tools enumerated across 67 clusters in 12 domains. Additional ~90 Skills invoke these tools
+  but are a meta-layer, not counted separately.
 taxonomy:
   domains:
   - id: AI_AGENTS
@@ -92,7 +92,7 @@ taxonomy:
     automatable: true
   - id: GUI
     label: Graphical Interface
-    description: "Visual apps \u2014 automatable only via browser/accessibility tools"
+    description: Visual apps — automatable only via browser/accessibility tools
     bidirectional: false
     automatable: false
   - id: BROWSER_AUTO
@@ -192,30 +192,54 @@ clusters:
   domain: AI_AGENTS
   label: Claude Code Built-in
   tools:
-  - Read
-  - Write
-  - Edit
-  - Glob
-  - Grep
-  - Bash
-  - Agent
-  - WebSearch
-  - WebFetch
-  - NotebookEdit
-  - AskUserQuestion
-  - EnterPlanMode
-  - ExitPlanMode
-  - EnterWorktree
-  - ToolSearch
-  - TaskCreate
-  - TaskUpdate
-  - TaskGet
-  - TaskList
-  - TaskStop
-  - TaskOutput
-  - Skill
-  - ListMcpResourcesTool
-  - ReadMcpResourceTool
+  - name: Read
+    type: builtin
+  - name: Write
+    type: builtin
+  - name: Edit
+    type: builtin
+  - name: Glob
+    type: builtin
+  - name: Grep
+    type: builtin
+  - name: Bash
+    type: builtin
+  - name: Agent
+    type: builtin
+  - name: WebSearch
+    type: builtin
+  - name: WebFetch
+    type: builtin
+  - name: NotebookEdit
+    type: builtin
+  - name: AskUserQuestion
+    type: builtin
+  - name: EnterPlanMode
+    type: builtin
+  - name: ExitPlanMode
+    type: builtin
+  - name: EnterWorktree
+    type: builtin
+  - name: ToolSearch
+    type: builtin
+  - name: TaskCreate
+    type: builtin
+  - name: TaskUpdate
+    type: builtin
+  - name: TaskGet
+    type: builtin
+  - name: TaskList
+    type: builtin
+  - name: TaskStop
+    type: builtin
+  - name: TaskOutput
+    type: builtin
+  - name: Skill
+    type: builtin
+  - name: ListMcpResourcesTool
+    type: builtin
+  - name: ReadMcpResourceTool
+    type: builtin
   capabilities:
   - READ
   - WRITE
@@ -254,15 +278,24 @@ clusters:
   domain: AI_AGENTS
   label: AI CLI Assistants
   tools:
-  - cli: codex
-  - cli: gemini-cli
-  - cli: kimi-cli
-  - cli: opencode
-  - cli: block-goose-cli
-  - cli: pplx-cli
-  - npm: '@google/jules'
-  - npm: '@github/copilot'
-  - npm: '@githubnext/github-copilot-cli'
+  - name: codex
+    type: cli
+  - name: gemini-cli
+    type: cli
+  - name: kimi-cli
+    type: cli
+  - name: opencode
+    type: cli
+  - name: block-goose-cli
+    type: cli
+  - name: pplx-cli
+    type: cli
+  - name: '@google/jules'
+    type: cli
+  - name: '@github/copilot'
+    type: cli
+  - name: '@githubnext/github-copilot-cli'
+    type: cli
   capabilities:
   - GENERATE
   - ANALYZE
@@ -283,14 +316,22 @@ clusters:
   domain: AI_AGENTS
   label: AI GUI Assistants
   tools:
-  - app: Claude.app
-  - app: ChatGPT.app
-  - app: ChatGPT Atlas.app
-  - app: Copilot.app
-  - app: Perplexity.app
-  - app: Goose.app
-  - app: Grok.app
-  - app: Codex.app
+  - name: Claude.app
+    type: gui
+  - name: ChatGPT.app
+    type: gui
+  - name: ChatGPT Atlas.app
+    type: gui
+  - name: Copilot.app
+    type: gui
+  - name: Perplexity.app
+    type: gui
+  - name: Goose.app
+    type: gui
+  - name: Grok.app
+    type: gui
+  - name: Codex.app
+    type: gui
   capabilities:
   - GENERATE
   - ANALYZE
@@ -311,8 +352,10 @@ clusters:
   domain: AI_AGENTS
   label: Local LLM Infrastructure
   tools:
-  - app: Ollama.app
-  - cli: huggingface-cli
+  - name: Ollama.app
+    type: gui
+  - name: huggingface-cli
+    type: cli
   capabilities:
   - GENERATE
   - ANALYZE
@@ -333,15 +376,24 @@ clusters:
   domain: CODE
   label: Code Editors & IDEs
   tools:
-  - app: Visual Studio Code.app
-  - app: Visual Studio Code - Insiders.app
-  - app: Cursor.app
-  - app: Android Studio.app
-  - app: Xcode.app
-  - app: Swift Playground.app
-  - cli: neovim
-  - cli: micro
-  - cli: fresh-editor
+  - name: Visual Studio Code.app
+    type: gui
+  - name: Visual Studio Code - Insiders.app
+    type: gui
+  - name: Cursor.app
+    type: gui
+  - name: Android Studio.app
+    type: gui
+  - name: Xcode.app
+    type: gui
+  - name: Swift Playground.app
+    type: gui
+  - name: neovim
+    type: cli
+  - name: micro
+    type: cli
+  - name: fresh-editor
+    type: cli
   capabilities:
   - READ
   - WRITE
@@ -367,15 +419,24 @@ clusters:
   domain: CODE
   label: Code Analysis (MCP Docker)
   tools:
-  - mcp: analyze_python_file
-  - mcp: analyze_python_package
-  - mcp: analyze_security_and_patterns
-  - mcp: analyze_test_coverage
-  - mcp: find_long_functions
-  - mcp: find_package_issues
-  - mcp: get_package_metrics
-  - mcp: get_dependency_types
-  - mcp: tdd_refactoring_guidance
+  - name: analyze_python_file
+    type: mcp
+  - name: analyze_python_package
+    type: mcp
+  - name: analyze_security_and_patterns
+    type: mcp
+  - name: analyze_test_coverage
+    type: mcp
+  - name: find_long_functions
+    type: mcp
+  - name: find_package_issues
+    type: mcp
+  - name: get_package_metrics
+    type: mcp
+  - name: get_dependency_types
+    type: mcp
+  - name: tdd_refactoring_guidance
+    type: mcp
   capabilities:
   - ANALYZE
   - SEARCH
@@ -393,14 +454,22 @@ clusters:
   domain: CODE
   label: Code Quality CLI
   tools:
-  - cli: shellcheck
-  - cli: shfmt
-  - cli: black
-  - cli: golangci-lint
-  - cli: pre-commit
-  - cli: actionlint
-  - npm: lighthouse
-  - npm: '@trunkio/launcher'
+  - name: shellcheck
+    type: cli
+  - name: shfmt
+    type: cli
+  - name: black
+    type: cli
+  - name: golangci-lint
+    type: cli
+  - name: pre-commit
+    type: cli
+  - name: actionlint
+    type: cli
+  - name: lighthouse
+    type: cli
+  - name: '@trunkio/launcher'
+    type: cli
   capabilities:
   - ANALYZE
   - EDIT
@@ -419,12 +488,18 @@ clusters:
   domain: CODE
   label: Code Execution Sandboxes
   tools:
-  - mcp: run_js
-  - mcp: run_js_ephemeral
-  - mcp: code-mode
-  - mcp: sandbox_initialize
-  - mcp: sandbox_exec
-  - mcp: sandbox_stop
+  - name: run_js
+    type: mcp
+  - name: run_js_ephemeral
+    type: mcp
+  - name: code-mode
+    type: mcp
+  - name: sandbox_initialize
+    type: mcp
+  - name: sandbox_exec
+    type: mcp
+  - name: sandbox_stop
+    type: mcp
   capabilities:
   - EXECUTE
   - TEST
@@ -441,19 +516,32 @@ clusters:
   domain: GIT_SCM
   label: Git Core Operations
   tools:
-  - cli: git
-  - mcp_docker: git_init
-  - mcp_docker: git_status
-  - mcp_docker: git_add
-  - mcp_docker: git_commit
-  - mcp_docker: git_checkout
-  - mcp_docker: git_create_branch
-  - mcp_docker: git_diff
-  - mcp_docker: git_diff_staged
-  - mcp_docker: git_diff_unstaged
-  - mcp_docker: git_log
-  - mcp_docker: git_show
-  - mcp_docker: git_reset
+  - name: git
+    type: cli
+  - name: git_init
+    type: mcp
+  - name: git_status
+    type: mcp
+  - name: git_add
+    type: mcp
+  - name: git_commit
+    type: mcp
+  - name: git_checkout
+    type: mcp
+  - name: git_create_branch
+    type: mcp
+  - name: git_diff
+    type: mcp
+  - name: git_diff_staged
+    type: mcp
+  - name: git_diff_unstaged
+    type: mcp
+  - name: git_log
+    type: mcp
+  - name: git_show
+    type: mcp
+  - name: git_reset
+    type: mcp
   capabilities:
   - READ
   - WRITE
@@ -474,14 +562,22 @@ clusters:
   domain: GIT_SCM
   label: Git Power Tools
   tools:
-  - cli: lazygit
-  - cli: git-delta
-  - cli: git-absorb
-  - cli: git-filter-repo
-  - cli: git-gui
-  - app: GitHub Desktop.app
-  - app: GitKraken.app
-  - cli: gitkraken-cli
+  - name: lazygit
+    type: cli
+  - name: git-delta
+    type: cli
+  - name: git-absorb
+    type: cli
+  - name: git-filter-repo
+    type: cli
+  - name: git-gui
+    type: cli
+  - name: GitHub Desktop.app
+    type: gui
+  - name: GitKraken.app
+    type: gui
+  - name: gitkraken-cli
+    type: cli
   capabilities:
   - READ
   - WRITE
@@ -502,48 +598,90 @@ clusters:
   domain: GIT_SCM
   label: GitHub Platform
   tools:
-  - cli: gh
-  - mcp_github: create_repository
-  - mcp_github: fork_repository
-  - mcp_github: search_repositories
-  - mcp_github: get_file_contents
-  - mcp_github: create_or_update_file
-  - mcp_github: delete_file
-  - mcp_github: push_files
-  - mcp_github: create_branch
-  - mcp_github: list_branches
-  - mcp_github: list_commits
-  - mcp_github: get_commit
-  - mcp_github: list_tags
-  - mcp_github: get_tag
-  - mcp_github: issue_read
-  - mcp_github: issue_write
-  - mcp_github: list_issues
-  - mcp_github: search_issues
-  - mcp_github: add_issue_comment
-  - mcp_github: list_issue_types
-  - mcp_github: sub_issue_write
-  - mcp_github: create_pull_request
-  - mcp_github: update_pull_request
-  - mcp_github: update_pull_request_branch
-  - mcp_github: merge_pull_request
-  - mcp_github: list_pull_requests
-  - mcp_github: search_pull_requests
-  - mcp_github: pull_request_read
-  - mcp_github: pull_request_review_write
-  - mcp_github: add_comment_to_pending_review
-  - mcp_github: add_reply_to_pull_request_comment
-  - mcp_github: list_releases
-  - mcp_github: get_latest_release
-  - mcp_github: get_release_by_tag
-  - mcp_github: get_me
-  - mcp_github: search_users
-  - mcp_github: get_teams
-  - mcp_github: get_team_members
-  - mcp_github: get_label
-  - mcp_github: search_code
-  - mcp_github: assign_copilot_to_issue
-  - mcp_github: request_copilot_review
+  - name: gh
+    type: cli
+  - name: create_repository
+    type: mcp
+  - name: fork_repository
+    type: mcp
+  - name: search_repositories
+    type: mcp
+  - name: get_file_contents
+    type: mcp
+  - name: create_or_update_file
+    type: mcp
+  - name: delete_file
+    type: mcp
+  - name: push_files
+    type: mcp
+  - name: create_branch
+    type: mcp
+  - name: list_branches
+    type: mcp
+  - name: list_commits
+    type: mcp
+  - name: get_commit
+    type: mcp
+  - name: list_tags
+    type: mcp
+  - name: get_tag
+    type: mcp
+  - name: issue_read
+    type: mcp
+  - name: issue_write
+    type: mcp
+  - name: list_issues
+    type: mcp
+  - name: search_issues
+    type: mcp
+  - name: add_issue_comment
+    type: mcp
+  - name: list_issue_types
+    type: mcp
+  - name: sub_issue_write
+    type: mcp
+  - name: create_pull_request
+    type: mcp
+  - name: update_pull_request
+    type: mcp
+  - name: update_pull_request_branch
+    type: mcp
+  - name: merge_pull_request
+    type: mcp
+  - name: list_pull_requests
+    type: mcp
+  - name: search_pull_requests
+    type: mcp
+  - name: pull_request_read
+    type: mcp
+  - name: pull_request_review_write
+    type: mcp
+  - name: add_comment_to_pending_review
+    type: mcp
+  - name: add_reply_to_pull_request_comment
+    type: mcp
+  - name: list_releases
+    type: mcp
+  - name: get_latest_release
+    type: mcp
+  - name: get_release_by_tag
+    type: mcp
+  - name: get_me
+    type: mcp
+  - name: search_users
+    type: mcp
+  - name: get_teams
+    type: mcp
+  - name: get_team_members
+    type: mcp
+  - name: get_label
+    type: mcp
+  - name: search_code
+    type: mcp
+  - name: assign_copilot_to_issue
+    type: mcp
+  - name: request_copilot_review
+    type: mcp
   capabilities:
   - READ
   - WRITE
@@ -569,9 +707,12 @@ clusters:
   domain: GIT_SCM
   label: Git Security
   tools:
-  - cli: git-secrets
-  - cli: gitleaks
-  - cli: ggshield
+  - name: git-secrets
+    type: cli
+  - name: gitleaks
+    type: cli
+  - name: ggshield
+    type: cli
   capabilities:
   - ANALYZE
   - SEARCH
@@ -591,19 +732,32 @@ clusters:
   domain: CLOUD_DEPLOY
   label: Vercel
   tools:
-  - cli: vercel
-  - mcp_vercel: deploy_to_vercel
-  - mcp_vercel: get_deployment
-  - mcp_vercel: get_deployment_build_logs
-  - mcp_vercel: get_runtime_logs
-  - mcp_vercel: list_deployments
-  - mcp_vercel: get_project
-  - mcp_vercel: list_projects
-  - mcp_vercel: list_teams
-  - mcp_vercel: check_domain_availability_and_price
-  - mcp_vercel: get_access_to_vercel_url
-  - mcp_vercel: web_fetch_vercel_url
-  - mcp_vercel: search_vercel_documentation
+  - name: vercel
+    type: cli
+  - name: deploy_to_vercel
+    type: mcp
+  - name: get_deployment
+    type: mcp
+  - name: get_deployment_build_logs
+    type: mcp
+  - name: get_runtime_logs
+    type: mcp
+  - name: list_deployments
+    type: mcp
+  - name: get_project
+    type: mcp
+  - name: list_projects
+    type: mcp
+  - name: list_teams
+    type: mcp
+  - name: check_domain_availability_and_price
+    type: mcp
+  - name: get_access_to_vercel_url
+    type: mcp
+  - name: web_fetch_vercel_url
+    type: mcp
+  - name: search_vercel_documentation
+    type: mcp
   capabilities:
   - DEPLOY
   - READ
@@ -626,19 +780,32 @@ clusters:
   domain: CLOUD_DEPLOY
   label: Cloudflare
   tools:
-  - cli: wrangler
-  - app: Cloudflare.app
-  - mcp_cloudflare: accounts_list
-  - mcp_cloudflare: d1_database_create
-  - mcp_cloudflare: d1_database_query
-  - mcp_cloudflare: d1_databases_list
-  - mcp_cloudflare: kv_namespace_create
-  - mcp_cloudflare: kv_namespaces_list
-  - mcp_cloudflare: r2_bucket_create
-  - mcp_cloudflare: r2_buckets_list
-  - mcp_cloudflare: workers_list
-  - mcp_cloudflare: workers_get_worker
-  - mcp_cloudflare: search_cloudflare_documentation
+  - name: wrangler
+    type: cli
+  - name: Cloudflare.app
+    type: gui
+  - name: accounts_list
+    type: mcp
+  - name: d1_database_create
+    type: mcp
+  - name: d1_database_query
+    type: mcp
+  - name: d1_databases_list
+    type: mcp
+  - name: kv_namespace_create
+    type: mcp
+  - name: kv_namespaces_list
+    type: mcp
+  - name: r2_bucket_create
+    type: mcp
+  - name: r2_buckets_list
+    type: mcp
+  - name: workers_list
+    type: mcp
+  - name: workers_get_worker
+    type: mcp
+  - name: search_cloudflare_documentation
+    type: mcp
   capabilities:
   - DEPLOY
   - READ
@@ -663,15 +830,24 @@ clusters:
   domain: CLOUD_DEPLOY
   label: Netlify
   tools:
-  - mcp_netlify: get-netlify-coding-context
-  - mcp_netlify: netlify-deploy-services-reader
-  - mcp_netlify: netlify-deploy-services-updater
-  - mcp_netlify: netlify-project-services-reader
-  - mcp_netlify: netlify-project-services-updater
-  - mcp_netlify: netlify-extension-services-reader
-  - mcp_netlify: netlify-extension-services-updater
-  - mcp_netlify: netlify-team-services-reader
-  - mcp_netlify: netlify-user-services-reader
+  - name: get-netlify-coding-context
+    type: mcp
+  - name: netlify-deploy-services-reader
+    type: mcp
+  - name: netlify-deploy-services-updater
+    type: mcp
+  - name: netlify-project-services-reader
+    type: mcp
+  - name: netlify-project-services-updater
+    type: mcp
+  - name: netlify-extension-services-reader
+    type: mcp
+  - name: netlify-extension-services-updater
+    type: mcp
+  - name: netlify-team-services-reader
+    type: mcp
+  - name: netlify-user-services-reader
+    type: mcp
   capabilities:
   - DEPLOY
   - READ
@@ -691,9 +867,12 @@ clusters:
   domain: CLOUD_DEPLOY
   label: Google Cloud Platform
   tools:
-  - cli: gcloud
-  - cli: firebase-tools
-  - docker: mcp/cloud-run-mcp
+  - name: gcloud
+    type: cli
+  - name: firebase-tools
+    type: cli
+  - name: mcp/cloud-run-mcp
+    type: cli
   capabilities:
   - DEPLOY
   - READ
@@ -716,17 +895,28 @@ clusters:
   domain: CLOUD_DEPLOY
   label: Containers & Kubernetes
   tools:
-  - app: Docker.app
-  - cli: lazydocker
-  - cli: k9s
-  - cli: kind
-  - cli: qemu
-  - docker: kindest/node
-  - docker: envoyproxy/envoy
-  - docker: localstack/localstack
-  - mcp_docker: deploy_container_image
-  - mcp_docker: deploy_file_contents
-  - mcp_docker: deploy_local_folder
+  - name: Docker.app
+    type: gui
+  - name: lazydocker
+    type: cli
+  - name: k9s
+    type: cli
+  - name: kind
+    type: cli
+  - name: qemu
+    type: cli
+  - name: kindest/node
+    type: cli
+  - name: envoyproxy/envoy
+    type: cli
+  - name: localstack/localstack
+    type: cli
+  - name: deploy_container_image
+    type: mcp
+  - name: deploy_file_contents
+    type: mcp
+  - name: deploy_local_folder
+    type: mcp
   capabilities:
   - DEPLOY
   - EXECUTE
@@ -751,9 +941,12 @@ clusters:
   domain: CLOUD_DEPLOY
   label: Tunnels & Exposure
   tools:
-  - cli: ngrok
-  - npm: localtunnel
-  - npm: '@expo/ngrok'
+  - name: ngrok
+    type: cli
+  - name: localtunnel
+    type: cli
+  - name: '@expo/ngrok'
+    type: cli
   capabilities:
   - DEPLOY
   - CONFIGURE
@@ -769,9 +962,12 @@ clusters:
   domain: CLOUD_DEPLOY
   label: CI/CD & Testing
   tools:
-  - cli: act
-  - cli: actionlint
-  - cli: stripe
+  - name: act
+    type: cli
+  - name: actionlint
+    type: cli
+  - name: stripe
+    type: cli
   capabilities:
   - TEST
   - EXECUTE
@@ -790,13 +986,20 @@ clusters:
   domain: CREATIVE
   label: Audio Production
   tools:
-  - app: Logic Pro.app
-  - app: MainStage.app
-  - app: GarageBand.app
-  - app: SuperCollider
-  - app: plugdata.app
-  - app: Pd-0.56-2.app
-  - app: StepPolyArp.app
+  - name: Logic Pro.app
+    type: gui
+  - name: MainStage.app
+    type: gui
+  - name: GarageBand.app
+    type: gui
+  - name: SuperCollider
+    type: gui
+  - name: plugdata.app
+    type: gui
+  - name: Pd-0.56-2.app
+    type: gui
+  - name: StepPolyArp.app
+    type: gui
   capabilities:
   - GENERATE
   - EDIT
@@ -814,21 +1017,36 @@ clusters:
   domain: CREATIVE
   label: Visual Design
   tools:
-  - app: Figma.app
-  - app: GIMP.app
-  - app: Photomator.app
-  - app: Blender.app
-  - app: TouchDesigner.app
-  - app: Pastel.app
-  - mcp_figma: get_design_context
-  - mcp_figma: get_screenshot
-  - mcp_figma: get_metadata
-  - mcp_figma: get_figjam
-  - mcp_figma: generate_diagram
-  - mcp_figma: get_variable_defs
-  - mcp_figma: get_code_connect_map
-  - mcp_figma: add_code_connect_map
-  - mcp_figma: create_design_system_rules
+  - name: Figma.app
+    type: gui
+  - name: GIMP.app
+    type: gui
+  - name: Photomator.app
+    type: gui
+  - name: Blender.app
+    type: gui
+  - name: TouchDesigner.app
+    type: gui
+  - name: Pastel.app
+    type: gui
+  - name: get_design_context
+    type: mcp
+  - name: get_screenshot
+    type: mcp
+  - name: get_metadata
+    type: mcp
+  - name: get_figjam
+    type: mcp
+  - name: generate_diagram
+    type: mcp
+  - name: get_variable_defs
+    type: mcp
+  - name: get_code_connect_map
+    type: mcp
+  - name: add_code_connect_map
+    type: mcp
+  - name: create_design_system_rules
+    type: mcp
   capabilities:
   - GENERATE
   - EDIT
@@ -851,10 +1069,14 @@ clusters:
   domain: CREATIVE
   label: Video Production
   tools:
-  - app: Final Cut Pro.app
-  - app: Compressor.app
-  - app: iMovie.app
-  - cli: ffmpeg
+  - name: Final Cut Pro.app
+    type: gui
+  - name: Compressor.app
+    type: gui
+  - name: iMovie.app
+    type: gui
+  - name: ffmpeg
+    type: cli
   capabilities:
   - GENERATE
   - EDIT
@@ -876,12 +1098,18 @@ clusters:
   domain: CREATIVE
   label: Diagramming & Visualization
   tools:
-  - mcp_mermaid: validate_and_render_mermaid_diagram
-  - mcp_mermaid: get_diagram_summary
-  - mcp_mermaid: get_diagram_title
-  - mcp_threejs: show_threejs_scene
-  - mcp_threejs: learn_threejs
-  - mcp_figma: generate_diagram
+  - name: validate_and_render_mermaid_diagram
+    type: mcp
+  - name: get_diagram_summary
+    type: mcp
+  - name: get_diagram_title
+    type: mcp
+  - name: show_threejs_scene
+    type: mcp
+  - name: learn_threejs
+    type: mcp
+  - name: generate_diagram
+    type: mcp
   capabilities:
   - GENERATE
   - VISUALIZE
@@ -902,17 +1130,28 @@ clusters:
   domain: CREATIVE
   label: Publishing & Documents
   tools:
-  - app: Keynote.app
-  - app: Numbers.app
-  - app: Pages.app
-  - app: Pages Creator Studio.app
-  - app: Highland 2.app
-  - app: Highland Pro.app
-  - mcp_docker: write_pdf
-  - mcp_docker: convert_to_markdown
-  - cli: poppler
-  - cli: qpdf
-  - cli: klatexformula
+  - name: Keynote.app
+    type: gui
+  - name: Numbers.app
+    type: gui
+  - name: Pages.app
+    type: gui
+  - name: Pages Creator Studio.app
+    type: gui
+  - name: Highland 2.app
+    type: gui
+  - name: Highland Pro.app
+    type: gui
+  - name: write_pdf
+    type: mcp
+  - name: convert_to_markdown
+    type: mcp
+  - name: poppler
+    type: cli
+  - name: qpdf
+    type: cli
+  - name: klatexformula
+    type: cli
   capabilities:
   - GENERATE
   - EDIT
@@ -938,8 +1177,10 @@ clusters:
   domain: CREATIVE
   label: Game Development
   tools:
-  - app: Unity Hub.app
-  - app: Unity
+  - name: Unity Hub.app
+    type: gui
+  - name: Unity
+    type: gui
   capabilities:
   - GENERATE
   - EDIT
@@ -960,21 +1201,36 @@ clusters:
   domain: RESEARCH
   label: Web Search
   tools:
-  - builtin: WebSearch
-  - builtin: WebFetch
-  - mcp_docker: perplexity_ask
-  - mcp_docker: perplexity_reason
-  - mcp_docker: perplexity_research
-  - mcp_docker: tavily_search
-  - mcp_docker: tavily_research
-  - mcp_docker: tavily_crawl
-  - mcp_docker: tavily_extract
-  - mcp_docker: tavily_map
-  - mcp_docker: search
-  - mcp_docker: start_search
-  - mcp_docker: stop_search
-  - mcp_docker: get_more_search_results
-  - mcp_docker: duckduckgo
+  - name: WebSearch
+    type: builtin
+  - name: WebFetch
+    type: builtin
+  - name: perplexity_ask
+    type: mcp
+  - name: perplexity_reason
+    type: mcp
+  - name: perplexity_research
+    type: mcp
+  - name: tavily_search
+    type: mcp
+  - name: tavily_research
+    type: mcp
+  - name: tavily_crawl
+    type: mcp
+  - name: tavily_extract
+    type: mcp
+  - name: tavily_map
+    type: mcp
+  - name: search
+    type: mcp
+  - name: start_search
+    type: mcp
+  - name: stop_search
+    type: mcp
+  - name: get_more_search_results
+    type: mcp
+  - name: duckduckgo
+    type: mcp
   capabilities:
   - SEARCH
   - FETCH
@@ -996,14 +1252,22 @@ clusters:
   domain: RESEARCH
   label: Wikipedia
   tools:
-  - mcp_docker: search_wikipedia
-  - mcp_docker: get_article
-  - mcp_docker: get_links
-  - mcp_docker: get_sections
-  - mcp_docker: get_related_topics
-  - mcp_docker: summarize_article_for_query
-  - mcp_docker: summarize_article_section
-  - mcp_docker: test_wikipedia_connectivity
+  - name: search_wikipedia
+    type: mcp
+  - name: get_article
+    type: mcp
+  - name: get_links
+    type: mcp
+  - name: get_sections
+    type: mcp
+  - name: get_related_topics
+    type: mcp
+  - name: summarize_article_for_query
+    type: mcp
+  - name: summarize_article_section
+    type: mcp
+  - name: test_wikipedia_connectivity
+    type: mcp
   capabilities:
   - SEARCH
   - FETCH
@@ -1021,16 +1285,26 @@ clusters:
   domain: RESEARCH
   label: Academic & ML Research
   tools:
-  - mcp_scholar: semanticSearch
-  - mcp_huggingface: paper_search
-  - mcp_huggingface: hub_repo_search
-  - mcp_huggingface: hub_repo_details
-  - mcp_huggingface: hf_doc_search
-  - mcp_huggingface: hf_doc_fetch
-  - mcp_huggingface: space_search
-  - mcp_huggingface: dynamic_space
-  - mcp_huggingface: hf_hub_community
-  - mcp_huggingface: hf_whoami
+  - name: semanticSearch
+    type: mcp
+  - name: paper_search
+    type: mcp
+  - name: hub_repo_search
+    type: mcp
+  - name: hub_repo_details
+    type: mcp
+  - name: hf_doc_search
+    type: mcp
+  - name: hf_doc_fetch
+    type: mcp
+  - name: space_search
+    type: mcp
+  - name: dynamic_space
+    type: mcp
+  - name: hf_hub_community
+    type: mcp
+  - name: hf_whoami
+    type: mcp
   capabilities:
   - SEARCH
   - FETCH
@@ -1049,13 +1323,20 @@ clusters:
   domain: RESEARCH
   label: Documentation & Libraries
   tools:
-  - mcp_docker: get-library-docs
-  - mcp_docker: resolve-library-id
-  - mcp_docker: search_documentation
-  - mcp_docker: fetch_generic_documentation
-  - mcp_docker: search_generic_documentation
-  - mcp_docker: search_generic_code
-  - mcp_docker: fetch_generic_url_content
+  - name: get-library-docs
+    type: mcp
+  - name: resolve-library-id
+    type: mcp
+  - name: search_documentation
+    type: mcp
+  - name: fetch_generic_documentation
+    type: mcp
+  - name: search_generic_documentation
+    type: mcp
+  - name: search_generic_code
+    type: mcp
+  - name: fetch_generic_url_content
+    type: mcp
   capabilities:
   - SEARCH
   - FETCH
@@ -1074,15 +1355,24 @@ clusters:
   domain: RESEARCH
   label: Knowledge Graph
   tools:
-  - mcp_docker: create_entities
-  - mcp_docker: create_relations
-  - mcp_docker: delete_entities
-  - mcp_docker: delete_relations
-  - mcp_docker: add_observations
-  - mcp_docker: delete_observations
-  - mcp_docker: open_nodes
-  - mcp_docker: read_graph
-  - mcp_docker: search_nodes
+  - name: create_entities
+    type: mcp
+  - name: create_relations
+    type: mcp
+  - name: delete_entities
+    type: mcp
+  - name: delete_relations
+    type: mcp
+  - name: add_observations
+    type: mcp
+  - name: delete_observations
+    type: mcp
+  - name: open_nodes
+    type: mcp
+  - name: read_graph
+    type: mcp
+  - name: search_nodes
+    type: mcp
   capabilities:
   - READ
   - WRITE
@@ -1104,21 +1394,36 @@ clusters:
   domain: RESEARCH
   label: Knowledge Management Apps
   tools:
-  - app: Obsidian.app
-  - app: Notion.app
-  - app: SnippetsLab.app
-  - mcp_notion: notion-search
-  - mcp_notion: notion-create-pages
-  - mcp_notion: notion-create-database
-  - mcp_notion: notion-update-page
-  - mcp_notion: notion-duplicate-page
-  - mcp_notion: notion-move-pages
-  - mcp_notion: notion-get-comments
-  - mcp_notion: notion-create-comment
-  - mcp_notion: notion-get-users
-  - mcp_notion: notion-get-teams
-  - mcp_notion: notion-fetch
-  - mcp_notion: notion-update-data-source
+  - name: Obsidian.app
+    type: gui
+  - name: Notion.app
+    type: gui
+  - name: SnippetsLab.app
+    type: gui
+  - name: notion-search
+    type: mcp
+  - name: notion-create-pages
+    type: mcp
+  - name: notion-create-database
+    type: mcp
+  - name: notion-update-page
+    type: mcp
+  - name: notion-duplicate-page
+    type: mcp
+  - name: notion-move-pages
+    type: mcp
+  - name: notion-get-comments
+    type: mcp
+  - name: notion-create-comment
+    type: mcp
+  - name: notion-get-users
+    type: mcp
+  - name: notion-get-teams
+    type: mcp
+  - name: notion-fetch
+    type: mcp
+  - name: notion-update-data-source
+    type: mcp
   capabilities:
   - READ
   - WRITE
@@ -1140,14 +1445,22 @@ clusters:
   domain: RESEARCH
   label: Web Content Extraction
   tools:
-  - mcp_docker: fetch
-  - mcp_docker: fetch_content
-  - mcp_docker: convert_to_markdown
-  - mcp_docker: extract_key_facts
-  - app: Notion Web Clipper.app
-  - app: Obsidian Web Clipper.app
-  - app: SingleFile.app
-  - app: Userscripts.app
+  - name: fetch
+    type: mcp
+  - name: fetch_content
+    type: mcp
+  - name: convert_to_markdown
+    type: mcp
+  - name: extract_key_facts
+    type: mcp
+  - name: Notion Web Clipper.app
+    type: gui
+  - name: Obsidian Web Clipper.app
+    type: gui
+  - name: SingleFile.app
+    type: gui
+  - name: Userscripts.app
+    type: gui
   capabilities:
   - FETCH
   - TRANSFORM
@@ -1168,9 +1481,12 @@ clusters:
   domain: RESEARCH
   label: Media Research (YouTube, etc.)
   tools:
-  - mcp_docker: get_video_info
-  - mcp_docker: get_transcript
-  - mcp_docker: get_timed_transcript
+  - name: get_video_info
+    type: mcp
+  - name: get_transcript
+    type: mcp
+  - name: get_timed_transcript
+    type: mcp
   capabilities:
   - FETCH
   - READ
@@ -1188,23 +1504,40 @@ clusters:
   domain: DATA
   label: Neon Postgres
   tools:
-  - mcp_neon: create_project
-  - mcp_neon: run_sql
-  - mcp_neon: run_sql_transaction
-  - mcp_neon: explain_sql_statement
-  - mcp_neon: list_slow_queries
-  - mcp_neon: get_database_tables
-  - mcp_neon: describe_table_schema
-  - mcp_neon: compare_database_schema
-  - mcp_neon: prepare_database_migration
-  - mcp_neon: complete_database_migration
-  - mcp_neon: prepare_query_tuning
-  - mcp_neon: complete_query_tuning
-  - mcp_neon: get_connection_string
-  - mcp_neon: create_branch
-  - mcp_neon: describe_branch
-  - mcp_neon: provision_neon_auth
-  - mcp_neon: provision_neon_data_api
+  - name: create_project
+    type: mcp
+  - name: run_sql
+    type: mcp
+  - name: run_sql_transaction
+    type: mcp
+  - name: explain_sql_statement
+    type: mcp
+  - name: list_slow_queries
+    type: mcp
+  - name: get_database_tables
+    type: mcp
+  - name: describe_table_schema
+    type: mcp
+  - name: compare_database_schema
+    type: mcp
+  - name: prepare_database_migration
+    type: mcp
+  - name: complete_database_migration
+    type: mcp
+  - name: prepare_query_tuning
+    type: mcp
+  - name: complete_query_tuning
+    type: mcp
+  - name: get_connection_string
+    type: mcp
+  - name: create_branch
+    type: mcp
+  - name: describe_branch
+    type: mcp
+  - name: provision_neon_auth
+    type: mcp
+  - name: provision_neon_data_api
+    type: mcp
   capabilities:
   - READ
   - WRITE
@@ -1227,17 +1560,28 @@ clusters:
   domain: DATA
   label: Cloudflare Data Services
   tools:
-  - mcp_cloudflare: d1_database_create
-  - mcp_cloudflare: d1_database_query
-  - mcp_cloudflare: d1_database_get
-  - mcp_cloudflare: d1_database_delete
-  - mcp_cloudflare: kv_namespace_create
-  - mcp_cloudflare: kv_namespace_get
-  - mcp_cloudflare: kv_namespace_update
-  - mcp_cloudflare: kv_namespace_delete
-  - mcp_cloudflare: r2_bucket_create
-  - mcp_cloudflare: r2_bucket_get
-  - mcp_cloudflare: r2_bucket_delete
+  - name: d1_database_create
+    type: mcp
+  - name: d1_database_query
+    type: mcp
+  - name: d1_database_get
+    type: mcp
+  - name: d1_database_delete
+    type: mcp
+  - name: kv_namespace_create
+    type: mcp
+  - name: kv_namespace_get
+    type: mcp
+  - name: kv_namespace_update
+    type: mcp
+  - name: kv_namespace_delete
+    type: mcp
+  - name: r2_bucket_create
+    type: mcp
+  - name: r2_bucket_get
+    type: mcp
+  - name: r2_bucket_delete
+    type: mcp
   capabilities:
   - READ
   - WRITE
@@ -1257,12 +1601,18 @@ clusters:
   domain: DATA
   label: Data Processing CLI
   tools:
-  - cli: jq
-  - cli: yq
-  - cli: gron
-  - cli: tesseract
-  - cli: poppler
-  - app: CSV Editor Pro X.app
+  - name: jq
+    type: cli
+  - name: yq
+    type: cli
+  - name: gron
+    type: cli
+  - name: tesseract
+    type: cli
+  - name: poppler
+    type: cli
+  - name: CSV Editor Pro X.app
+    type: gui
   capabilities:
   - TRANSFORM
   - READ
@@ -1287,22 +1637,38 @@ clusters:
   domain: DATA
   label: Jupyter Notebooks
   tools:
-  - mcp_jupyter: connect_to_jupyter
-  - mcp_jupyter: list_notebooks
-  - mcp_jupyter: use_notebook
-  - mcp_jupyter: unuse_notebook
-  - mcp_jupyter: read_notebook
-  - mcp_jupyter: read_cell
-  - mcp_jupyter: insert_cell
-  - mcp_jupyter: overwrite_cell_source
-  - mcp_jupyter: delete_cell
-  - mcp_jupyter: execute_cell
-  - mcp_jupyter: execute_code
-  - mcp_jupyter: insert_execute_code_cell
-  - mcp_jupyter: list_files
-  - mcp_jupyter: list_kernels
-  - mcp_jupyter: restart_notebook
-  - pipx: jupyter-mcp-server
+  - name: connect_to_jupyter
+    type: mcp
+  - name: list_notebooks
+    type: mcp
+  - name: use_notebook
+    type: mcp
+  - name: unuse_notebook
+    type: mcp
+  - name: read_notebook
+    type: mcp
+  - name: read_cell
+    type: mcp
+  - name: insert_cell
+    type: mcp
+  - name: overwrite_cell_source
+    type: mcp
+  - name: delete_cell
+    type: mcp
+  - name: execute_cell
+    type: mcp
+  - name: execute_code
+    type: mcp
+  - name: insert_execute_code_cell
+    type: mcp
+  - name: list_files
+    type: mcp
+  - name: list_kernels
+    type: mcp
+  - name: restart_notebook
+    type: mcp
+  - name: jupyter-mcp-server
+    type: cli
   capabilities:
   - READ
   - WRITE
@@ -1326,11 +1692,16 @@ clusters:
   domain: SECURITY
   label: Security Scanning
   tools:
-  - cli: trivy
-  - cli: ggshield
-  - cli: gitleaks
-  - cli: git-secrets
-  - mcp_docker: analyze_security_and_patterns
+  - name: trivy
+    type: cli
+  - name: ggshield
+    type: cli
+  - name: gitleaks
+    type: cli
+  - name: git-secrets
+    type: cli
+  - name: analyze_security_and_patterns
+    type: mcp
   capabilities:
   - ANALYZE
   - SEARCH
@@ -1351,24 +1722,42 @@ clusters:
   domain: SECURITY
   label: Sentry Error Tracking
   tools:
-  - mcp_sentry: find_organizations
-  - mcp_sentry: find_projects
-  - mcp_sentry: find_teams
-  - mcp_sentry: search_issues
-  - mcp_sentry: get_issue_details
-  - mcp_sentry: update_issue
-  - mcp_sentry: search_events
-  - mcp_sentry: search_issue_events
-  - mcp_sentry: get_event_attachment
-  - mcp_sentry: get_issue_tag_values
-  - mcp_sentry: get_trace_details
-  - mcp_sentry: find_releases
-  - mcp_sentry: create_project
-  - mcp_sentry: create_team
-  - mcp_sentry: create_dsn
-  - mcp_sentry: find_dsns
-  - mcp_sentry: analyze_issue_with_seer
-  - mcp_sentry: whoami
+  - name: find_organizations
+    type: mcp
+  - name: find_projects
+    type: mcp
+  - name: find_teams
+    type: mcp
+  - name: search_issues
+    type: mcp
+  - name: get_issue_details
+    type: mcp
+  - name: update_issue
+    type: mcp
+  - name: search_events
+    type: mcp
+  - name: search_issue_events
+    type: mcp
+  - name: get_event_attachment
+    type: mcp
+  - name: get_issue_tag_values
+    type: mcp
+  - name: get_trace_details
+    type: mcp
+  - name: find_releases
+    type: mcp
+  - name: create_project
+    type: mcp
+  - name: create_team
+    type: mcp
+  - name: create_dsn
+    type: mcp
+  - name: find_dsns
+    type: mcp
+  - name: analyze_issue_with_seer
+    type: mcp
+  - name: whoami
+    type: mcp
   capabilities:
   - MONITOR
   - SEARCH
@@ -1389,9 +1778,12 @@ clusters:
   domain: SECURITY
   label: Authentication & Identity
   tools:
-  - app: 1Password.app
-  - cli: 1password-cli
-  - mcp_neon: provision_neon_auth
+  - name: 1Password.app
+    type: gui
+  - name: 1password-cli
+    type: cli
+  - name: provision_neon_auth
+    type: mcp
   capabilities:
   - AUTHENTICATE
   - STORE
@@ -1412,24 +1804,42 @@ clusters:
   domain: BROWSER
   label: Chrome Browser Automation
   tools:
-  - mcp_chrome: navigate
-  - mcp_chrome: read_page
-  - mcp_chrome: get_page_text
-  - mcp_chrome: computer
-  - mcp_chrome: find
-  - mcp_chrome: form_input
-  - mcp_chrome: javascript_tool
-  - mcp_chrome: gif_creator
-  - mcp_chrome: upload_image
-  - mcp_chrome: resize_window
-  - mcp_chrome: tabs_context_mcp
-  - mcp_chrome: tabs_create_mcp
-  - mcp_chrome: switch_browser
-  - mcp_chrome: shortcuts_execute
-  - mcp_chrome: shortcuts_list
-  - mcp_chrome: read_console_messages
-  - mcp_chrome: read_network_requests
-  - mcp_chrome: update_plan
+  - name: navigate
+    type: mcp
+  - name: read_page
+    type: mcp
+  - name: get_page_text
+    type: mcp
+  - name: computer
+    type: mcp
+  - name: find
+    type: mcp
+  - name: form_input
+    type: mcp
+  - name: javascript_tool
+    type: mcp
+  - name: gif_creator
+    type: mcp
+  - name: upload_image
+    type: mcp
+  - name: resize_window
+    type: mcp
+  - name: tabs_context_mcp
+    type: mcp
+  - name: tabs_create_mcp
+    type: mcp
+  - name: switch_browser
+    type: mcp
+  - name: shortcuts_execute
+    type: mcp
+  - name: shortcuts_list
+    type: mcp
+  - name: read_console_messages
+    type: mcp
+  - name: read_network_requests
+    type: mcp
+  - name: update_plan
+    type: mcp
   capabilities:
   - NAVIGATE
   - READ
@@ -1454,28 +1864,50 @@ clusters:
   domain: BROWSER
   label: Playwright Browser (Docker)
   tools:
-  - mcp_docker: browser_navigate
-  - mcp_docker: browser_navigate_back
-  - mcp_docker: browser_click
-  - mcp_docker: browser_hover
-  - mcp_docker: browser_drag
-  - mcp_docker: browser_fill_form
-  - mcp_docker: browser_select_option
-  - mcp_docker: browser_press_key
-  - mcp_docker: browser_type
-  - mcp_docker: browser_file_upload
-  - mcp_docker: browser_evaluate
-  - mcp_docker: browser_snapshot
-  - mcp_docker: browser_take_screenshot
-  - mcp_docker: browser_resize
-  - mcp_docker: browser_tabs
-  - mcp_docker: browser_wait_for
-  - mcp_docker: browser_handle_dialog
-  - mcp_docker: browser_console_messages
-  - mcp_docker: browser_network_requests
-  - mcp_docker: browser_install
-  - mcp_docker: browser_close
-  - mcp_docker: browser_run_code
+  - name: browser_navigate
+    type: mcp
+  - name: browser_navigate_back
+    type: mcp
+  - name: browser_click
+    type: mcp
+  - name: browser_hover
+    type: mcp
+  - name: browser_drag
+    type: mcp
+  - name: browser_fill_form
+    type: mcp
+  - name: browser_select_option
+    type: mcp
+  - name: browser_press_key
+    type: mcp
+  - name: browser_type
+    type: mcp
+  - name: browser_file_upload
+    type: mcp
+  - name: browser_evaluate
+    type: mcp
+  - name: browser_snapshot
+    type: mcp
+  - name: browser_take_screenshot
+    type: mcp
+  - name: browser_resize
+    type: mcp
+  - name: browser_tabs
+    type: mcp
+  - name: browser_wait_for
+    type: mcp
+  - name: browser_handle_dialog
+    type: mcp
+  - name: browser_console_messages
+    type: mcp
+  - name: browser_network_requests
+    type: mcp
+  - name: browser_install
+    type: mcp
+  - name: browser_close
+    type: mcp
+  - name: browser_run_code
+    type: mcp
   capabilities:
   - NAVIGATE
   - READ
@@ -1500,13 +1932,20 @@ clusters:
   domain: BROWSER
   label: Puppeteer Browser (Docker)
   tools:
-  - mcp_docker: puppeteer_navigate
-  - mcp_docker: puppeteer_screenshot
-  - mcp_docker: puppeteer_click
-  - mcp_docker: puppeteer_fill
-  - mcp_docker: puppeteer_select
-  - mcp_docker: puppeteer_hover
-  - mcp_docker: puppeteer_evaluate
+  - name: puppeteer_navigate
+    type: mcp
+  - name: puppeteer_screenshot
+    type: mcp
+  - name: puppeteer_click
+    type: mcp
+  - name: puppeteer_fill
+    type: mcp
+  - name: puppeteer_select
+    type: mcp
+  - name: puppeteer_hover
+    type: mcp
+  - name: puppeteer_evaluate
+    type: mcp
   capabilities:
   - NAVIGATE
   - READ
@@ -1528,10 +1967,14 @@ clusters:
   domain: BROWSER
   label: Web Browsers
   tools:
-  - app: Google Chrome.app
-  - app: Google Chrome Canary.app
-  - app: Safari.app
-  - app: DuckDuckGo.app
+  - name: Google Chrome.app
+    type: gui
+  - name: Google Chrome Canary.app
+    type: gui
+  - name: Safari.app
+    type: gui
+  - name: DuckDuckGo.app
+    type: gui
   capabilities:
   - NAVIGATE
   - READ
@@ -1549,18 +1992,30 @@ clusters:
   domain: SYSTEM
   label: Filesystem (MCP Docker)
   tools:
-  - mcp_docker: read_file
-  - mcp_docker: write_file
-  - mcp_docker: read_multiple_files
-  - mcp_docker: edit_file
-  - mcp_docker: edit_block
-  - mcp_docker: search_files
-  - mcp_docker: list_directory
-  - mcp_docker: directory_tree
-  - mcp_docker: create_directory
-  - mcp_docker: move_file
-  - mcp_docker: get_file_info
-  - mcp_docker: list_allowed_directories
+  - name: read_file
+    type: mcp
+  - name: write_file
+    type: mcp
+  - name: read_multiple_files
+    type: mcp
+  - name: edit_file
+    type: mcp
+  - name: edit_block
+    type: mcp
+  - name: search_files
+    type: mcp
+  - name: list_directory
+    type: mcp
+  - name: directory_tree
+    type: mcp
+  - name: create_directory
+    type: mcp
+  - name: move_file
+    type: mcp
+  - name: get_file_info
+    type: mcp
+  - name: list_allowed_directories
+    type: mcp
   capabilities:
   - READ
   - WRITE
@@ -1585,15 +2040,24 @@ clusters:
   domain: SYSTEM
   label: Filesystem CLI
   tools:
-  - cli: bat
-  - cli: eza
-  - cli: fd
-  - cli: duf
-  - cli: ncdu
-  - cli: entr
-  - cli: fswatch
-  - cli: rclone
-  - cli: fileicon
+  - name: bat
+    type: cli
+  - name: eza
+    type: cli
+  - name: fd
+    type: cli
+  - name: duf
+    type: cli
+  - name: ncdu
+    type: cli
+  - name: entr
+    type: cli
+  - name: fswatch
+    type: cli
+  - name: rclone
+    type: cli
+  - name: fileicon
+    type: cli
   capabilities:
   - READ
   - SEARCH
@@ -1614,17 +2078,28 @@ clusters:
   domain: SYSTEM
   label: Process Management
   tools:
-  - mcp_docker: start_process
-  - mcp_docker: kill_process
-  - mcp_docker: list_processes
-  - mcp_docker: read_process_output
-  - mcp_docker: interact_with_process
-  - mcp_docker: force_terminate
-  - cli: btop
-  - cli: htop
-  - cli: procs
-  - cli: progress
-  - cli: pv
+  - name: start_process
+    type: mcp
+  - name: kill_process
+    type: mcp
+  - name: list_processes
+    type: mcp
+  - name: read_process_output
+    type: mcp
+  - name: interact_with_process
+    type: mcp
+  - name: force_terminate
+    type: mcp
+  - name: btop
+    type: cli
+  - name: htop
+    type: cli
+  - name: procs
+    type: cli
+  - name: progress
+    type: cli
+  - name: pv
+    type: cli
   capabilities:
   - EXECUTE
   - MONITOR
@@ -1643,24 +2118,42 @@ clusters:
   domain: SYSTEM
   label: Shell & Terminal
   tools:
-  - cli: zsh
-  - cli: fish
-  - cli: starship
-  - cli: atuin
-  - cli: byobu
-  - cli: carapace
-  - cli: navi
-  - cli: thefuck
-  - cli: zoxide
-  - cli: direnv
-  - cli: fzf
-  - cli: tlrc
-  - app: iTerm.app
-  - app: iTermAI.app
-  - app: kitty.app
-  - app: Warp.app
-  - app: Termius Beta.app
-  - app: Terminal.app
+  - name: zsh
+    type: cli
+  - name: fish
+    type: cli
+  - name: starship
+    type: cli
+  - name: atuin
+    type: cli
+  - name: byobu
+    type: cli
+  - name: carapace
+    type: cli
+  - name: navi
+    type: cli
+  - name: thefuck
+    type: cli
+  - name: zoxide
+    type: cli
+  - name: direnv
+    type: cli
+  - name: fzf
+    type: cli
+  - name: tlrc
+    type: cli
+  - name: iTerm.app
+    type: gui
+  - name: iTermAI.app
+    type: gui
+  - name: kitty.app
+    type: gui
+  - name: Warp.app
+    type: gui
+  - name: Termius Beta.app
+    type: gui
+  - name: Terminal.app
+    type: gui
   capabilities:
   - EXECUTE
   - NAVIGATE
@@ -1679,11 +2172,16 @@ clusters:
   domain: SYSTEM
   label: System Configuration
   tools:
-  - cli: chezmoi
-  - cli: mise
-  - cli: flavours
-  - pipx: pywal
-  - cli: just
+  - name: chezmoi
+    type: cli
+  - name: mise
+    type: cli
+  - name: flavours
+    type: cli
+  - name: pywal
+    type: cli
+  - name: just
+    type: cli
   capabilities:
   - CONFIGURE
   - READ
@@ -1703,9 +2201,12 @@ clusters:
   domain: SYSTEM
   label: Link & Content Validation
   tools:
-  - cli: lychee
-  - cli: markdown
-  - cli: glow
+  - name: lychee
+    type: cli
+  - name: markdown
+    type: cli
+  - name: glow
+    type: cli
   capabilities:
   - TEST
   - READ
@@ -1724,11 +2225,16 @@ clusters:
   domain: ORCHESTRATION
   label: MCP Meta-Management
   tools:
-  - mcp_docker: mcp-add
-  - mcp_docker: mcp-remove
-  - mcp_docker: mcp-find
-  - mcp_docker: mcp-exec
-  - mcp_docker: mcp-config-set
+  - name: mcp-add
+    type: mcp
+  - name: mcp-remove
+    type: mcp
+  - name: mcp-find
+    type: mcp
+  - name: mcp-exec
+    type: mcp
+  - name: mcp-config-set
+    type: mcp
   capabilities:
   - CONFIGURE
   - ORCHESTRATE
@@ -1747,9 +2253,12 @@ clusters:
   domain: ORCHESTRATION
   label: Reasoning & Planning
   tools:
-  - mcp_docker: sequentialthinking
-  - builtin: EnterPlanMode
-  - builtin: ExitPlanMode
+  - name: sequentialthinking
+    type: mcp
+  - name: EnterPlanMode
+    type: builtin
+  - name: ExitPlanMode
+    type: builtin
   capabilities:
   - ANALYZE
   - ORCHESTRATE
@@ -1766,10 +2275,14 @@ clusters:
   domain: ORCHESTRATION
   label: Task Tracking
   tools:
-  - builtin: TaskCreate
-  - builtin: TaskUpdate
-  - builtin: TaskGet
-  - builtin: TaskList
+  - name: TaskCreate
+    type: builtin
+  - name: TaskUpdate
+    type: builtin
+  - name: TaskGet
+    type: builtin
+  - name: TaskList
+    type: builtin
   capabilities:
   - ORCHESTRATE
   - READ
@@ -1787,14 +2300,22 @@ clusters:
   domain: ORCHESTRATION
   label: Usage & Introspection
   tools:
-  - mcp_docker: get_usage_stats
-  - mcp_docker: get_recent_tool_calls
-  - mcp_docker: get_prompts
-  - mcp_docker: get_current_model
-  - mcp_docker: get_config
-  - mcp_docker: set_config_value
-  - mcp_docker: give_feedback_to_desktop_commander
-  - builtin: ToolSearch
+  - name: get_usage_stats
+    type: mcp
+  - name: get_recent_tool_calls
+    type: mcp
+  - name: get_prompts
+    type: mcp
+  - name: get_current_model
+    type: mcp
+  - name: get_config
+    type: mcp
+  - name: set_config_value
+    type: mcp
+  - name: give_feedback_to_desktop_commander
+    type: mcp
+  - name: ToolSearch
+    type: builtin
   capabilities:
   - READ
   - CONFIGURE
@@ -1812,9 +2333,12 @@ clusters:
   domain: ORCHESTRATION
   label: Time & Location
   tools:
-  - mcp_docker: convert_time
-  - mcp_docker: get_current_time
-  - mcp_docker: get_coordinates
+  - name: convert_time
+    type: mcp
+  - name: get_current_time
+    type: mcp
+  - name: get_coordinates
+    type: mcp
   capabilities:
   - READ
   - TRANSFORM
@@ -1831,12 +2355,18 @@ clusters:
   domain: COMMUNICATION
   label: Messaging
   tools:
-  - app: Discord.app
-  - app: WhatsApp.app
-  - app: Messages.app
-  - app: Mail.app
-  - app: FaceTime.app
-  - cask: mailmate
+  - name: Discord.app
+    type: gui
+  - name: WhatsApp.app
+    type: gui
+  - name: Messages.app
+    type: gui
+  - name: Mail.app
+    type: gui
+  - name: FaceTime.app
+    type: gui
+  - name: mailmate
+    type: gui
   capabilities:
   - COMMUNICATE
   - READ
@@ -1853,21 +2383,36 @@ clusters:
   domain: COMMUNICATION
   label: Bug Reporting (Jam)
   tools:
-  - mcp_jam: getDetails
-  - mcp_jam: getMetadata
-  - mcp_jam: getScreenshots
-  - mcp_jam: getConsoleLogs
-  - mcp_jam: getNetworkRequests
-  - mcp_jam: getUserEvents
-  - mcp_jam: analyzeVideo
-  - mcp_jam: getVideoTranscript
-  - mcp_jam: createComment
-  - mcp_jam: search
-  - mcp_jam: listJams
-  - mcp_jam: listFolders
-  - mcp_jam: listMembers
-  - mcp_jam: updateJam
-  - mcp_jam: fetch
+  - name: getDetails
+    type: mcp
+  - name: getMetadata
+    type: mcp
+  - name: getScreenshots
+    type: mcp
+  - name: getConsoleLogs
+    type: mcp
+  - name: getNetworkRequests
+    type: mcp
+  - name: getUserEvents
+    type: mcp
+  - name: analyzeVideo
+    type: mcp
+  - name: getVideoTranscript
+    type: mcp
+  - name: createComment
+    type: mcp
+  - name: search
+    type: mcp
+  - name: listJams
+    type: mcp
+  - name: listFolders
+    type: mcp
+  - name: listMembers
+    type: mcp
+  - name: updateJam
+    type: mcp
+  - name: fetch
+    type: mcp
   capabilities:
   - READ
   - SEARCH
@@ -1888,8 +2433,10 @@ clusters:
   domain: RESEARCH
   label: NPM Package Discovery
   tools:
-  - mcp_docker: search_npm_packages
-  - mcp_docker: match_common_libs_owner_repo_mapping
+  - name: search_npm_packages
+    type: mcp
+  - name: match_common_libs_owner_repo_mapping
+    type: mcp
   capabilities:
   - SEARCH
   protocols:
@@ -1904,10 +2451,14 @@ clusters:
   domain: COMMUNICATION
   label: Job Search (Indeed)
   tools:
-  - mcp_indeed: search_jobs
-  - mcp_indeed: get_job_details
-  - mcp_indeed: get_company_data
-  - mcp_indeed: get_resume
+  - name: search_jobs
+    type: mcp
+  - name: get_job_details
+    type: mcp
+  - name: get_company_data
+    type: mcp
+  - name: get_resume
+    type: mcp
   capabilities:
   - SEARCH
   - READ
@@ -1924,8 +2475,10 @@ clusters:
   domain: COMMUNICATION
   label: Nonprofit Discovery (Benevity)
   tools:
-  - mcp_benevity: benevity_nonprofit_search
-  - mcp_benevity: benevity_nonprofit_details
+  - name: benevity_nonprofit_search
+    type: mcp
+  - name: benevity_nonprofit_details
+    type: mcp
   capabilities:
   - SEARCH
   - READ
@@ -1942,9 +2495,12 @@ clusters:
   domain: RESEARCH
   label: Learning Standards
   tools:
-  - mcp_learning: find_standard_statement
-  - mcp_learning: find_learning_components_from_standard
-  - mcp_learning: find_standards_progression_from_standard
+  - name: find_standard_statement
+    type: mcp
+  - name: find_learning_components_from_standard
+    type: mcp
+  - name: find_standards_progression_from_standard
+    type: mcp
   capabilities:
   - SEARCH
   - READ
@@ -1961,9 +2517,12 @@ clusters:
   domain: CREATIVE
   label: Music Playback
   tools:
-  - mcp_music: play-sheet-music
-  - app: Spotify.app
-  - app: Music.app
+  - name: play-sheet-music
+    type: mcp
+  - name: Spotify.app
+    type: gui
+  - name: Music.app
+    type: gui
   capabilities:
   - EXECUTE
   - VISUALIZE
@@ -1981,23 +2540,40 @@ clusters:
   domain: SYSTEM
   label: Utility Applications
   tools:
-  - app: 1Password for Safari.app
-  - app: Actions.app
-  - app: Boop.app
-  - app: CSV Editor Pro X.app
-  - app: Delete Apps.app
-  - app: DevCleaner.app
-  - app: Extractor.app
-  - app: FitFileExplorer.app
-  - app: Flycut.app
-  - app: Image Converter.app
-  - app: Key Codes.app
-  - app: MCPDock.app
-  - app: Paste.app
-  - app: Plist Extractor.app
-  - app: Royal TSX.app
-  - app: Stirling-PDF.app
-  - app: WordService.app
+  - name: 1Password for Safari.app
+    type: gui
+  - name: Actions.app
+    type: gui
+  - name: Boop.app
+    type: gui
+  - name: CSV Editor Pro X.app
+    type: gui
+  - name: Delete Apps.app
+    type: gui
+  - name: DevCleaner.app
+    type: gui
+  - name: Extractor.app
+    type: gui
+  - name: FitFileExplorer.app
+    type: gui
+  - name: Flycut.app
+    type: gui
+  - name: Image Converter.app
+    type: gui
+  - name: Key Codes.app
+    type: gui
+  - name: MCPDock.app
+    type: gui
+  - name: Paste.app
+    type: gui
+  - name: Plist Extractor.app
+    type: gui
+  - name: Royal TSX.app
+    type: gui
+  - name: Stirling-PDF.app
+    type: gui
+  - name: WordService.app
+    type: gui
   capabilities:
   - READ
   - TRANSFORM
@@ -2020,8 +2596,10 @@ clusters:
   domain: SYSTEM
   label: Observability Stack
   tools:
-  - docker: grafana/alloy
-  - docker: grafana/docker-desktop-extension
+  - name: grafana/alloy
+    type: cli
+  - name: grafana/docker-desktop-extension
+    type: cli
   capabilities:
   - MONITOR
   - VISUALIZE
@@ -2041,10 +2619,14 @@ clusters:
   domain: AI_AGENTS
   label: Prompt Architecture & Templates
   tools:
-  - CLAUDE.md files (per-repo AI instructions)
-  - .cursorrules files
-  - agents.yaml (per-organ AI role definitions)
-  - spec.md / plan.md / status.md templates
+  - name: CLAUDE.md files (per-repo AI instructions)
+    type: mcp
+  - name: .cursorrules files
+    type: mcp
+  - name: agents.yaml (per-organ AI role definitions)
+    type: mcp
+  - name: spec.md / plan.md / status.md templates
+    type: mcp
   capabilities:
   - CONFIGURE
   - GENERATE
@@ -2063,12 +2645,18 @@ clusters:
   domain: ORCHESTRATION
   label: Governance & Registry
   tools:
-  - registry-v2.json
-  - governance-rules.json
-  - seed.yaml contracts
-  - cli: organ-audit.py
-  - cli: validate-deps.py
-  - cli: calculate-metrics.py
+  - name: registry-v2.json
+    type: mcp
+  - name: governance-rules.json
+    type: mcp
+  - name: seed.yaml contracts
+    type: mcp
+  - name: organ-audit.py
+    type: cli
+  - name: validate-deps.py
+    type: cli
+  - name: calculate-metrics.py
+    type: cli
   capabilities:
   - READ
   - WRITE
@@ -2090,10 +2678,14 @@ clusters:
   domain: RESEARCH
   label: Personal Knowledge Management
   tools:
-  - app: Obsidian.app
-  - app: Notion.app
-  - PARA structure (Projects/Areas/Resources/Archives)
-  - pattern catalog (Organvm Patterns)
+  - name: Obsidian.app
+    type: gui
+  - name: Notion.app
+    type: gui
+  - name: PARA structure (Projects/Areas/Resources/Archives)
+    type: mcp
+  - name: pattern catalog (Organvm Patterns)
+    type: mcp
   capabilities:
   - READ
   - WRITE

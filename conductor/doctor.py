@@ -127,7 +127,13 @@ def _tool_availability_check(ontology_path: Path) -> DoctorCheck:
 
         for tool in tools:
             total_tools += 1
-            tool_name = tool if isinstance(tool, str) else str(list(tool.values())[0]) if isinstance(tool, dict) and tool else str(tool)
+            # Support both normalized {name, type} and legacy ontology formats
+            if isinstance(tool, str):
+                tool_name = tool
+            elif isinstance(tool, dict):
+                tool_name = str(tool.get("name", "")) if "name" in tool else str(list(tool.values())[0]) if tool else ""
+            else:
+                tool_name = str(tool)
 
             # CLI tools: check if binary exists on PATH
             if "CLI" in protocols:
@@ -207,7 +213,139 @@ def _legacy_artifacts_check() -> DoctorCheck:
     )
 
 
-def _collect_checks(workflow_path: Path, *, include_tools: bool = False) -> list[DoctorCheck]:
+def _mas_role_definition_check() -> DoctorCheck:
+    """MAS: Verify ROLE_ACTIONS is populated for all phases."""
+    from .constants import PHASES, ROLE_ACTIONS
+
+    errors: list[str] = []
+    for phase in PHASES:
+        if phase not in ROLE_ACTIONS:
+            errors.append(f"Phase {phase} missing from ROLE_ACTIONS")
+        else:
+            actions = ROLE_ACTIONS[phase]
+            if not actions.get("allowed"):
+                errors.append(f"Phase {phase} has empty 'allowed' actions in ROLE_ACTIONS")
+            if not actions.get("forbidden"):
+                errors.append(f"Phase {phase} has empty 'forbidden' actions in ROLE_ACTIONS")
+    return DoctorCheck(
+        name="mas:role-definitions",
+        ok=not errors,
+        errors=errors,
+        hints=["Ensure ROLE_ACTIONS in constants.py defines allowed/forbidden for all phases."] if errors else [],
+    )
+
+
+def _mas_termination_condition_check() -> DoctorCheck:
+    """MAS: Verify circuit breaker limits are configured."""
+    from .constants import MAX_PHASE_MINUTES, MAX_SESSION_MINUTES, load_circuit_breaker_config
+
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    if MAX_PHASE_MINUTES <= 0:
+        errors.append(f"MAX_PHASE_MINUTES is {MAX_PHASE_MINUTES} (must be > 0)")
+    if MAX_SESSION_MINUTES <= 0:
+        errors.append(f"MAX_SESSION_MINUTES is {MAX_SESSION_MINUTES} (must be > 0)")
+
+    cb = load_circuit_breaker_config()
+    if cb["max_phase_minutes"] <= 0:
+        errors.append(f"Resolved max_phase_minutes is {cb['max_phase_minutes']} (must be > 0)")
+    if cb["max_session_minutes"] <= 0:
+        errors.append(f"Resolved max_session_minutes is {cb['max_session_minutes']} (must be > 0)")
+    if cb["max_phase_minutes"] > cb["max_session_minutes"]:
+        warnings.append(
+            f"max_phase_minutes ({cb['max_phase_minutes']}) > max_session_minutes ({cb['max_session_minutes']})"
+        )
+    return DoctorCheck(
+        name="mas:termination-conditions",
+        ok=not errors,
+        errors=errors,
+        warnings=warnings,
+        hints=["Check MAX_PHASE_MINUTES and MAX_SESSION_MINUTES in constants.py or .conductor.yaml."] if errors else [],
+    )
+
+
+def _mas_context_preservation_check() -> DoctorCheck:
+    """MAS: Verify SESSION_EVENTS_FILE logging is active (file exists and recent)."""
+    import time
+
+    from .constants import SESSION_EVENTS_FILE
+
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    if not SESSION_EVENTS_FILE.exists():
+        warnings.append(f"Session events file not found: {SESSION_EVENTS_FILE}")
+        warnings.append("No session history is being preserved. Run a session to create it.")
+    else:
+        try:
+            mtime = SESSION_EVENTS_FILE.stat().st_mtime
+            age_hours = (time.time() - mtime) / 3600
+            if age_hours > 168:  # 7 days
+                warnings.append(
+                    f"Session events file last modified {age_hours:.0f}h ago "
+                    "(>168h). Context may be stale."
+                )
+        except OSError as exc:
+            errors.append(f"Cannot stat session events file: {exc}")
+
+    return DoctorCheck(
+        name="mas:context-preservation",
+        ok=not errors,
+        errors=errors,
+        warnings=warnings,
+        hints=["Run sessions regularly to keep event context fresh."] if warnings else [],
+    )
+
+
+def _mas_governance_integrity_check() -> DoctorCheck:
+    """MAS: Verify governance integrity in VALID_TRANSITIONS.
+
+    Checks:
+    - No direct self-loops (state -> same state)
+    - Every state can eventually reach DONE (no dead-end cycles)
+    Note: back-transitions (SHAPE->FRAME for reshape) are intentional
+    and are not considered circular dependency errors, as long as DONE
+    remains reachable from every state.
+    """
+    from .constants import VALID_TRANSITIONS
+
+    errors: list[str] = []
+
+    # Check for direct self-loops
+    for state, targets in VALID_TRANSITIONS.items():
+        if state in targets:
+            errors.append(f"Self-loop detected: {state} -> {state}")
+
+    # Check that every state can reach DONE via BFS
+    def _can_reach_done(start: str) -> bool:
+        visited: set[str] = set()
+        queue = [start]
+        while queue:
+            current = queue.pop(0)
+            if current == "DONE":
+                return True
+            if current in visited:
+                continue
+            visited.add(current)
+            for neighbor in VALID_TRANSITIONS.get(current, []):
+                if neighbor not in visited:
+                    queue.append(neighbor)
+        return False
+
+    for state in VALID_TRANSITIONS:
+        if not _can_reach_done(state):
+            errors.append(f"State {state} cannot reach DONE — potential dead-end cycle")
+
+    return DoctorCheck(
+        name="mas:governance-integrity",
+        ok=not errors,
+        errors=errors,
+        hints=["Fix circular transitions in VALID_TRANSITIONS in constants.py."] if errors else [],
+    )
+
+
+def _collect_checks(workflow_path: Path, *, include_tools: bool = False, include_mas: bool = False) -> list[DoctorCheck]:
     checks: list[DoctorCheck] = [
         _schema_check(REGISTRY_PATH, "registry"),
         _schema_check(GOVERNANCE_PATH, "governance"),
@@ -229,6 +367,14 @@ def _collect_checks(workflow_path: Path, *, include_tools: bool = False) -> list
 
     if include_tools:
         checks.append(_tool_availability_check(ONTOLOGY_PATH))
+
+    if include_mas:
+        checks.extend([
+            _mas_role_definition_check(),
+            _mas_termination_condition_check(),
+            _mas_context_preservation_check(),
+            _mas_governance_integrity_check(),
+        ])
 
     return checks
 
@@ -263,9 +409,15 @@ def _apply_autofixes() -> list[str]:
     return fixes
 
 
-def run_doctor(workflow_path: Path, format_name: str = "text", apply: bool = False, tools: bool = False) -> dict[str, Any]:
+def run_doctor(
+    workflow_path: Path,
+    format_name: str = "text",
+    apply: bool = False,
+    tools: bool = False,
+    mas_health: bool = False,
+) -> dict[str, Any]:
     applied_fixes = _apply_autofixes() if apply else []
-    checks = _collect_checks(workflow_path, include_tools=tools)
+    checks = _collect_checks(workflow_path, include_tools=tools, include_mas=mas_health)
 
     ok = all(check.ok for check in checks)
     report = {

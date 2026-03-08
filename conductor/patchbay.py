@@ -19,6 +19,7 @@ from .constants import (
     WORKFLOW_DSL_PATH,
     organ_short,
     get_phase_clusters,
+    WORKSPACE,
 )
 from .contracts import assert_contract
 from .executor import WorkflowExecutor
@@ -63,6 +64,7 @@ class Patchbay:
             ("orchestra", lambda: self._orchestra_section()),
             ("score", lambda: self.executor.get_briefing()),
             ("pulse", lambda: self._pulse_section(organ_filter)),
+            ("corpus", lambda: self._corpus_section()),
             ("queue", lambda: self._queue_section(organ_filter)),
             ("stats", lambda: self._stats_section()),
             ("oracle", lambda: self._oracle_section()),
@@ -299,6 +301,52 @@ class Patchbay:
             },
         }
 
+    def _corpus_section(self) -> dict:
+        """Research corpus → implementation coverage dashboard."""
+        intake_dir = WORKSPACE / "alchemia-ingestvm" / "intake" / "ai-transcripts"
+        if not intake_dir.is_dir():
+            return {"available": False, "reason": "intake directory not found"}
+
+        total = 0
+        by_status: Counter = Counter()
+        activated_docs: list[dict] = []
+        total_tasks = 0
+        completed_tasks = 0
+
+        for fpath in sorted(intake_dir.glob("*.json")):
+            try:
+                data = json.loads(fpath.read_text())
+            except (json.JSONDecodeError, OSError):
+                continue
+
+            total += 1
+            status = data.get("status", "unknown")
+            by_status[status] += 1
+
+            impl = data.get("implementation_status")
+            if impl:
+                extracted = len(impl.get("tasks_extracted", []))
+                completed = len(impl.get("tasks_completed", []))
+                total_tasks += extracted
+                completed_tasks += completed
+                activated_docs.append({
+                    "slug": fpath.stem,
+                    "tasks_extracted": extracted,
+                    "tasks_completed": completed,
+                    "completion_rate": impl.get("completion_rate", 0),
+                })
+
+        return {
+            "available": True,
+            "total_documents": total,
+            "by_status": dict(by_status),
+            "activated_count": len(activated_docs),
+            "total_tasks_extracted": total_tasks,
+            "total_tasks_completed": completed_tasks,
+            "task_completion_rate": round(completed_tasks / total_tasks, 2) if total_tasks else 0,
+            "activated_docs": activated_docs,
+        }
+
     def _suggest_next(self, organ_filter: str | None = None) -> str:
         """Suggest the single most impactful next action."""
         session = self.engine._load_session()
@@ -427,6 +475,31 @@ class Patchbay:
                 for s in recent:
                     lines.append(f"    {s.get('session_id', '?')} ({s.get('result', '?')}, {s.get('duration_minutes', 0)}m)")
 
+        elif "corpus" in data:
+            corpus = data["corpus"]
+            if corpus.get("available"):
+                lines.append("")
+                lines.append("  RESEARCH CORPUS")
+                lines.append("  " + "-" * 68)
+                total_docs = corpus.get("total_documents", 0)
+                by_status = corpus.get("by_status", {})
+                status_parts = [f"{v} {k}" for k, v in sorted(by_status.items(), key=lambda x: -x[1])]
+                lines.append(f"  Documents: {total_docs} ({', '.join(status_parts)})")
+                activated = corpus.get("activated_count", 0)
+                task_rate = corpus.get("task_completion_rate", 0)
+                total_t = corpus.get("total_tasks_extracted", 0)
+                done_t = corpus.get("total_tasks_completed", 0)
+                lines.append(f"  Activated: {activated}/{total_docs} docs | Tasks: {done_t}/{total_t} ({task_rate:.0%})")
+                lines.append("")
+                for doc in corpus.get("activated_docs", []):
+                    slug = doc["slug"]
+                    rate = doc.get("completion_rate", 0)
+                    extracted = doc.get("tasks_extracted", 0)
+                    lines.append(f"    {slug}: {extracted} tasks ({rate:.0%})")
+            else:
+                lines.append("")
+                lines.append(f"  CORPUS: {corpus.get('reason', 'unavailable')}")
+
         else:
             return json.dumps(data, indent=2)
 
@@ -534,6 +607,22 @@ class Patchbay:
                     lines.append(f"  {viols} organs over WIP limit | {total_cand} CANDIDATE system-wide")
                 else:
                     lines.append(f"  No WIP violations | {total_cand} CANDIDATE system-wide")
+
+        # Corpus
+        corpus = data.get("corpus", {})
+        if corpus.get("available") and not sess.get("active"):
+            lines.append("")
+            lines.append("  RESEARCH CORPUS")
+            lines.append("  " + "-" * 68)
+            total_docs = corpus.get("total_documents", 0)
+            by_status = corpus.get("by_status", {})
+            status_parts = [f"{v} {k}" for k, v in sorted(by_status.items(), key=lambda x: -x[1])]
+            lines.append(f"  Documents: {total_docs} ({', '.join(status_parts)})")
+            activated = corpus.get("activated_count", 0)
+            task_rate = corpus.get("task_completion_rate", 0)
+            total_t = corpus.get("total_tasks_extracted", 0)
+            done_t = corpus.get("total_tasks_completed", 0)
+            lines.append(f"  Activated: {activated}/{total_docs} docs | Tasks: {done_t}/{total_t} ({task_rate:.0%})")
 
         # Queue
         queue = data.get("queue", {})

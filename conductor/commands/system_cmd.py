@@ -38,6 +38,10 @@ def handle(args, *, ontology, engine) -> None:
         _handle_wiring(args)
     elif cmd == "version":
         _handle_version()
+    elif cmd == "dora":
+        _handle_dora(args)
+    elif cmd == "prompt":
+        _handle_prompt(args)
 
 
 def _handle_patch(args, *, ontology) -> None:
@@ -109,7 +113,11 @@ def _handle_doctor(args) -> None:
     from ..doctor import assert_doctor_ok, render_doctor_text, run_doctor
 
     report = run_doctor(
-        workflow_path=args.workflow, format_name=args.format, apply=args.apply, tools=args.tools
+        workflow_path=args.workflow,
+        format_name=args.format,
+        apply=args.apply,
+        tools=args.tools,
+        mas_health=getattr(args, "mas_health", False),
     )
     if args.format == "json":
         print(json.dumps(report, indent=2))
@@ -301,3 +309,71 @@ def _handle_version() -> None:
     from conductor import __version__
 
     print(f"  conductor {__version__}")
+
+
+def _handle_dora(args) -> None:
+    from ..dora import compute_dora, render_dora_text
+
+    metrics = compute_dora(days=args.days)
+    if args.format == "json":
+        print(json.dumps(metrics.to_dict(), indent=2))
+    else:
+        print(render_dora_text(metrics))
+
+
+def _handle_prompt(args) -> None:
+    from ..prompt_registry import PromptRegistry
+
+    registry = PromptRegistry()
+
+    if args.prompt_command == "register":
+        if not args.file.exists():
+            from ..constants import ConductorError
+            raise ConductorError(f"Prompt file not found: {args.file}")
+        content = args.file.read_text()
+        template = registry.register(
+            name=args.name,
+            content=content,
+            model_compat=args.models,
+            tags=args.tags or [],
+            performance_notes=args.notes,
+        )
+        print(f"  Registered: {template.id}")
+        print(f"  Version: {template.version}")
+        print(f"  Models: {', '.join(template.model_compatibility)}")
+
+    elif args.prompt_command == "list":
+        fmt = getattr(args, "format", "text")
+        tag = getattr(args, "tag", None)
+        model = getattr(args, "model", None)
+        if tag or model:
+            prompts = registry.search(tag=tag, model=model)
+        else:
+            prompts = registry.list_prompts()
+        if fmt == "json":
+            print(json.dumps([p.to_dict() for p in prompts], indent=2))
+        else:
+            if not prompts:
+                print("  No prompt templates registered.")
+            else:
+                print(f"  {'Name':<30} {'Version':<10} {'Models':<30} {'Tags'}")
+                print("  " + "-" * 80)
+                for p in prompts:
+                    models = ", ".join(p.model_compatibility[:3])
+                    tags = ", ".join(p.tags[:3])
+                    print(f"  {p.name:<30} {p.version:<10} {models:<30} {tags}")
+
+    elif args.prompt_command == "get":
+        fmt = getattr(args, "format", "text")
+        version = getattr(args, "version", None)
+        template = registry.get(args.name, version=version)
+        if fmt == "json":
+            print(json.dumps(template.to_dict(), indent=2))
+        else:
+            print(f"  Name: {template.name}")
+            print(f"  Version: {template.version}")
+            print(f"  Models: {', '.join(template.model_compatibility)}")
+            print(f"  Tags: {', '.join(template.tags)}")
+            if template.performance_notes:
+                print(f"  Notes: {template.performance_notes}")
+            print(f"\n{template.content}")

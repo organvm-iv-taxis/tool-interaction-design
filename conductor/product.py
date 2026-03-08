@@ -612,3 +612,130 @@ echo "Dependencies installed. You can now enable the extension in Gemini CLI."
             print(f"    Total session time: {total_minutes} minutes ({total_minutes / 60:.1f} hours)")
             print(f"    Average session: {total_minutes / len(session_logs):.0f} minutes")
         print()
+
+    @staticmethod
+    def export_literate(session_id: str, output_path: Optional[Path] = None) -> Path:
+        """Weave session logs, code diffs, and commentary into a literate programming document.
+
+        Reads session-log.yaml, spec.md, plan.md, status.md, and git log
+        for the session, then produces a markdown document interleaving
+        specification excerpts, plan steps, code diffs, and status notes.
+        """
+        import subprocess
+
+        session_dir = SESSIONS_DIR / session_id
+        if not session_dir.exists():
+            raise ConductorError(f"Session directory not found: {session_dir}")
+
+        log_path = session_dir / "session-log.yaml"
+        if not log_path.exists():
+            raise ConductorError(f"Session log not found: {log_path}")
+
+        log = yaml.safe_load(log_path.read_text())
+
+        lines: list[str] = [
+            f"# Literate Session: {session_id}\n",
+            f"**Organ:** {log.get('organ', 'N/A')} | "
+            f"**Repo:** {log.get('repo', 'N/A')} | "
+            f"**Duration:** {log.get('duration_minutes', 0)} minutes | "
+            f"**Result:** {log.get('result', 'N/A')}\n",
+            f"**Scope:** {log.get('scope', 'N/A')}\n",
+            f"**Timestamp:** {log.get('timestamp', 'N/A')}\n",
+        ]
+
+        # --- Specification ---
+        spec_path = session_dir / "spec.md"
+        if spec_path.exists():
+            spec_content = spec_path.read_text().strip()
+            if spec_content:
+                lines.append("---\n")
+                lines.append("## Specification\n")
+                lines.append(spec_content)
+                lines.append("")
+
+        # --- Plan ---
+        plan_path = session_dir / "plan.md"
+        if plan_path.exists():
+            plan_content = plan_path.read_text().strip()
+            if plan_content:
+                lines.append("---\n")
+                lines.append("## Plan\n")
+                lines.append(plan_content)
+                lines.append("")
+
+        # --- Phase Summary ---
+        phases = log.get("phases", {})
+        if phases:
+            lines.append("---\n")
+            lines.append("## Phase Summary\n")
+            lines.append("| Phase | Duration | Tools | Commits | Visits |")
+            lines.append("|-------|----------|-------|---------|--------|")
+            for phase_name in PHASES:
+                pd = phases.get(phase_name)
+                if pd and isinstance(pd, dict):
+                    tools = ", ".join(pd.get("tools_used", []))[:50] or "none"
+                    lines.append(
+                        f"| {phase_name} | {pd.get('duration', 0)}m | "
+                        f"{tools} | {pd.get('commits', 0)} | {pd.get('visits', 1)} |"
+                    )
+            lines.append("")
+
+        # --- Code Diffs (from git log) ---
+        try:
+            branch_name = f"feat/{session_id.split('-', 3)[-1]}" if "-" in session_id else ""
+            if branch_name:
+                result = subprocess.run(
+                    ["git", "log", "--oneline", "--diff-filter=ACDMR",
+                     "--no-merges", "-20", f"--grep={session_id}"],
+                    capture_output=True, text=True, timeout=10,
+                    cwd=str(BASE),
+                )
+                if result.returncode == 0 and result.stdout.strip():
+                    lines.append("---\n")
+                    lines.append("## Git Activity\n")
+                    lines.append("```")
+                    lines.append(result.stdout.strip())
+                    lines.append("```\n")
+        except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+            pass
+
+        # --- Status ---
+        status_path = session_dir / "status.md"
+        if status_path.exists():
+            status_content = status_path.read_text().strip()
+            if status_content:
+                lines.append("---\n")
+                lines.append("## Status Notes\n")
+                lines.append(status_content)
+                lines.append("")
+
+        # --- Warnings ---
+        warnings = log.get("warnings", [])
+        if warnings:
+            lines.append("---\n")
+            lines.append("## Warnings\n")
+            for w in warnings:
+                lines.append(f"- {w}")
+            lines.append("")
+
+        # --- Outputs ---
+        outputs = log.get("outputs", {})
+        if outputs:
+            lines.append("---\n")
+            lines.append("## Triple-Serving Outputs\n")
+            for cat, desc in outputs.items():
+                lines.append(f"- **{cat}**: {desc}")
+            lines.append("")
+
+        lines.append("---\n")
+        lines.append("*Generated by conductor literate export.*\n")
+
+        content = "\n".join(lines)
+
+        if output_path is None:
+            EXPORTS_DIR.mkdir(parents=True, exist_ok=True)
+            output_path = EXPORTS_DIR / f"{session_id}-literate.md"
+
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(content)
+        return output_path

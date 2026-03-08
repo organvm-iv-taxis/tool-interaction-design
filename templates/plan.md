@@ -1,3 +1,8 @@
+---
+status: Draft
+# Lifecycle: Draft -> Under Review -> Approved -> Superseded
+---
+
 # Plan: {{ scope }}
 
 **Organ:** {{ organ }} | **Repo:** {{ repo }}
@@ -33,3 +38,9 @@
 ## Risks
 
 <!-- What could go wrong. Mitigations. -->
+
+## Revision History
+
+| Date | Author | Changes |
+|------|--------|---------|
+| {{ date }} | <!-- author --> | Initial draft |

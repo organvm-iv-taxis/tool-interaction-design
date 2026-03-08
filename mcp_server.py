@@ -677,6 +677,77 @@ def guardian_corpus(search: str | None = None) -> str:
         return _encode_mcp_payload({"error": str(e)})
 
 
+def session_start(organ: str, repo: str, scope: str) -> str:
+    """Start a new Conductor session with FRAME→SHAPE→BUILD→PROVE lifecycle."""
+    try:
+        ontology = get_ontology()
+        engine = SessionEngine(ontology)
+        session = engine.start(organ, repo, scope, git_branch=False)
+        phase = session.current_phase
+        return _encode_mcp_payload({
+            "session_id": session.session_id,
+            "organ": session.organ,
+            "repo": session.repo,
+            "scope": session.scope,
+            "current_phase": phase,
+            "ai_role": PHASE_ROLES.get(phase, "Unknown"),
+            "active_clusters": get_phase_clusters().get(phase, []),
+            "message": f"Session started in {phase} phase. Explore before building.",
+        })
+    except Exception as e:
+        return _encode_mcp_payload({"error": str(e)})
+
+
+def session_transition(target_phase: str) -> str:
+    """Transition to a new phase. Hard gate: FRAME→SHAPE→BUILD→PROVE only."""
+    try:
+        ontology = get_ontology()
+        engine = SessionEngine(ontology)
+        engine.phase(target_phase)
+        # Read back the session state after transition
+        session = engine._load_session()
+        if not session:
+            return _encode_mcp_payload({"error": "Session closed after transition"})
+        phase = session.current_phase
+        return _encode_mcp_payload({
+            "session_id": session.session_id,
+            "current_phase": phase,
+            "ai_role": PHASE_ROLES.get(phase, "Unknown"),
+            "active_clusters": get_phase_clusters().get(phase, []),
+            "duration_minutes": session.duration_minutes,
+            "message": f"Transitioned to {phase}.",
+        })
+    except Exception as e:
+        return _encode_mcp_payload({"error": str(e)})
+
+
+def gate_check() -> str:
+    """Check for blocking advisories before major actions."""
+    try:
+        from conductor.guardian import GuardianAngel
+        from conductor.oracle import OracleContext
+        guardian = GuardianAngel()
+        session = get_session()
+        ctx = OracleContext(
+            trigger="gate_check",
+            session_id=session.get("session_id", "") if session else "",
+            current_phase=session.get("current_phase", "") if session else "",
+            organ=session.get("organ", "") if session else "",
+        )
+        advisories = guardian.counsel(ctx, gate_mode=True)
+        gate_advisories = [a for a in advisories if a.gate_action]
+        return _encode_mcp_payload({
+            "has_session": session is not None,
+            "current_phase": session.get("current_phase", "") if session else "NONE",
+            "gate_advisories": [a.to_dict() for a in gate_advisories],
+            "all_clear": len(gate_advisories) == 0,
+            "advisory_count": len(advisories),
+            "top_advisories": [a.to_dict() for a in advisories[:3]],
+        })
+    except Exception as e:
+        return _encode_mcp_payload({"error": str(e)})
+
+
 def workflow_status() -> str:
     from conductor.executor import WorkflowExecutor
     from conductor.constants import WORKFLOW_DSL_PATH
@@ -705,6 +776,135 @@ def workflow_step(tool_output: Any = None, checkpoint_action: str | None = None)
         return _encode_mcp_payload(result)
     except Exception as e:
         return _encode_mcp_payload({"error": f"Failed to run step '{current_step}': {str(e)}"})
+
+
+# ---------------------------------------------------------------------------
+# Directive ingestion
+# ---------------------------------------------------------------------------
+
+
+def ingest(content: str, source_agent: str, topic: str, tags: list[str] | None = None) -> str:
+    """Ingest raw content from a directive, fan out to all targets.
+
+    Produces 4 artifacts:
+    1. Reference file in praxis-perpetua/research/
+    2. Alchemia intake artifact in alchemia-ingestvm/intake/ai-transcripts/
+    3. SOP stub in organvm-engine/.sops/ (if not already present)
+    4. Engine guidance in response JSON
+    """
+    import hashlib
+    import os
+    import re
+    from datetime import datetime, timezone
+
+    workspace = Path(os.environ.get("ORGANVM_WORKSPACE_DIR", Path.home() / "Workspace"))
+    now = datetime.now(timezone.utc)
+    date_str = now.strftime("%Y-%m-%d")
+    slug = re.sub(r"[^a-z0-9]+", "-", topic.lower()).strip("-")
+    content_hash = hashlib.sha256(content.encode()).hexdigest()[:16]
+    tag_list = tags or []
+    artifacts: dict[str, Any] = {}
+
+    # 1. Reference file -> praxis-perpetua/research/
+    research_dir = workspace / "meta-organvm" / "praxis-perpetua" / "research"
+    research_dir.mkdir(parents=True, exist_ok=True)
+    ref_path = research_dir / f"{date_str}-{slug}.md"
+    # Avoid clobbering existing files
+    counter = 2
+    while ref_path.exists():
+        ref_path = research_dir / f"{date_str}-{slug}-v{counter}.md"
+        counter += 1
+    ref_content = (
+        f"---\n"
+        f"source: {source_agent}\n"
+        f"date: {date_str}\n"
+        f"topic: {topic}\n"
+        f"tags: {json.dumps(tag_list)}\n"
+        f"content_hash: {content_hash}\n"
+        f"ingested_via: conductor_ingest\n"
+        f"---\n"
+        f"# {topic.replace('-', ' ').title()}\n\n"
+        f"{content}\n"
+    )
+    ref_path.write_text(ref_content, encoding="utf-8")
+    artifacts["reference"] = str(ref_path)
+
+    # 2. Alchemia intake artifact
+    intake_dir = workspace / "alchemia-ingestvm" / "intake" / "ai-transcripts"
+    intake_dir.mkdir(parents=True, exist_ok=True)
+    intake_path = intake_dir / f"{date_str}-{slug}.json"
+    counter = 2
+    while intake_path.exists():
+        intake_path = intake_dir / f"{date_str}-{slug}-v{counter}.json"
+        counter += 1
+    intake_data = {
+        "schema_version": "1.0",
+        "source": source_agent,
+        "source_type": "ai_transcript",
+        "topic": topic,
+        "tags": tag_list,
+        "content_preview": content[:500],
+        "content_hash": content_hash,
+        "reference_path": str(ref_path),
+        "status": "intake",
+        "ingested_at": now.isoformat(),
+    }
+    intake_path.write_text(json.dumps(intake_data, indent=2), encoding="utf-8")
+    artifacts["intake"] = str(intake_path)
+
+    # 3. SOP stub (only if not already present)
+    sops_dir = workspace / "meta-organvm" / "organvm-engine" / ".sops"
+    sops_dir.mkdir(parents=True, exist_ok=True)
+    sop_path = sops_dir / f"{slug}.md"
+    if sop_path.exists():
+        artifacts["sop"] = str(sop_path)
+        artifacts["sop_status"] = "already_exists"
+    else:
+        title = topic.replace("-", " ").title()
+        sop_content = (
+            f"---\n"
+            f"sop: true\n"
+            f"name: {slug}\n"
+            f"scope: system\n"
+            f"phase: any\n"
+            f"triggers: []\n"
+            f"complements: []\n"
+            f"overrides: null\n"
+            f"---\n"
+            f"# {title}\n\n"
+            f"## Purpose\n\n"
+            f"Generated from {source_agent} transcript on {date_str}.\n"
+            f"Topic: {topic}\n\n"
+            f"## Key Findings\n\n"
+            f"<!-- Extract key findings from the ingested content -->\n\n"
+            f"## Procedure\n\n"
+            f"<!-- Define operational procedures based on findings -->\n\n"
+            f"## Verification\n\n"
+            f"<!-- How to confirm procedures are followed -->\n"
+        )
+        sop_path.write_text(sop_content, encoding="utf-8")
+        artifacts["sop"] = str(sop_path)
+        artifacts["sop_status"] = "created"
+
+    # 4. Engine guidance
+    artifacts["guidance"] = {
+        "next_steps": [
+            f"Review reference at {artifacts['reference']}",
+            f"Run 'alchemia intake' to process {artifacts['intake']}",
+            f"Run 'organvm sop discover --json | grep {slug}' to verify SOP",
+            "Update SOP with extracted findings from the transcript",
+        ],
+        "prompting_module": "organvm_engine.prompting.standards" if "prompting" in slug else None,
+    }
+
+    return _encode_mcp_payload({
+        "status": "ingested",
+        "topic": topic,
+        "source_agent": source_agent,
+        "content_hash": content_hash,
+        "artifacts": artifacts,
+    })
+
 
 # ---------------------------------------------------------------------------
 # MCP Server setup
@@ -937,6 +1137,36 @@ TOOLS = [
             },
         },
     ),
+    # Session lifecycle tools
+    Tool(
+        name="conductor_session_start",
+        description="Start a new Conductor session with FRAME→SHAPE→BUILD→PROVE lifecycle. Must be called before any work begins.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "organ": {"type": "string", "description": "Organ key (I, II, III, IV, V, VI, VII, META)"},
+                "repo": {"type": "string", "description": "Repository name within the organ"},
+                "scope": {"type": "string", "description": "Brief description of what this session will accomplish"},
+            },
+            "required": ["organ", "repo", "scope"],
+        },
+    ),
+    Tool(
+        name="conductor_session_transition",
+        description="Transition to next phase. Hard gate: must follow FRAME→SHAPE→BUILD→PROVE order. Cannot skip phases.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "target_phase": {"type": "string", "enum": ["SHAPE", "BUILD", "PROVE", "DONE", "FRAME"], "description": "Target phase to transition to"},
+            },
+            "required": ["target_phase"],
+        },
+    ),
+    Tool(
+        name="conductor_gate_check",
+        description="Check for blocking advisories before major actions. Returns gate advisories from Guardian Angel.",
+        inputSchema={"type": "object", "properties": {}},
+    ),
     Tool(
         name="conductor_workflow_status",
         description="Get the briefing of the current active workflow (including current step, status, and suggested tool call).",
@@ -951,6 +1181,25 @@ TOOLS = [
                 "tool_output": {"description": "Output from the tool executed for the step (if applicable)"},
                 "checkpoint_action": {"type": "string", "description": "For CHECKPOINT steps, provide 'approve', 'modify', or 'abort'."},
             },
+        },
+    ),
+    # Directive ingestion
+    Tool(
+        name="conductor_ingest",
+        description="Ingest raw content from a directive prefix (ingest:). Fans out to reference file, alchemia intake, SOP stub, and engine guidance.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "content": {"type": "string", "description": "Raw content to ingest (e.g., transcript text)"},
+                "source_agent": {"type": "string", "description": "Source agent: gemini, claude, chatgpt, grok, perplexity, or manual"},
+                "topic": {"type": "string", "description": "Topic slug (e.g., prompting-standards)"},
+                "tags": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional tags for classification",
+                },
+            },
+            "required": ["content", "source_agent", "topic"],
         },
     ),
 ]
@@ -982,8 +1231,19 @@ DISPATCH = {
     "conductor_guardian_landscape": lambda args: guardian_landscape((args or {})["decision"], (args or {}).get("context")),
     "conductor_guardian_mastery": lambda args: guardian_mastery(),
     "conductor_guardian_corpus": lambda args: guardian_corpus((args or {}).get("search")),
+    # Session lifecycle
+    "conductor_session_start": lambda args: session_start((args or {})["organ"], (args or {})["repo"], (args or {})["scope"]),
+    "conductor_session_transition": lambda args: session_transition((args or {})["target_phase"]),
+    "conductor_gate_check": lambda args: gate_check(),
     "conductor_workflow_status": lambda args: workflow_status(),
     "conductor_workflow_step": lambda args: workflow_step((args or {}).get("tool_output"), (args or {}).get("checkpoint_action")),
+    # Directive ingestion
+    "conductor_ingest": lambda args: ingest(
+        (args or {})["content"],
+        (args or {})["source_agent"],
+        (args or {})["topic"],
+        (args or {}).get("tags"),
+    ),
 }
 
 

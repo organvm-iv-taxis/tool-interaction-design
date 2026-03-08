@@ -11,6 +11,8 @@ from typing import Any, Optional
 
 from .constants import WORK_REGISTRY_FILE, atomic_write
 
+MOSCOW_PRIORITIES = {"MUST", "SHOULD", "COULD", "WONT"}
+
 
 @dataclass
 class WorkItemRecord:
@@ -23,6 +25,7 @@ class WorkItemRecord:
     description: str
     suggested_command: str
     score: int
+    created_at: float = 0.0
     status: str = "OPEN"  # OPEN, CLAIMED, RESOLVED, BLOCKED
     owner: Optional[str] = None
     claimed_at: Optional[float] = None

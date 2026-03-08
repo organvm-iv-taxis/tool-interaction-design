@@ -162,6 +162,15 @@ def rotate_log(log_path: Path, max_lines: int = _MAX_LOG_LINES, keep_lines: int 
         return False
 
 
+def log_cluster_activation(cluster_id: str, phase: str, session_id: str) -> None:
+    """Track which clusters are activated during sessions."""
+    log_event("cluster.activation", {
+        "cluster_id": cluster_id,
+        "phase": phase,
+        "session_id": session_id,
+    })
+
+
 def log_event(event_type: str, details: dict[str, Any] | None = None, *, failed: bool = False, failure_bucket: str | None = None) -> None:
     """Append JSONL event and maintain aggregate failure counters."""
     policy = load_policy()

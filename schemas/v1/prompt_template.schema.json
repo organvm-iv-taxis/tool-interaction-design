@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "prompt_template.schema.json",
+  "title": "Prompt Template",
+  "description": "Schema for versioned prompt template metadata in the conductor prompt registry.",
+  "type": "object",
+  "required": ["id", "name", "version", "content", "model_compatibility", "tags", "created_at", "updated_at"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique identifier in name@version format.",
+      "pattern": "^[a-zA-Z0-9_-]+@\\d+\\.\\d+\\.\\d+$"
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable prompt template name.",
+      "minLength": 1
+    },
+    "version": {
+      "type": "string",
+      "description": "Semantic version string.",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "content": {
+      "type": "string",
+      "description": "The prompt template content.",
+      "minLength": 1
+    },
+    "model_compatibility": {
+      "type": "array",
+      "description": "List of compatible model identifiers.",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "tags": {
+      "type": "array",
+      "description": "Categorization tags.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "created_at": {
+      "type": "number",
+      "description": "Unix timestamp of creation."
+    },
+    "updated_at": {
+      "type": "number",
+      "description": "Unix timestamp of last update."
+    },
+    "performance_notes": {
+      "type": "string",
+      "description": "Optional notes about prompt performance.",
+      "default": ""
+    }
+  },
+  "additionalProperties": false
+}

@@ -170,6 +170,14 @@ DETECTOR_REGISTRY: dict[str, dict[str, Any]] = {
     "canonical_practice": {"category": "wisdom", "default_enabled": True, "phase": "context"},
     "business_insight": {"category": "business", "default_enabled": True, "phase": "context"},
     "mastery_progress": {"category": "growth", "default_enabled": True, "phase": "stateless"},
+    # Conductor activation detectors (process anti-patterns)
+    "no_session": {"category": "gate", "default_enabled": True, "phase": "stateless"},
+    "phase_skip": {"category": "gate", "default_enabled": True, "phase": "context"},
+    "context_switching": {"category": "process", "default_enabled": True, "phase": "stateless"},
+    "infrastructure_gravity": {"category": "process", "default_enabled": True, "phase": "stateless"},
+    "session_fragmentation": {"category": "process", "default_enabled": True, "phase": "stateless"},
+    # Phase impasse detection
+    "phase_impasse": {"category": "process", "default_enabled": True, "phase": "stateless"},
 }
 
 
@@ -1414,6 +1422,94 @@ class Oracle:
         stats = self._load_stats()
         return [Advisory(**d) for d in detect_burnout_risk(stats)]
 
+    def _detect_phase_impasse(self) -> list[Advisory]:
+        """Detect when the current phase is running significantly longer than historical median."""
+        advisories: list[Advisory] = []
+        from .constants import SESSION_STATE_FILE
+
+        if not SESSION_STATE_FILE.exists():
+            return advisories
+
+        try:
+            session = json.loads(SESSION_STATE_FILE.read_text())
+        except (OSError, json.JSONDecodeError):
+            return advisories
+
+        current_phase = session.get("current_phase", "")
+        if current_phase == "DONE" or not current_phase:
+            return advisories
+
+        # Find current phase start time
+        phase_start = 0.0
+        for pl in session.get("phase_logs", []):
+            if pl.get("name") == current_phase and pl.get("end_time", 0) == 0:
+                phase_start = pl.get("start_time", 0)
+                break
+
+        if not phase_start:
+            return advisories
+
+        current_duration = (time.time() - phase_start) / 60  # minutes
+
+        # Compute median phase duration from session logs
+        import yaml
+        phase_durations: list[float] = []
+        for log_path in SESSIONS_DIR.glob("*/session-log.yaml"):
+            try:
+                log = yaml.safe_load(log_path.read_text())
+                phases = (log or {}).get("phases", {})
+                phase_data = phases.get(current_phase)
+                if isinstance(phase_data, dict):
+                    dur = phase_data.get("duration", 0)
+                    if dur > 0:
+                        phase_durations.append(dur)
+            except (OSError, yaml.YAMLError):
+                continue
+
+        if len(phase_durations) < 3:
+            return advisories
+
+        # Compute median
+        sorted_durs = sorted(phase_durations)
+        n = len(sorted_durs)
+        median = sorted_durs[n // 2] if n % 2 else (sorted_durs[n // 2 - 1] + sorted_durs[n // 2]) / 2
+
+        if median <= 0:
+            return advisories
+
+        ratio = current_duration / median
+
+        if ratio > 3:
+            advisories.append(Advisory(
+                category="process",
+                severity="warning",
+                message=(
+                    f"{current_phase} phase running {ratio:.0f}x longer than median "
+                    f"({current_duration:.0f}m vs {median:.0f}m) — consider narrowing scope or transitioning."
+                ),
+                context={"phase": current_phase, "current_minutes": round(current_duration), "median_minutes": round(median), "ratio": round(ratio, 1)},
+                recommendation="Break the problem down, checkpoint progress, or transition to the next phase.",
+                detector="phase_impasse",
+                confidence=0.8,
+                tags=["process", "impasse"],
+            ))
+        elif ratio > 2:
+            advisories.append(Advisory(
+                category="process",
+                severity="caution",
+                message=(
+                    f"{current_phase} phase running {ratio:.0f}x longer than median "
+                    f"({current_duration:.0f}m vs {median:.0f}m) — consider narrowing scope."
+                ),
+                context={"phase": current_phase, "current_minutes": round(current_duration), "median_minutes": round(median), "ratio": round(ratio, 1)},
+                recommendation="Review scope and consider whether you're blocked on something.",
+                detector="phase_impasse",
+                confidence=0.7,
+                tags=["process", "impasse"],
+            ))
+
+        return advisories
+
     # ----- Guardian Angel detectors (wisdom-powered) -----
 
     def _detect_canonical_practice(self, ctx: OracleContext) -> list[Advisory]:
@@ -1612,6 +1708,108 @@ class Oracle:
             ))
 
         return advisories
+
+    # ----- Conductor activation detectors -----
+
+    def _detect_no_session(self) -> list[Advisory]:
+        """Block when no active session exists."""
+        from .constants import SESSION_STATE_FILE
+        if SESSION_STATE_FILE.exists():
+            return []
+        return [Advisory(
+            category="gate",
+            severity="critical",
+            message="No active Conductor session. Start one before working.",
+            recommendation="Call conductor_session_start with organ, repo, and scope.",
+            detector="no_session",
+            gate_action="block",
+            confidence=1.0,
+            tags=["gate", "session"],
+        )]
+
+    def _detect_phase_skip(self, ctx: OracleContext) -> list[Advisory]:
+        """Warn when prompt signals implementation intent but session is in FRAME."""
+        from .constants import SESSION_STATE_FILE
+        if not SESSION_STATE_FILE.exists():
+            return []
+        phase = ctx.current_phase
+        if phase not in ("FRAME", "SHAPE"):
+            return []
+        return [Advisory(
+            category="gate",
+            severity="warning",
+            message=f"You're in {phase} phase. Explore and design before building.",
+            recommendation=f"Transition to {'SHAPE' if phase == 'FRAME' else 'BUILD'} when ready: conductor_session_transition.",
+            detector="phase_skip",
+            gate_action="warn",
+            confidence=0.7,
+            tags=["gate", "phase"],
+        )]
+
+    def _detect_context_switching(self) -> list[Advisory]:
+        """Warn when recent sessions span too many different organs."""
+        from .constants import CONTEXT_SWITCH_THRESHOLD, CONTEXT_SWITCH_WINDOW
+        stats = self._load_stats()
+        recent = stats.get("recent_sessions", [])[-CONTEXT_SWITCH_WINDOW:]
+        if len(recent) < 3:
+            return []
+        organs = {s.get("organ", "") for s in recent if s.get("organ")}
+        if len(organs) >= CONTEXT_SWITCH_THRESHOLD:
+            return [Advisory(
+                category="process",
+                severity="warning",
+                message=f"Context switching: {len(organs)} different organs in last {len(recent)} sessions ({', '.join(sorted(organs))}). Focus reduces overhead.",
+                recommendation="Consider batching work within a single organ before switching.",
+                detector="context_switching",
+                confidence=0.75,
+                tags=["process", "context_switching"],
+            )]
+        return []
+
+    def _detect_infrastructure_gravity(self) -> list[Advisory]:
+        """Caution when >70% of recent sessions target META/IV (infrastructure) organs."""
+        from .constants import INFRASTRUCTURE_GRAVITY_THRESHOLD, INFRASTRUCTURE_GRAVITY_WINDOW
+        stats = self._load_stats()
+        recent = stats.get("recent_sessions", [])[-INFRASTRUCTURE_GRAVITY_WINDOW:]
+        if len(recent) < 5:
+            return []
+        infra_organs = {"META-ORGANVM", "ORGAN-IV"}
+        infra_count = sum(1 for s in recent if s.get("organ", "") in infra_organs)
+        ratio = infra_count / len(recent)
+        if ratio > INFRASTRUCTURE_GRAVITY_THRESHOLD:
+            return [Advisory(
+                category="process",
+                severity="caution",
+                message=f"Infrastructure gravity: {ratio:.0%} of last {len(recent)} sessions target META/IV. "
+                        f"Consider shifting focus to product organs (I, II, III).",
+                context={"infra_ratio": ratio, "infra_count": infra_count, "total": len(recent)},
+                recommendation="Start a session in ORGAN-I, II, or III to balance the portfolio.",
+                detector="infrastructure_gravity",
+                confidence=0.7,
+                tags=["process", "infrastructure_gravity"],
+            )]
+        return []
+
+    def _detect_session_fragmentation(self) -> list[Advisory]:
+        """Caution when recent sessions are all very short (< 5 min)."""
+        from .constants import SESSION_FRAGMENTATION_THRESHOLD, SESSION_FRAGMENTATION_WINDOW
+        stats = self._load_stats()
+        recent = stats.get("recent_sessions", [])[-SESSION_FRAGMENTATION_WINDOW:]
+        if len(recent) < SESSION_FRAGMENTATION_WINDOW:
+            return []
+        short_count = sum(1 for s in recent if s.get("duration_minutes", 999) < SESSION_FRAGMENTATION_THRESHOLD)
+        if short_count == len(recent):
+            return [Advisory(
+                category="process",
+                severity="caution",
+                message=f"Session fragmentation: last {len(recent)} sessions all under {SESSION_FRAGMENTATION_THRESHOLD} minutes. "
+                        f"Consider batching short tasks into focused sessions.",
+                recommendation="Combine related tasks into a single session with clear scope.",
+                detector="session_fragmentation",
+                confidence=0.65,
+                tags=["process", "fragmentation"],
+            )]
+        return []
 
     # ----- Profile + convenience -----
 
@@ -1817,6 +2015,13 @@ class Oracle:
             ("burnout_risk", self._detect_burnout_risk),
             # Guardian Angel stateless
             ("mastery_progress", self._detect_mastery_progress),
+            # Conductor activation detectors
+            ("no_session", self._detect_no_session),
+            ("context_switching", self._detect_context_switching),
+            ("infrastructure_gravity", self._detect_infrastructure_gravity),
+            ("session_fragmentation", self._detect_session_fragmentation),
+            # Phase impasse detection
+            ("phase_impasse", self._detect_phase_impasse),
         ]
 
         for name, detector in stateless_detectors:
@@ -1840,6 +2045,8 @@ class Oracle:
             # Guardian Angel context-aware
             ("canonical_practice", lambda: self._detect_canonical_practice(ctx)),
             ("business_insight", lambda: self._detect_business_insight(ctx)),
+            # Conductor activation context-aware
+            ("phase_skip", lambda: self._detect_phase_skip(ctx)),
         ]
 
         if include_narrative:

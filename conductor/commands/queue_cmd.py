@@ -36,6 +36,24 @@ def _handle_queue(args) -> None:
             print(f"  Resolved: {args.item_id}")
         else:
             print(f"  FAILED to resolve: {args.item_id}")
+    elif args.queue_command == "push":
+        from ..governance import GovernanceRuntime
+        gov = GovernanceRuntime()
+        dry_run = not getattr(args, "apply", False)
+        max_items = getattr(args, "max_items", 5)
+        results = gov.push_queue_to_github(max_items=max_items, dry_run=dry_run)
+        label = "Would create" if dry_run else "Created"
+        print(f"\n  Queue Push {'(DRY RUN)' if dry_run else ''}")
+        print("  " + "=" * 50)
+        for r in results:
+            status = "created" if r.get("created") else ("dry-run" if dry_run else "FAILED")
+            print(f"  [{status}] {r['title'][:60]}")
+            if r.get("url"):
+                print(f"    -> {r['url']}")
+            if r.get("error"):
+                print(f"    ERROR: {r['error']}")
+        print(f"\n  {label}: {len(results)} issues")
+        print()
 
 
 def _handle_auto(args, *, ontology) -> None:
