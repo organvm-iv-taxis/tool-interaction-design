@@ -64,6 +64,7 @@ class Patchbay:
             ("orchestra", lambda: self._orchestra_section()),
             ("score", lambda: self.executor.get_briefing()),
             ("pulse", lambda: self._pulse_section(organ_filter)),
+            ("fleet", lambda: self._fleet_section()),
             ("corpus", lambda: self._corpus_section()),
             ("queue", lambda: self._queue_section(organ_filter)),
             ("stats", lambda: self._stats_section()),
@@ -299,6 +300,38 @@ class Patchbay:
                 "encountered": mastery.get("principles_encountered", 0),
                 "internalized": mastery.get("principles_internalized", 0),
             },
+        }
+
+    def _fleet_section(self) -> dict:
+        """Agent fleet status and today's utilization."""
+        from .fleet import FleetRegistry
+        from .fleet_usage import FleetUsageTracker
+        from datetime import date as _date
+
+        registry = FleetRegistry()
+        tracker = FleetUsageTracker()
+        today = _date.today()
+        daily = tracker.daily_snapshot(today)
+
+        agents_data = []
+        for agent in registry.active_agents():
+            usage = daily.get(agent.name, {})
+            agents_data.append({
+                "name": agent.name,
+                "display_name": agent.display_name,
+                "provider": agent.provider,
+                "tier": agent.subscription.tier,
+                "today_sessions": usage.get("sessions", 0),
+                "today_tokens": usage.get("total_tokens", 0),
+                "today_cost": usage.get("total_cost_usd", 0.0),
+                "today_minutes": usage.get("total_minutes", 0),
+            })
+
+        return {
+            "active_agents": len(agents_data),
+            "agents": agents_data,
+            "today_total_sessions": sum(a["today_sessions"] for a in agents_data),
+            "today_total_cost": round(sum(a["today_cost"] for a in agents_data), 4),
         }
 
     def _corpus_section(self) -> dict:
@@ -607,6 +640,26 @@ class Patchbay:
                     lines.append(f"  {viols} organs over WIP limit | {total_cand} CANDIDATE system-wide")
                 else:
                     lines.append(f"  No WIP violations | {total_cand} CANDIDATE system-wide")
+
+        # Fleet
+        fleet_data = data.get("fleet", {})
+        fleet_agents = fleet_data.get("agents", [])
+        if fleet_agents and not sess.get("active"):
+            lines.append("")
+            lines.append("  FLEET")
+            lines.append("  " + "-" * 68)
+            lines.append(f"  {'AGENT':<12} {'PROVIDER':<10} {'TIER':<6} {'SESSIONS':>8} {'COST':>10}")
+            for fa in fleet_agents:
+                cost_str = f"${fa['today_cost']:.4f}" if fa["today_cost"] > 0 else "-"
+                sess_str = str(fa["today_sessions"]) if fa["today_sessions"] > 0 else "-"
+                lines.append(
+                    f"  {fa['name']:<12} {fa['provider']:<10} {fa['tier']:<6} "
+                    f"{sess_str:>8} {cost_str:>10}"
+                )
+            total_s = fleet_data.get("today_total_sessions", 0)
+            total_c = fleet_data.get("today_total_cost", 0)
+            lines.append("  " + "-" * 68)
+            lines.append(f"  Today: {total_s} sessions | ${total_c:.4f} total cost")
 
         # Corpus
         corpus = data.get("corpus", {})

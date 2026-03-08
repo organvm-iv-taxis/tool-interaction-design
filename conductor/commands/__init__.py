@@ -9,6 +9,7 @@ if TYPE_CHECKING:
 
 from . import (
     export_cmd,
+    fleet_cmd,
     governance_cmd,
     oracle_cmd,
     queue_cmd,
@@ -54,6 +55,7 @@ COMMAND_HANDLERS: dict[str, object] = {
     "risk": risk_cmd,
     "dora": system_cmd,
     "prompt": system_cmd,
+    "fleet": fleet_cmd,
 }
 
 

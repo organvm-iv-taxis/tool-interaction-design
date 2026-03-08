@@ -56,7 +56,7 @@ class WiringEngine:
 
     def _inject_into_repo(self, repo_path: Path, dry_run: bool) -> None:
         """Inject the Conductor hook into GEMINI.md and CLAUDE.md."""
-        for filename in ["GEMINI.md", "CLAUDE.md"]:
+        for filename in ["CLAUDE.md", "GEMINI.md", "AGENTS.md"]:
             target = repo_path / filename
             if not target.exists():
                 if dry_run:
@@ -79,11 +79,13 @@ class WiringEngine:
 
     def global_mcp_setup(self, dry_run: bool = True) -> str:
         """Update global agent settings to include Conductor MCP."""
-        # Standard locations for Claude/Gemini settings
+        # Standard locations for Claude/Gemini/Codex settings
         settings_paths = [
-            Path.home() / ".claude" / "settings.json",
+            Path.home() / ".claude" / "mcp.json",
             Path.home() / ".gemini" / "settings.json",
         ]
+        # Codex uses TOML — handled separately
+        codex_config = Path.home() / ".codex" / "config.toml"
         
         conductor_mcp_config = {
             "command": "python3",

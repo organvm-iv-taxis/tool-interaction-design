@@ -8,9 +8,11 @@ from ..session import SessionEngine
 def handle(args, *, ontology, engine) -> None:
     se = SessionEngine(ontology)
     if args.session_command == "start":
-        se.start(args.organ, args.repo, args.scope, git_branch=not args.no_branch)
+        agent = getattr(args, "agent", "unknown") or "unknown"
+        se.start(args.organ, args.repo, args.scope, git_branch=not args.no_branch, agent=agent)
     elif args.session_command == "phase":
-        se.phase(args.target)
+        agent = getattr(args, "agent", "") or ""
+        se.phase(args.target, agent=agent)
     elif args.session_command == "status":
         se.status()
     elif args.session_command == "close":

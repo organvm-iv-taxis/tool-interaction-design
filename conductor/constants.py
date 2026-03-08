@@ -34,6 +34,11 @@ RISK_REGISTRY_FILE = STATE_DIR / "risks.json"
 PROMPT_REGISTRY_DIR = STATE_DIR / "prompts"
 WISDOM_DIR = Path(__file__).parent / "wisdom"
 
+# Fleet orchestration paths
+FLEET_YAML = Path(__file__).parent / "fleet.yaml"
+FLEET_USAGE_DIR = STATE_DIR / "fleet-usage"
+HANDOFF_LOG = STATE_DIR / "handoff-log.jsonl"
+
 # Workspace paths (mirror organvm-engine conventions)
 WORKSPACE = Path(os.environ.get("ORGANVM_WORKSPACE_DIR", str(Path.home() / "Workspace")))
 CORPUS_DIR = Path(os.environ.get(

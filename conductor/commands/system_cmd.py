@@ -272,6 +272,13 @@ def _handle_migrate(args) -> None:
 
 
 def _handle_retro(args) -> None:
+    retro_cmd = getattr(args, "retro_command", None)
+    if retro_cmd == "session":
+        from .retro_cmd import handle_retro_session
+        handle_retro_session(args)
+        return
+
+    # Default: summary retro (existing behavior)
     from ..retro import render_retro_text, run_retro
 
     report = run_retro(last_n=args.last, format_name=args.format)

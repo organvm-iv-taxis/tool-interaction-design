@@ -24,9 +24,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_start.add_argument("--repo", required=True, help="Repository name")
     p_start.add_argument("--scope", required=True, help="Session scope description")
     p_start.add_argument("--no-branch", action="store_true", help="Skip git branch creation")
+    p_start.add_argument("--agent", default="unknown", help="Agent identity (claude, gemini, codex, etc.)")
 
     p_phase = session_sub.add_parser("phase", help="Transition to next phase")
     p_phase.add_argument("target", help="Target phase (shape, build, prove, done)")
+    p_phase.add_argument("--agent", default="", help="Agent identity for this transition")
 
     session_sub.add_parser("status", help="Show current session status")
     session_sub.add_parser("close", help="Close session and generate log")
@@ -130,8 +132,18 @@ def build_parser() -> argparse.ArgumentParser:
     p_literate.add_argument("--output", type=Path, help="Output file path")
 
     p_retro = sub.add_parser("retro", help="Generate retrospective from session and observability data")
+    retro_sub = p_retro.add_subparsers(dest="retro_command")
+    # Default behavior (no subcommand) — summary retro
     p_retro.add_argument("--last", type=int, default=0, help="Analyze only the last N sessions (default: all)")
     p_retro.add_argument("--format", choices=["text", "json"], default="text", help="Output format")
+
+    # retro session — per-session retrospective ledger
+    p_retro_session = retro_sub.add_parser("session", help="Per-session retrospective ledger with prompt extraction")
+    p_retro_session.add_argument("--latest", action="store_true", default=True, help="Analyze the most recently closed session (default)")
+    p_retro_session.add_argument("--id", type=str, help="Analyze a specific session by ID")
+    p_retro_session.add_argument("--output", type=Path, help="Write to a specific path")
+    p_retro_session.add_argument("--write", action="store_true", help="Persist to session directory")
+    p_retro_session.add_argument("--format", choices=["text", "json"], default="text", help="Output format")
 
     p_patterns = sub.add_parser("patterns", help="Mine session logs for patterns")
     p_patterns.add_argument("--export-essay", action="store_true", help="Export pattern essay draft")
@@ -356,5 +368,21 @@ def build_parser() -> argparse.ArgumentParser:
     p_prompt_get.add_argument("name", help="Prompt template name")
     p_prompt_get.add_argument("--version", help="Specific version (default: latest)")
     p_prompt_get.add_argument("--format", choices=["text", "json"], default="text", help="Output format")
+
+    # ----- Fleet orchestration commands -----
+    p_fleet = sub.add_parser("fleet", help="Agent fleet orchestration")
+    fleet_sub = p_fleet.add_subparsers(dest="fleet_command", required=True)
+    fleet_sub.add_parser("status", help="Show all agents and today's usage")
+    p_fleet_usage = fleet_sub.add_parser("usage", help="Utilization report for billing period")
+    p_fleet_usage.add_argument("--month", help="Billing period (YYYY-MM, default: current)")
+    p_fleet_recommend = fleet_sub.add_parser("recommend", help="Route recommendation for a phase")
+    p_fleet_recommend.add_argument("phase", help="Conductor phase (FRAME, SHAPE, BUILD, PROVE)")
+    p_fleet_recommend.add_argument("--tags", nargs="*", default=[], help="Task tags for strength matching")
+    p_fleet_recommend.add_argument("--secrets", action="store_true", help="Require can_see_secrets")
+    p_fleet_recommend.add_argument("--git", action="store_true", help="Require can_push_git")
+    p_fleet_recommend.add_argument("--context-size", type=int, default=0, help="Estimated context size in tokens")
+    p_fleet_handoff = fleet_sub.add_parser("handoff", help="Generate handoff brief from active session")
+    p_fleet_handoff.add_argument("to_agent", help="Target agent name (e.g., gemini, codex)")
+    p_fleet_handoff.add_argument("--summary", help="Optional handoff summary")
 
     return parser

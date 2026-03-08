@@ -1,0 +1,138 @@
+# Fleet Agent Registry — declares every AI agent with subscription,
+# capabilities, phase affinity, and sensitivity constraints.
+
+agents:
+  claude:
+    display_name: "Claude Code (Opus 4.6)"
+    provider: anthropic
+    subscription:
+      tier: max
+      billing_cycle: monthly
+      allotment:
+        messages_per_day: 45
+        context_window: 200000
+    capabilities:
+      strengths: [deep-coding, refactoring, architecture, testing, mcp-tools]
+      weaknesses: [web-browsing-native, image-generation]
+    phase_affinity:
+      FRAME: 0.7
+      SHAPE: 0.9
+      BUILD: 1.0
+      PROVE: 0.9
+    sensitivity:
+      can_see_secrets: true
+      can_push_git: true
+      can_run_shell: true
+    active: true
+
+  gemini:
+    display_name: "Gemini CLI (2.5 Pro)"
+    provider: google
+    subscription:
+      tier: pro
+      billing_cycle: monthly
+      allotment:
+        requests_per_day: 25
+        context_window: 1000000
+    capabilities:
+      strengths: [deep-research, long-context, web-grounding, multi-modal]
+      weaknesses: [file-editing-precision, git-safety]
+    phase_affinity:
+      FRAME: 1.0
+      SHAPE: 0.8
+      BUILD: 0.5
+      PROVE: 0.6
+    sensitivity:
+      can_see_secrets: false
+      can_push_git: false
+      can_run_shell: true
+    active: true
+
+  codex:
+    display_name: "Codex CLI (GPT-5.3)"
+    provider: openai
+    subscription:
+      tier: plus
+      billing_cycle: monthly
+      allotment:
+        messages_per_month: 750
+        context_window: 200000
+    capabilities:
+      strengths: [parallel-agents, sandbox-execution, rapid-prototyping, multi-file-edits]
+      weaknesses: [mcp-tool-depth, long-context-reasoning]
+    phase_affinity:
+      FRAME: 0.6
+      SHAPE: 0.7
+      BUILD: 0.9
+      PROVE: 0.8
+    sensitivity:
+      can_see_secrets: true
+      can_push_git: true
+      can_run_shell: true
+    active: true
+
+  goose:
+    display_name: "Goose CLI"
+    provider: block
+    subscription:
+      tier: free
+      billing_cycle: monthly
+      allotment:
+        context_window: 128000
+    capabilities:
+      strengths: [multi-provider, extensible]
+      weaknesses: [maturity, ecosystem]
+    phase_affinity:
+      FRAME: 0.5
+      SHAPE: 0.5
+      BUILD: 0.6
+      PROVE: 0.5
+    sensitivity:
+      can_see_secrets: true
+      can_push_git: true
+      can_run_shell: true
+    active: false
+
+  kimi:
+    display_name: "Kimi K2"
+    provider: moonshot
+    subscription:
+      tier: free
+      billing_cycle: monthly
+      allotment:
+        context_window: 128000
+    capabilities:
+      strengths: [long-context, multilingual]
+      weaknesses: [code-editing, tool-use]
+    phase_affinity:
+      FRAME: 0.7
+      SHAPE: 0.5
+      BUILD: 0.4
+      PROVE: 0.4
+    sensitivity:
+      can_see_secrets: false
+      can_push_git: false
+      can_run_shell: false
+    active: false
+
+  opencode:
+    display_name: "OpenCode"
+    provider: community
+    subscription:
+      tier: free
+      billing_cycle: monthly
+      allotment:
+        context_window: 200000
+    capabilities:
+      strengths: [open-source, customizable]
+      weaknesses: [stability, ecosystem]
+    phase_affinity:
+      FRAME: 0.5
+      SHAPE: 0.5
+      BUILD: 0.7
+      PROVE: 0.5
+    sensitivity:
+      can_see_secrets: true
+      can_push_git: true
+      can_run_shell: true
+    active: false

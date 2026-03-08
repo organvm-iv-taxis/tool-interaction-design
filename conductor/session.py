@@ -62,6 +62,7 @@ class Session:
     outputs: dict[str, str] = field(default_factory=dict)  # product, portfolio, publication
     tokens_consumed: int = 0
     estimated_cost_usd: float = 0.0
+    agent: str = "unknown"
 
     @property
     def duration_minutes(self) -> int:
@@ -84,6 +85,7 @@ class Session:
             "outputs": self.outputs,
             "tokens_consumed": self.tokens_consumed,
             "estimated_cost_usd": self.estimated_cost_usd,
+            "agent": self.agent,
         }
 
     @classmethod
@@ -245,7 +247,7 @@ class SessionEngine:
         if SESSION_STATE_FILE.exists():
             SESSION_STATE_FILE.unlink()
 
-    def start(self, organ: str, repo: str, scope: str, git_branch: bool = True, appetite_minutes: int = 0) -> Session:
+    def start(self, organ: str, repo: str, scope: str, git_branch: bool = True, appetite_minutes: int = 0, agent: str = "unknown") -> Session:
         """Start a new session."""
         if self._load_session():
             raise SessionError("Session already active. Close it first with `conductor session close`.")
@@ -265,8 +267,9 @@ class SessionEngine:
             scope=scope,
             start_time=now,
             current_phase="FRAME",
-            phase_logs=[{"name": "FRAME", "start_time": now, "end_time": 0, "tools_used": [], "commits": 0}],
+            phase_logs=[{"name": "FRAME", "start_time": now, "end_time": 0, "tools_used": [], "commits": 0, "agent": agent}],
             appetite_minutes=appetite_minutes,
+            agent=agent,
         )
 
         # M13: Data classification gate — warn on sensitive keywords in scope
@@ -390,8 +393,8 @@ class SessionEngine:
             session.confirmed_checks.append(check_name)
             self._save_session(session)
 
-    def phase(self, target_phase: str) -> None:
-        """Transition to a new phase."""
+    def phase(self, target_phase: str, agent: str = "") -> None:
+        """Transition to a new phase. Agent identifies which AI drove this transition."""
         session = self._load_session()
         if not session:
             raise SessionError("No active session. Start one with `conductor session start`.")
@@ -486,6 +489,7 @@ class SessionEngine:
             "end_time": 0,
             "tools_used": [],
             "commits": 0,
+            "agent": agent or session.agent,
         })
         session.current_phase = target
         self._save_session(session)
@@ -727,12 +731,16 @@ class SessionEngine:
                         phase_summary[name]["tools_used"].append(t)
                 phase_summary[name]["commits"] += pl.get("commits", 0)
                 phase_summary[name]["visits"] += 1
+                phase_agent = pl.get("agent", "unknown")
+                if phase_agent not in phase_summary[name]["agents"]:
+                    phase_summary[name]["agents"].append(phase_agent)
             else:
                 phase_summary[name] = {
                     "duration": dur,
                     "tools_used": list(pl.get("tools_used", [])),
                     "commits": pl.get("commits", 0),
                     "visits": 1,
+                    "agents": [pl.get("agent", "unknown")],
                 }
 
         log = {
@@ -740,6 +748,7 @@ class SessionEngine:
             "organ": session.organ,
             "repo": session.repo,
             "scope": session.scope,
+            "agent": session.agent,
             "duration_minutes": int((now - session.start_time) / 60),
             "phases": phase_summary,
             "warnings": session.warnings,
@@ -754,6 +763,21 @@ class SessionEngine:
         session_dir.mkdir(exist_ok=True)
         log_path = session_dir / "session-log.yaml"
         log_path.write_text(yaml.dump(log, default_flow_style=False, sort_keys=False))
+
+        # Fleet usage tracking
+        try:
+            from .fleet_usage import FleetUsageTracker
+            tracker = FleetUsageTracker()
+            tracker.record_session(
+                agent=session.agent,
+                session_id=session.session_id,
+                duration_minutes=log["duration_minutes"],
+                tokens_in=session.tokens_consumed,
+                tokens_out=0,
+                cost_usd=session.estimated_cost_usd,
+            )
+        except Exception:
+            pass  # Fleet tracking never breaks session lifecycle
 
         # Git integration: commit breadcrumb
         self._commit_breadcrumb(session)
@@ -814,6 +838,8 @@ class SessionEngine:
         except Exception as exc:
             from .observability import log_event
             log_event("session.oracle_advisory_error", {"error": str(exc)})
+
+        print(f"  Run `conductor retro session --latest` for full retrospective.")
 
         # Record patterns for growth feedback loop
         try:

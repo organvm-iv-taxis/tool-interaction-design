@@ -677,12 +677,12 @@ def guardian_corpus(search: str | None = None) -> str:
         return _encode_mcp_payload({"error": str(e)})
 
 
-def session_start(organ: str, repo: str, scope: str) -> str:
+def session_start(organ: str, repo: str, scope: str, agent: str = "unknown") -> str:
     """Start a new Conductor session with FRAME→SHAPE→BUILD→PROVE lifecycle."""
     try:
         ontology = get_ontology()
         engine = SessionEngine(ontology)
-        session = engine.start(organ, repo, scope, git_branch=False)
+        session = engine.start(organ, repo, scope, git_branch=False, agent=agent)
         phase = session.current_phase
         return _encode_mcp_payload({
             "session_id": session.session_id,
@@ -692,18 +692,19 @@ def session_start(organ: str, repo: str, scope: str) -> str:
             "current_phase": phase,
             "ai_role": PHASE_ROLES.get(phase, "Unknown"),
             "active_clusters": get_phase_clusters().get(phase, []),
+            "agent": session.agent,
             "message": f"Session started in {phase} phase. Explore before building.",
         })
     except Exception as e:
         return _encode_mcp_payload({"error": str(e)})
 
 
-def session_transition(target_phase: str) -> str:
+def session_transition(target_phase: str, agent: str = "") -> str:
     """Transition to a new phase. Hard gate: FRAME→SHAPE→BUILD→PROVE only."""
     try:
         ontology = get_ontology()
         engine = SessionEngine(ontology)
-        engine.phase(target_phase)
+        engine.phase(target_phase, agent=agent)
         # Read back the session state after transition
         session = engine._load_session()
         if not session:
@@ -904,6 +905,87 @@ def ingest(content: str, source_agent: str, topic: str, tags: list[str] | None =
         "content_hash": content_hash,
         "artifacts": artifacts,
     })
+
+
+# ---------------------------------------------------------------------------
+# Fleet orchestration tools
+# ---------------------------------------------------------------------------
+
+
+def fleet_status() -> str:
+    from conductor.fleet import FleetRegistry
+    from conductor.fleet_usage import FleetUsageTracker
+    from datetime import date
+
+    registry = FleetRegistry()
+    tracker = FleetUsageTracker()
+    today = date.today()
+    daily = tracker.daily_snapshot(today)
+
+    agents = []
+    for agent in registry.active_agents():
+        usage = daily.get(agent.name, {})
+        agents.append({
+            "name": agent.name,
+            "display_name": agent.display_name,
+            "provider": agent.provider,
+            "tier": agent.subscription.tier,
+            "strengths": list(agent.capabilities.strengths),
+            "phase_affinity": agent.phase_affinity,
+            "today_sessions": usage.get("sessions", 0),
+            "today_tokens": usage.get("total_tokens", 0),
+            "today_cost": usage.get("total_cost_usd", 0.0),
+        })
+
+    return _encode_mcp_payload({
+        "date": today.isoformat(),
+        "active_agents": len(agents),
+        "agents": agents,
+    })
+
+
+def fleet_recommend(phase: str, task_tags: list | None = None, sensitivity: dict | None = None, context_size: int = 0) -> str:
+    from conductor.fleet_router import FleetRouter
+
+    router = FleetRouter()
+    scores = router.recommend(
+        phase=phase,
+        task_tags=task_tags or [],
+        sensitivity_required=sensitivity or {},
+        context_size=context_size,
+    )
+
+    recommendations = []
+    for s in scores:
+        recommendations.append({
+            "agent": s.agent,
+            "display_name": s.display_name,
+            "score": s.score,
+            "breakdown": s.breakdown,
+            "explanation": router.explain(s),
+        })
+
+    return _encode_mcp_payload({
+        "phase": phase,
+        "recommendations": recommendations,
+        "top_pick": recommendations[0]["agent"] if recommendations else None,
+    })
+
+
+def retro_session(session_id: str | None = None) -> str:
+    """Generate a per-session retrospective and inject feedback into system loops."""
+    from conductor.sprint_ledger import alchemize_ledger, build_ledger
+
+    try:
+        sid = None if (not session_id or session_id == "latest") else session_id
+        ledger = build_ledger(session_id=sid)
+        # MCP calls always inject feedback — agents don't collect without acting
+        actions = alchemize_ledger(ledger)
+        payload = ledger.to_dict()
+        payload["feedback_actions"] = actions
+        return _encode_mcp_payload(payload)
+    except Exception as e:
+        return _encode_mcp_payload({"error": str(e)})
 
 
 # ---------------------------------------------------------------------------
@@ -1147,6 +1229,7 @@ TOOLS = [
                 "organ": {"type": "string", "description": "Organ key (I, II, III, IV, V, VI, VII, META)"},
                 "repo": {"type": "string", "description": "Repository name within the organ"},
                 "scope": {"type": "string", "description": "Brief description of what this session will accomplish"},
+                "agent": {"type": "string", "description": "Agent identity (claude, gemini, codex, etc.). Defaults to 'unknown'."},
             },
             "required": ["organ", "repo", "scope"],
         },
@@ -1158,6 +1241,7 @@ TOOLS = [
             "type": "object",
             "properties": {
                 "target_phase": {"type": "string", "enum": ["SHAPE", "BUILD", "PROVE", "DONE", "FRAME"], "description": "Target phase to transition to"},
+                "agent": {"type": "string", "description": "Agent identity for this transition (claude, gemini, codex, etc.)"},
             },
             "required": ["target_phase"],
         },
@@ -1202,6 +1286,48 @@ TOOLS = [
             "required": ["content", "source_agent", "topic"],
         },
     ),
+    # Fleet orchestration
+    Tool(
+        name="conductor_fleet_status",
+        description="Fleet status — active agents, today's usage, subscription tiers. No parameters needed.",
+        inputSchema={"type": "object", "properties": {}},
+    ),
+    Tool(
+        name="conductor_fleet_recommend",
+        description="Recommend the best agent for a task based on phase, capabilities, utilization, and context fit.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "phase": {"type": "string", "description": "Conductor phase: FRAME, SHAPE, BUILD, or PROVE"},
+                "task_tags": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Task descriptors for strength matching (e.g., deep-research, refactoring)",
+                },
+                "sensitivity": {
+                    "type": "object",
+                    "properties": {
+                        "can_see_secrets": {"type": "boolean"},
+                        "can_push_git": {"type": "boolean"},
+                    },
+                    "description": "Sensitivity requirements (agents not meeting these are excluded)",
+                },
+                "context_size": {"type": "integer", "description": "Estimated context size in tokens"},
+            },
+            "required": ["phase"],
+        },
+    ),
+    # Sprint ledger / retro session
+    Tool(
+        name="conductor_retro_session",
+        description="Generate a per-session retrospective ledger with prompt extraction, phase analysis, git activity, and fleet usage.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "session_id": {"type": "string", "description": "Session ID to analyze, or 'latest' for most recent (default: latest)"},
+            },
+        },
+    ),
 ]
 
 DISPATCH = {
@@ -1232,11 +1358,21 @@ DISPATCH = {
     "conductor_guardian_mastery": lambda args: guardian_mastery(),
     "conductor_guardian_corpus": lambda args: guardian_corpus((args or {}).get("search")),
     # Session lifecycle
-    "conductor_session_start": lambda args: session_start((args or {})["organ"], (args or {})["repo"], (args or {})["scope"]),
-    "conductor_session_transition": lambda args: session_transition((args or {})["target_phase"]),
+    "conductor_session_start": lambda args: session_start((args or {})["organ"], (args or {})["repo"], (args or {})["scope"], (args or {}).get("agent", "unknown")),
+    "conductor_session_transition": lambda args: session_transition((args or {})["target_phase"], (args or {}).get("agent", "")),
     "conductor_gate_check": lambda args: gate_check(),
     "conductor_workflow_status": lambda args: workflow_status(),
     "conductor_workflow_step": lambda args: workflow_step((args or {}).get("tool_output"), (args or {}).get("checkpoint_action")),
+    # Fleet orchestration
+    "conductor_fleet_status": lambda args: fleet_status(),
+    "conductor_fleet_recommend": lambda args: fleet_recommend(
+        (args or {})["phase"],
+        (args or {}).get("task_tags"),
+        (args or {}).get("sensitivity"),
+        int((args or {}).get("context_size", 0)),
+    ),
+    # Sprint ledger
+    "conductor_retro_session": lambda args: retro_session((args or {}).get("session_id")),
     # Directive ingestion
     "conductor_ingest": lambda args: ingest(
         (args or {})["content"],
