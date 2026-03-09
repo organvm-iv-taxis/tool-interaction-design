@@ -50,6 +50,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_session_export.add_argument("session_id", help="Session ID to export")
     p_session_export.add_argument("--output", type=Path, help="Output directory")
 
+    # ----- Preflight command -----
+    p_preflight = sub.add_parser("preflight", help="Auto-start session with runway briefing")
+    p_preflight.add_argument("--agent", default="unknown", help="Agent identity (claude, gemini, codex, etc.)")
+    p_preflight.add_argument("--cwd", default=None, help="Working directory to infer organ/repo from")
+    p_preflight.add_argument("--json", action="store_true", dest="json_output", help="JSON output")
+    p_preflight.add_argument("--no-start", action="store_true", help="Show briefing only, do not auto-start session")
+
     # ----- Router search command -----
     p_search = sub.add_parser("search", help="Compound faceted tool search")
     p_search.add_argument("--capability", help="Filter by capability (e.g., SEARCH)")

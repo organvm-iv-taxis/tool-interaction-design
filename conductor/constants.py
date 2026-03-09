@@ -34,6 +34,9 @@ RISK_REGISTRY_FILE = STATE_DIR / "risks.json"
 PROMPT_REGISTRY_DIR = STATE_DIR / "prompts"
 WISDOM_DIR = Path(__file__).parent / "wisdom"
 
+# Multi-session support
+ACTIVE_SESSIONS_DIR = STATE_DIR / "active-sessions"
+
 # Fleet orchestration paths
 FLEET_YAML = Path(__file__).parent / "fleet.yaml"
 FLEET_USAGE_DIR = STATE_DIR / "fleet-usage"
@@ -213,6 +216,40 @@ def atomic_write(path: Path, content: str) -> None:
     except BaseException:
         tmp.unlink(missing_ok=True)
         raise
+
+
+def infer_organ_repo(cwd: str | Path) -> tuple[str | None, str | None]:
+    """Infer organ key and repo name from a working directory path.
+
+    Walks up from cwd looking for a directory matching an organ in ORGANS.
+    Returns (organ_short_key, repo_name) or (None, None) if outside workspace.
+
+    Example: /Users/.../Workspace/meta-organvm/organvm-engine/src/ → ("META", "organvm-engine")
+    """
+    cwd = Path(cwd).resolve()
+    workspace = WORKSPACE.resolve()
+
+    try:
+        rel = cwd.relative_to(workspace)
+    except ValueError:
+        return None, None
+
+    parts = rel.parts
+    if not parts:
+        return None, None
+
+    organ_dir = parts[0]
+    organ_key = None
+    for key, info in ORGANS.items():
+        if info["dir"] == organ_dir:
+            organ_key = key
+            break
+
+    if organ_key is None:
+        return None, None
+
+    repo_name = parts[1] if len(parts) > 1 else None
+    return organ_key, repo_name
 
 
 def load_config() -> dict:

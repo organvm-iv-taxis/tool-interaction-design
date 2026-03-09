@@ -12,6 +12,7 @@ from . import (
     fleet_cmd,
     governance_cmd,
     oracle_cmd,
+    preflight_cmd,
     queue_cmd,
     risk_cmd,
     routing_cmd,
@@ -21,6 +22,7 @@ from . import (
 )
 
 COMMAND_HANDLERS: dict[str, object] = {
+    "preflight": preflight_cmd,
     "session": session_cmd,
     "registry": governance_cmd,
     "wip": governance_cmd,

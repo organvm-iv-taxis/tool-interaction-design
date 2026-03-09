@@ -15,6 +15,7 @@ from typing import Optional
 import yaml
 
 from .constants import (
+    ACTIVE_SESSIONS_DIR,
     PHASES,
     PHASE_ROLES,
     SESSIONS_DIR,
@@ -228,29 +229,103 @@ class SessionEngine:
         self.ontology = ontology
         self.phase_clusters = get_phase_clusters()
         SESSIONS_DIR.mkdir(exist_ok=True)
+        self._migrate_legacy_session()
 
-    def _load_session(self) -> Optional[Session]:
-        if SESSION_STATE_FILE.exists():
+    # ------------------------------------------------------------------
+    # Multi-session file management
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _session_file(agent: str) -> Path:
+        """Path for an agent's active session file."""
+        safe_agent = agent.replace("/", "-").replace("\\", "-") or "unknown"
+        return ACTIVE_SESSIONS_DIR / f"{safe_agent}.json"
+
+    @staticmethod
+    def _update_symlink(target: Path | None) -> None:
+        """Update the legacy session.json symlink for backward compatibility."""
+        try:
+            if SESSION_STATE_FILE.is_symlink() or SESSION_STATE_FILE.exists():
+                SESSION_STATE_FILE.unlink(missing_ok=True)
+            if target is not None and target.exists():
+                SESSION_STATE_FILE.symlink_to(target)
+        except OSError:
+            pass
+
+    def _migrate_legacy_session(self) -> None:
+        """If old-style session.json exists (real file, not symlink), migrate it."""
+        if SESSION_STATE_FILE.exists() and not SESSION_STATE_FILE.is_symlink():
             try:
                 data = json.loads(SESSION_STATE_FILE.read_text())
+                agent = data.get("agent", "unknown") or "unknown"
+                ACTIVE_SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
+                dest = self._session_file(agent)
+                if not dest.exists():
+                    atomic_write(dest, json.dumps(data, indent=2))
+                SESSION_STATE_FILE.unlink()
+                self._update_symlink(dest)
+            except (json.JSONDecodeError, OSError):
+                pass
+
+    def _load_session(self, agent: str | None = None) -> Optional[Session]:
+        """Load a session. If agent given, load that agent's session.
+        Otherwise load from legacy symlink/file (backward compat)."""
+        if agent:
+            path = self._session_file(agent)
+        else:
+            path = SESSION_STATE_FILE
+        if path.exists():
+            try:
+                data = json.loads(path.read_text())
                 return Session.from_dict(data)
             except (json.JSONDecodeError, TypeError, KeyError) as e:
                 raise SessionError(
-                    f"Session state corrupted ({e}). Fix or delete .conductor/session.json manually."
+                    f"Session state corrupted ({e}). Fix or delete {path} manually."
                 ) from e
         return None
 
     def _save_session(self, session: Session) -> None:
-        atomic_write(SESSION_STATE_FILE, json.dumps(session.to_dict(), indent=2))
+        ACTIVE_SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
+        agent = session.agent or "unknown"
+        dest = self._session_file(agent)
+        atomic_write(dest, json.dumps(session.to_dict(), indent=2))
+        self._update_symlink(dest)
 
-    def _clear_session(self) -> None:
-        if SESSION_STATE_FILE.exists():
-            SESSION_STATE_FILE.unlink()
+    def _clear_session(self, agent: str | None = None) -> None:
+        if agent:
+            path = self._session_file(agent)
+            if path.exists():
+                path.unlink()
+            if SESSION_STATE_FILE.is_symlink():
+                try:
+                    if SESSION_STATE_FILE.resolve() == path.resolve() or not SESSION_STATE_FILE.exists():
+                        SESSION_STATE_FILE.unlink(missing_ok=True)
+                except OSError:
+                    pass
+        else:
+            SESSION_STATE_FILE.unlink(missing_ok=True)
+
+    def active_sessions(self) -> list[Session]:
+        """All currently active sessions across all agents."""
+        sessions: list[Session] = []
+        if ACTIVE_SESSIONS_DIR.exists():
+            for f in sorted(ACTIVE_SESSIONS_DIR.glob("*.json")):
+                try:
+                    data = json.loads(f.read_text())
+                    sessions.append(Session.from_dict(data))
+                except (json.JSONDecodeError, TypeError, KeyError):
+                    continue
+        return sessions
 
     def start(self, organ: str, repo: str, scope: str, git_branch: bool = True, appetite_minutes: int = 0, agent: str = "unknown") -> Session:
-        """Start a new session."""
-        if self._load_session():
-            raise SessionError("Session already active. Close it first with `conductor session close`.")
+        """Start a new session. Different agents can have concurrent sessions."""
+        agent = agent or "unknown"
+        existing = self._load_session(agent)
+        if existing:
+            raise SessionError(
+                f"Agent '{agent}' already has an active session ({existing.session_id}). "
+                "Close it first with `conductor session close`."
+            )
 
         organ_key = resolve_organ_key(organ)
         now = time.time()
@@ -785,7 +860,7 @@ class SessionEngine:
         # Update cumulative stats
         stats = _update_stats(log)
 
-        self._clear_session()
+        self._clear_session(session.agent)
 
         # Event log: session close
         _append_session_event("session.close", {

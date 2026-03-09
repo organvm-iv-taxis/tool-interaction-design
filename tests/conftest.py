@@ -42,16 +42,20 @@ def tmp_dir(tmp_path):
 
     state_file = tmp_path / ".conductor-session.json"
     stats_file = tmp_path / ".conductor-stats.json"
+    active_sessions = tmp_path / "active-sessions"
+    active_sessions.mkdir()
 
     with (
         patch.object(conductor.constants, "SESSIONS_DIR", sessions),
         patch.object(conductor.constants, "TEMPLATES_DIR", templates),
         patch.object(conductor.constants, "SESSION_STATE_FILE", state_file),
         patch.object(conductor.constants, "STATS_FILE", stats_file),
+        patch.object(conductor.constants, "ACTIVE_SESSIONS_DIR", active_sessions),
         patch.object(conductor.session, "SESSIONS_DIR", sessions),
         patch.object(conductor.session, "TEMPLATES_DIR", templates),
         patch.object(conductor.session, "SESSION_STATE_FILE", state_file),
         patch.object(conductor.session, "STATS_FILE", stats_file),
+        patch.object(conductor.session, "ACTIVE_SESSIONS_DIR", active_sessions),
     ):
         yield tmp_path
 

@@ -185,15 +185,20 @@ class TestSessionStateErrors:
         for name in ("spec.md", "plan.md", "status.md"):
             (templates_dir / name).write_text(f"# {{{{ scope }}}}")
 
+        active_sessions_dir = tmp_path / "active-sessions"
+        active_sessions_dir.mkdir()
+
         with (
             patch.object(conductor.constants, "SESSIONS_DIR", sessions_dir),
             patch.object(conductor.constants, "TEMPLATES_DIR", templates_dir),
             patch.object(conductor.constants, "SESSION_STATE_FILE", state_file),
             patch.object(conductor.constants, "STATS_FILE", stats_file),
+            patch.object(conductor.constants, "ACTIVE_SESSIONS_DIR", active_sessions_dir),
             patch.object(conductor.session, "SESSIONS_DIR", sessions_dir),
             patch.object(conductor.session, "TEMPLATES_DIR", templates_dir),
             patch.object(conductor.session, "SESSION_STATE_FILE", state_file),
             patch.object(conductor.session, "STATS_FILE", stats_file),
+            patch.object(conductor.session, "ACTIVE_SESSIONS_DIR", active_sessions_dir),
         ):
             se = SessionEngine(ontology)
             # Should detect corruption and give clear error

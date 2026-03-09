@@ -677,6 +677,35 @@ def guardian_corpus(search: str | None = None) -> str:
         return _encode_mcp_payload({"error": str(e)})
 
 
+def preflight(agent: str = "unknown", cwd: str | None = None) -> str:
+    """Run preflight: infer context, build runway briefing, auto-start session."""
+    try:
+        from conductor.preflight import run_preflight
+
+        result = run_preflight(
+            agent=agent or "unknown",
+            cwd=cwd or str(Path.cwd()),
+            auto_start=True,
+            json_output=True,
+        )
+        return _encode_mcp_payload(result.to_dict())
+    except Exception as e:
+        return _encode_mcp_payload({"error": str(e)})
+
+
+def active_sessions_list() -> str:
+    """List all currently active sessions across all agents."""
+    try:
+        engine = SessionEngine()
+        sessions = engine.active_sessions()
+        return _encode_mcp_payload({
+            "count": len(sessions),
+            "sessions": [s.to_dict() for s in sessions],
+        })
+    except Exception as e:
+        return _encode_mcp_payload({"error": str(e)})
+
+
 def session_start(organ: str, repo: str, scope: str, agent: str = "unknown") -> str:
     """Start a new Conductor session with FRAME→SHAPE→BUILD→PROVE lifecycle."""
     try:
@@ -1219,6 +1248,23 @@ TOOLS = [
             },
         },
     ),
+    # Preflight / multi-session
+    Tool(
+        name="conductor_preflight",
+        description="Run preflight: infer organ/repo from cwd, show runway briefing (active agents, work items, collisions), auto-start a session.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "agent": {"type": "string", "description": "Agent identity (claude, gemini, codex, etc.)"},
+                "cwd": {"type": "string", "description": "Working directory to infer organ/repo from"},
+            },
+        },
+    ),
+    Tool(
+        name="conductor_active_sessions",
+        description="List all currently active Conductor sessions across all agents.",
+        inputSchema={"type": "object", "properties": {}},
+    ),
     # Session lifecycle tools
     Tool(
         name="conductor_session_start",
@@ -1357,6 +1403,9 @@ DISPATCH = {
     "conductor_guardian_landscape": lambda args: guardian_landscape((args or {})["decision"], (args or {}).get("context")),
     "conductor_guardian_mastery": lambda args: guardian_mastery(),
     "conductor_guardian_corpus": lambda args: guardian_corpus((args or {}).get("search")),
+    # Preflight / multi-session
+    "conductor_preflight": lambda args: preflight((args or {}).get("agent", "unknown"), (args or {}).get("cwd")),
+    "conductor_active_sessions": lambda args: active_sessions_list(),
     # Session lifecycle
     "conductor_session_start": lambda args: session_start((args or {})["organ"], (args or {})["repo"], (args or {})["scope"], (args or {}).get("agent", "unknown")),
     "conductor_session_transition": lambda args: session_transition((args or {})["target_phase"], (args or {}).get("agent", "")),

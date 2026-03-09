@@ -64,13 +64,17 @@ def tmp_dir(tmp_path):
         (templates / name).write_text(f"# {{{{ scope }}}}\n{{{{ organ }}}} {{{{ repo }}}}")
 
     state_file = tmp_path / ".conductor-session.json"
+    active_sessions = tmp_path / "active-sessions"
+    active_sessions.mkdir()
 
     with patch.object(conductor.constants, "SESSIONS_DIR", sessions), \
          patch.object(conductor.constants, "TEMPLATES_DIR", templates), \
          patch.object(conductor.constants, "SESSION_STATE_FILE", state_file), \
+         patch.object(conductor.constants, "ACTIVE_SESSIONS_DIR", active_sessions), \
          patch.object(conductor.session, "SESSIONS_DIR", sessions), \
          patch.object(conductor.session, "TEMPLATES_DIR", templates), \
          patch.object(conductor.session, "SESSION_STATE_FILE", state_file), \
+         patch.object(conductor.session, "ACTIVE_SESSIONS_DIR", active_sessions), \
          patch.object(conductor.session, "STATS_FILE", tmp_path / ".conductor-stats.json"):
         yield tmp_path
 
@@ -188,7 +192,7 @@ class TestSessionEngine:
 
     def test_start_blocks_if_active(self, engine, tmp_dir):
         engine.start("III", "repo-1", "First")
-        with pytest.raises(SessionError, match="already active"):
+        with pytest.raises(SessionError, match="already has an active session"):
             engine.start("III", "repo-2", "Second")
 
     def test_phase_transitions_forward(self, engine, tmp_dir):

@@ -1,11 +1,20 @@
 #!/usr/bin/env bash
 # Conductor phase-awareness hook for Claude Code user-prompt-submit
-# Reads .conductor/session.json and emits phase context as a one-liner.
+# Runs preflight for auto-start + runway briefing, then checks phase gates.
 set -euo pipefail
 
-SESSION_FILE="/Users/4jp/Workspace/organvm-iv-taxis/tool-interaction-design/.conductor/session.json"
+CONDUCTOR_BASE="/Users/4jp/Workspace/organvm-iv-taxis/tool-interaction-design"
+CONDUCTOR_VENV="$CONDUCTOR_BASE/.venv/bin/python3"
+SESSION_FILE="$CONDUCTOR_BASE/.conductor/session.json"
 
-if [[ ! -f "$SESSION_FILE" ]]; then
+# If venv exists, use preflight for full runway briefing
+if [[ -x "$CONDUCTOR_VENV" ]]; then
+    "$CONDUCTOR_VENV" -m conductor preflight --agent claude --cwd "$PWD" 2>/dev/null || true
+    exit 0
+fi
+
+# Fallback: read session.json directly (no venv available)
+if [[ ! -f "$SESSION_FILE" ]] && [[ ! -L "$SESSION_FILE" ]]; then
     echo "[CONDUCTOR] No active session. Start one: conductor_session_start(organ, repo, scope)"
     exit 0
 fi
@@ -37,7 +46,7 @@ try:
     stripped = prompt.strip()
     for prefix, directive_type in directive_prefixes.items():
         if stripped.startswith(prefix):
-            print(f'[DIRECTIVE:{directive_type}] Route through conductor_{prefix.rstrip(\":\")} tool.')
+            print(f'[DIRECTIVE:{directive_type}] Route through conductor_{prefix.rstrip(\":\")}_tool.')
             break
 except Exception as e:
     print(f'[CONDUCTOR] Session read error: {e}')
