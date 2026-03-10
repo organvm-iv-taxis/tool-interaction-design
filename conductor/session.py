@@ -333,6 +333,27 @@ class SessionEngine:
         slug = _slugify_scope(scope, max_length=40)
         # Short hash for uniqueness when same scope is used twice in one day
         short_hash = hashlib.sha256(f"{now}{organ_key}{repo}{scope}".encode()).hexdigest()[:6]
+
+        # M15: Test session isolation — route test sessions to sessions/test/
+        is_test_session = scope.strip().lower() == "test" or slug == "test"
+
+        # M16: Session dedup check — warn if identical scope was used within 24h
+        if not is_test_session:
+            dedup_window = 24 * 60 * 60  # 24 hours
+            for session_dir in SESSIONS_DIR.iterdir():
+                if not session_dir.is_dir() or session_dir.name == "test":
+                    continue
+                log_path = session_dir / "session-log.yaml"
+                spec_path = session_dir / "spec.md"
+                # Check by directory name pattern (contains same date and slug)
+                if date_str in session_dir.name and slug in session_dir.name and session_dir.name != f"{date_str}-{organ_short(organ_key)}-{slug}-{short_hash}":
+                    _append_session_event("session.dedup_warning", {
+                        "scope": scope,
+                        "existing_session": session_dir.name,
+                    })
+                    # Soft warning, not a block
+                    break
+
         session_id = f"{date_str}-{organ_short(organ_key)}-{slug}-{short_hash}"
 
         session = Session(
@@ -439,7 +460,14 @@ class SessionEngine:
 
     def _scaffold_templates(self, session: Session) -> None:
         """Copy and fill templates for this session."""
-        session_dir = SESSIONS_DIR / session.session_id
+        # M15: Test session isolation — route test sessions to sessions/test/
+        is_test = session.scope.strip().lower() == "test" or _slugify_scope(session.scope) == "test"
+        if is_test:
+            test_dir = SESSIONS_DIR / "test"
+            test_dir.mkdir(exist_ok=True)
+            session_dir = test_dir / session.session_id
+        else:
+            session_dir = SESSIONS_DIR / session.session_id
         session_dir.mkdir(exist_ok=True)
 
         date_str = datetime.now().strftime("%Y-%m-%d")
@@ -505,6 +533,33 @@ class SessionEngine:
                 f"(limit: {cb_config['max_session_minutes']}m). Consider closing and starting fresh."
             )
             session.warnings.append(warning)
+
+        # M14: FRAME->SHAPE spec gate (soft) — require Problem Statement
+        if current == "FRAME" and target == "SHAPE":
+            spec_path = SESSIONS_DIR / session.session_id / "spec.md"
+            has_spec_content = False
+            if spec_path.exists():
+                spec_text = spec_path.read_text()
+                # Check that Problem Statement section has real content (not just template comments)
+                import re as _re
+                ps_match = _re.search(r"## Problem Statement\s*\n(.*?)(?=\n## |\Z)", spec_text, _re.DOTALL)
+                if ps_match:
+                    ps_content = ps_match.group(1).strip()
+                    # Filter out HTML comments and empty lines
+                    ps_clean = _re.sub(r"<!--.*?-->", "", ps_content, flags=_re.DOTALL).strip()
+                    has_spec_content = len(ps_clean) > 20
+            _append_session_event("session.gate_check", {
+                "session_id": session.session_id,
+                "gate": "frame_to_shape_spec",
+                "passed": has_spec_content,
+                "spec_path": str(spec_path),
+            })
+            if not has_spec_content:
+                warning = (
+                    f"spec.md Problem Statement is empty in sessions/{session.session_id}/. "
+                    "Fill in the Problem Statement before shaping the approach."
+                )
+                session.warnings.append(warning)
 
         # M2: SHAPE->BUILD artifact gate (soft)
         if current == "SHAPE" and target == "BUILD":

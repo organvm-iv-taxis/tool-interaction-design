@@ -1,0 +1,48 @@
+id: ci-baseline
+name: "CI Baseline"
+description: "Implement or fix baseline CI workflow to satisfy quality gates."
+category: infrastructure
+parameters:
+  organ:
+    type: string
+    required: true
+    description: "Target organ"
+  repo:
+    type: string
+    required: true
+    description: "Target repository"
+  target_state:
+    type: string
+    default: "GRADUATED"
+    description: "Promotion state this CI enables"
+  stack:
+    type: string
+    required: false
+    description: "Tech stack (python, typescript, mixed)"
+
+scope_template: |
+  CI baseline for {organ}/{repo}: implement workflow for {target_state} promotion.
+
+spec_template: |
+  ## Problem Statement
+  {repo} in {organ} lacks a passing CI workflow, blocking promotion to {target_state}.
+
+  ## Requirements
+  1. Create or fix .github/workflows/ci.yml
+  2. Configure for {stack|default('auto-detected')} stack
+  3. Include: lint, test, build steps
+  4. Verify workflow passes on current codebase
+
+  ## Exit Criteria
+  - CI workflow exists and passes locally (act) or on push
+  - No false-positive failures
+
+exit_criteria:
+  - "CI workflow exists and passes"
+  - "No false-positive failures"
+
+phase_hints:
+  FRAME: "Read existing workflow if any, identify stack, check test setup"
+  SHAPE: "Design minimal workflow that covers lint + test + build"
+  BUILD: "Write workflow file, fix any test/lint issues blocking CI"
+  PROVE: "Push and verify CI passes, or validate with act locally"

@@ -1,0 +1,55 @@
+id: graduation-block
+name: "Graduation Block"
+description: "Validate and graduate a batch of repos within a single organ. Block N of M."
+category: promotion
+parameters:
+  organ:
+    type: string
+    required: true
+    description: "Target organ (e.g., ORGAN-I, ORGAN-II)"
+  repos:
+    type: list
+    required: true
+    description: "List of repo names to validate in this block"
+  block_number:
+    type: integer
+    required: true
+    description: "Current block number (1-indexed)"
+  total_blocks:
+    type: integer
+    required: true
+    description: "Total number of blocks in the graduation sprint"
+  target_state:
+    type: string
+    default: "GRADUATED"
+    description: "Target promotion state"
+
+scope_template: |
+  Graduation Block {block_number}/{total_blocks}: Validate and graduate {repos|length} repositories in {organ}.
+
+spec_template: |
+  ## Problem Statement
+  {repos|length} repositories in {organ} need validation against graduation criteria
+  (seed.yaml, CI passing, tests, documentation) before promotion to {target_state}.
+
+  ## Requirements
+  For each repo ({repos|join(', ')}):
+  1. Verify seed.yaml exists and conforms to v1.0 schema
+  2. Verify CI workflow exists and passes
+  3. Verify basic test coverage exists
+  4. Update registry-v2.json promotion state
+
+  ## Exit Criteria
+  - All {repos|length} repos pass validation or have documented exceptions
+  - Registry updated with new promotion states
+
+exit_criteria:
+  - "All repos in block pass validation or have documented exceptions"
+  - "Registry updated with new promotion states"
+  - "Session status.md filled with decisions and deviations"
+
+phase_hints:
+  FRAME: "Read each repo's seed.yaml, check CI status, verify test presence"
+  SHAPE: "List which repos pass, which need fixes, document exceptions"
+  BUILD: "Fix any remediable issues (seed.yaml format, CI config)"
+  PROVE: "Run validation script, update registry"

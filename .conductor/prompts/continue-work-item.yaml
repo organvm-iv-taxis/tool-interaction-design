@@ -1,0 +1,56 @@
+id: continue-work-item
+name: "Continue Work Item"
+description: "Resume a multi-session work item with formal handoff from a prior session."
+category: development
+parameters:
+  project:
+    type: string
+    required: true
+    description: "Project or feature name"
+  repo:
+    type: string
+    required: true
+    description: "Target repository"
+  focus_area:
+    type: string
+    required: true
+    description: "Specific focus for this continuation session"
+  prior_session_id:
+    type: string
+    required: false
+    description: "Session ID of the prior session (for context carry-forward)"
+  task_queue:
+    type: list
+    required: false
+    description: "Remaining tasks from prior session"
+
+scope_template: |
+  Continue {project}: {focus_area}. Prior session: {prior_session_id|default('none')}.
+
+spec_template: |
+  ## Problem Statement
+  Continuing multi-session work on {project} in {repo}.
+  Focus: {focus_area}.
+
+  ## Prior Art
+  Prior session: {prior_session_id|default('No prior session recorded')}.
+  Review the prior session's status.md and plan.md for context.
+
+  ## Requirements
+  1. Read prior session artifacts if available
+  2. Resume from the documented stopping point
+  3. Complete the focus area or document remaining work for next session
+
+  ## Exit Criteria
+  - Focus area completed or clearly scoped remaining work documented
+  - status.md updated with progress and handoff notes
+
+exit_criteria:
+  - "Focus area completed or remaining work documented"
+  - "status.md updated with handoff notes for next session"
+
+phase_hints:
+  FRAME: "Read prior session artifacts, understand current state"
+  SHAPE: "Plan this session's scope based on remaining work"
+  BUILD: "Execute the focus area"
+  PROVE: "Verify changes, update status.md with handoff"

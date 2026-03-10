@@ -1,0 +1,41 @@
+id: registry-sync
+name: "Registry Sync"
+description: "Synchronize project management state with registry and GitHub project boards."
+category: governance
+parameters:
+  organ:
+    type: string
+    required: true
+    description: "Target organ or 'all' for system-wide"
+  scope_notes:
+    type: string
+    required: false
+    description: "Specific sync focus (e.g., 'promotion state propagation', 'issue triage')"
+
+scope_template: |
+  Registry sync for {organ}: {scope_notes|default('full reconciliation')}.
+
+spec_template: |
+  ## Problem Statement
+  Registry state in registry-v2.json may have drifted from actual repo state
+  across {organ}. Reconcile.
+
+  ## Requirements
+  1. Compare registry promotion states with actual CI/test/seed.yaml status
+  2. Update registry entries that have drifted
+  3. Reconcile GitHub project board labels with registry states
+  4. Document any repos that need remediation
+
+  ## Exit Criteria
+  - Registry reflects actual repo state
+  - Drift report generated
+
+exit_criteria:
+  - "Registry reflects actual repo state"
+  - "Drift report generated and filed"
+
+phase_hints:
+  FRAME: "Read registry, check actual repo states"
+  SHAPE: "Identify drifted entries, plan updates"
+  BUILD: "Update registry, fix labels"
+  PROVE: "Run validation script against updated registry"

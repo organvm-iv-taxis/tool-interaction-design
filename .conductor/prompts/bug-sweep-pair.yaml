@@ -1,0 +1,51 @@
+id: bug-sweep-pair
+name: "Bug Sweep Pair"
+description: "Structured paired bug sweep across related bug categories."
+category: quality
+parameters:
+  pair_number:
+    type: integer
+    required: true
+    description: "Pair number in the sweep sequence"
+  theme:
+    type: string
+    required: true
+    description: "Theme name for this pair (e.g., 'Runtime Truth', 'Surface Truth')"
+  repo:
+    type: string
+    required: true
+    description: "Target repository"
+  bugs:
+    type: list
+    required: true
+    description: "List of bug identifiers and descriptions (e.g., 'B1: Mobile journey')"
+
+scope_template: |
+  Bug Sweep Pair {pair_number}: {theme}. {bugs|join(' + ')}.
+
+spec_template: |
+  ## Problem Statement
+  Systematic bug sweep targeting {theme} category in {repo}.
+  Bugs in scope: {bugs|join(', ')}.
+
+  ## Requirements
+  For each bug:
+  1. Reproduce the issue
+  2. Identify root cause
+  3. Implement fix
+  4. Add regression test
+
+  ## Exit Criteria
+  - All bugs in this pair resolved or escalated with documented reason
+  - Regression tests added for each fix
+
+exit_criteria:
+  - "All bugs in pair resolved or escalated with documented reason"
+  - "Regression tests added"
+  - "No new bugs introduced (existing tests pass)"
+
+phase_hints:
+  FRAME: "Reproduce each bug, read related code"
+  SHAPE: "Identify root causes, plan fixes"
+  BUILD: "Implement fixes and regression tests"
+  PROVE: "Run test suite, verify fixes, check for regressions"
