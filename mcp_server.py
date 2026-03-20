@@ -666,6 +666,18 @@ def guardian_mastery() -> str:
         return _encode_mcp_payload({"error": str(e)})
 
 
+def mark_internalized(wisdom_id: str, evidence: str = "") -> str:
+    """Mark a wisdom principle as internalized."""
+    try:
+        from conductor.oracle import Oracle
+        oracle = Oracle()
+        oracle._mark_internalized(wisdom_id, evidence)
+        report = oracle.get_mastery_report()
+        return _encode_mcp_payload(report)
+    except Exception as e:
+        return _encode_mcp_payload({"error": str(e)})
+
+
 def guardian_corpus(search: str | None = None) -> str:
     """Browse or search the Guardian wisdom corpus."""
     try:
@@ -1239,6 +1251,18 @@ TOOLS = [
         inputSchema={"type": "object", "properties": {}},
     ),
     Tool(
+        name="conductor_mark_internalized",
+        description="Mark a wisdom principle as internalized (behavioral change confirmed). Closes the mastery loop.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "wisdom_id": {"type": "string", "description": "Wisdom ID to mark (e.g., 'biz.ship_speed', 'practice.tdd')"},
+                "evidence": {"type": "string", "description": "Optional evidence of behavioral change"},
+            },
+            "required": ["wisdom_id"],
+        },
+    ),
+    Tool(
         name="conductor_guardian_corpus",
         description="Browse or search the Guardian wisdom corpus with optional query text.",
         inputSchema={
@@ -1402,6 +1426,7 @@ DISPATCH = {
     "conductor_guardian_teach": lambda args: guardian_teach((args or {})["topic"]),
     "conductor_guardian_landscape": lambda args: guardian_landscape((args or {})["decision"], (args or {}).get("context")),
     "conductor_guardian_mastery": lambda args: guardian_mastery(),
+    "conductor_mark_internalized": lambda args: mark_internalized((args or {})["wisdom_id"], (args or {}).get("evidence", "")),
     "conductor_guardian_corpus": lambda args: guardian_corpus((args or {}).get("search")),
     # Preflight / multi-session
     "conductor_preflight": lambda args: preflight((args or {}).get("agent", "unknown"), (args or {}).get("cwd")),

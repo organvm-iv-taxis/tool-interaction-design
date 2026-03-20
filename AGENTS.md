@@ -53,3 +53,26 @@
 ## Security & Configuration Tips
 - Key env vars: `ORGANVM_CORPUS_DIR`, `CONDUCTOR_POLICY_BUNDLE`, `CONDUCTOR_CLUSTER_FILE`.
 - Do not commit generated local artifacts (for example `.conductor-observability*.json*`, temporary corpora).
+
+<!-- ORGANVM:AUTO:START -->
+## Agent Context (auto-generated — do not edit)
+
+This repo participates in the **ORGAN-IV (Orchestration)** swarm.
+
+### Active Subscriptions
+- Event: `system.governance.update`
+
+### Production Responsibilities
+- **Produce** `conductor-session-lifecycle`
+- **Produce** `tool-interaction-ontology`
+- **Produce** `agent-coordination-protocol`
+
+### External Dependencies
+- **Consume** `orchestration-artifact`
+
+### Governance Constraints
+- Adhere to unidirectional flow: I→II→III
+- Never commit secrets or credentials
+
+*Last synced: 2026-03-20T10:58:30Z*
+<!-- ORGANVM:AUTO:END -->

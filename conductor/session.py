@@ -153,6 +153,11 @@ def _update_stats(session_log: dict) -> dict:
         "result": result,
         "organ": organ,
         "duration_minutes": session_log.get("duration_minutes", 0),
+        "phases": {
+            name: data.get("duration", 0)
+            for name, data in session_log.get("phases", {}).items()
+            if isinstance(data, dict)
+        },
     })
     stats["recent_sessions"] = recent[-10:]
 
@@ -971,18 +976,15 @@ class SessionEngine:
 
         print(f"  Run `conductor retro session --latest` for full retrospective.")
 
-        # Record patterns for growth feedback loop
+        # Record per-session patterns (not global averages)
         try:
-            from .oracle import Oracle as OracleForPatterns
-            oracle_p = OracleForPatterns()
-            detected = oracle_p._load_patterns()
-            if detected:
-                from .product import record_pattern
-                for pattern_name, _ in detected:
-                    record_pattern(pattern_name, session.session_id, session.result)
+            from .sprint_ledger import build_ledger, alchemize_ledger
+            ledger = build_ledger(session.session_id)
+            if ledger.detected_patterns:
+                alchemize_ledger(ledger)
         except Exception as exc:
             from .observability import log_event
-            log_event("session.oracle_advisory_error", {"error": str(exc)})
+            log_event("session.pattern_detection_error", {"error": str(exc)})
 
         # Oracle effectiveness tracking
         try:

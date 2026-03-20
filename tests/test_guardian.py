@@ -39,6 +39,7 @@ def oracle_tmp(tmp_path):
         patch.object(conductor.oracle, "SESSIONS_DIR", sessions),
         patch.object(conductor.oracle, "STATS_FILE", stats_file),
         patch.object(conductor.oracle, "ORACLE_STATE_FILE", state_file),
+        patch.object(conductor.oracle, "SESSION_STATE_FILE", session_state),
     ):
         yield tmp_path
 

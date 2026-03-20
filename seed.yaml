@@ -1,0 +1,18 @@
+schema_version: "1"
+organ: IV
+org: organvm-iv-taxis
+repo: tool-interaction-design
+tier: flagship
+status: GRADUATED
+implementation_status: ACTIVE
+
+produces:
+  - conductor-session-lifecycle
+  - tool-interaction-ontology
+  - agent-coordination-protocol
+
+consumes:
+  - orchestration-artifact
+
+subscriptions:
+  - system.governance.update

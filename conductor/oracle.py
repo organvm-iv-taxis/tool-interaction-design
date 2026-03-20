@@ -19,7 +19,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from .constants import ORACLE_STATE_FILE, SESSIONS_DIR, STATS_FILE, WORKSPACE
+from .constants import ORACLE_STATE_FILE, SESSION_STATE_FILE, SESSIONS_DIR, STATS_FILE, WORKSPACE
 from .observability import log_event
 
 
@@ -384,20 +384,40 @@ class Oracle:
         state["mastery"] = mastery
         self._save_oracle_state()
 
+    def _current_session_id(self) -> str:
+        """Read the active session ID from the session state file."""
+        try:
+            if SESSION_STATE_FILE.exists():
+                data = json.loads(SESSION_STATE_FILE.read_text())
+                return data.get("session_id", "")
+        except (json.JSONDecodeError, OSError):
+            pass
+        return ""
+
     def _record_wisdom_shown(self, wisdom_id: str) -> None:
-        """Increment encounter counter for a wisdom entry."""
+        """Increment encounter counter for a wisdom entry (once per session)."""
         mastery = self._load_mastery()
         encountered = mastery.setdefault("encountered", {})
         now = datetime.now(timezone.utc).isoformat()
+        current_session = self._current_session_id()
+
         if wisdom_id in encountered:
+            # Per-session dedup: skip if already recorded for this session
+            if current_session and encountered[wisdom_id].get("last_session") == current_session:
+                return
             encountered[wisdom_id]["times_shown"] += 1
             encountered[wisdom_id]["last_shown"] = now
+            if current_session:
+                encountered[wisdom_id]["last_session"] = current_session
         else:
-            encountered[wisdom_id] = {
+            entry: dict[str, Any] = {
                 "first_seen": now,
                 "times_shown": 1,
                 "last_shown": now,
             }
+            if current_session:
+                entry["last_session"] = current_session
+            encountered[wisdom_id] = entry
         self._save_mastery(mastery)
 
     def _check_internalization(self, wisdom_id: str) -> bool:

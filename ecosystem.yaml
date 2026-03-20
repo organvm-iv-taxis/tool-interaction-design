@@ -1,0 +1,23 @@
+schema_version: '1.0'
+repo: tool-interaction-design
+organ: IV
+display_name: "Conductor — Session lifecycle orchestration, tool interaction ontology, agent coordination"
+
+delivery:
+- platform: python_library
+  status: live
+  priority: critical
+  notes: "Conductor session lifecycle, tool ontology, coordination protocol"
+  next_action: "Maintain as central orchestration layer"
+- platform: cli_tool
+  status: live
+  priority: high
+  notes: "conductor CLI for session management and work queue"
+  next_action: "Keep CLI aligned with MCP server capabilities"
+
+content:
+- platform: docs_site
+  status: planned
+  priority: high
+  notes: "Session lifecycle reference, tool ontology, coordination patterns"
+  next_action: "Document FRAME→SHAPE→BUILD→PROVE lifecycle"
