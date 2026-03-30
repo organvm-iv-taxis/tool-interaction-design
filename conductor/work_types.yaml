@@ -1,0 +1,136 @@
+# Work Type Taxonomy — classifies cognitive work for service dispatch.
+# Each work type has a cognitive class (strategic > tactical > mechanical),
+# phase affinity requirements, sensitivity requirements, and verification policy.
+#
+# The TaskDispatcher uses this to hard-filter agents via fleet.yaml restrictions
+# (e.g., an agent with max_cognitive_class: mechanical cannot do strategic work).
+
+work_types:
+  architecture:
+    label: "Architectural decisions"
+    cognitive_class: strategic
+    examples:
+      - "schema design"
+      - "dependency selection"
+      - "module boundaries"
+      - "config structure"
+      - "framework selection"
+      - "database schema"
+      - "API contract design"
+    required_phase_affinity:
+      SHAPE: 0.8
+      BUILD: 0.9
+    required_sensitivity:
+      can_push_git: true
+    verification: cross_agent_mandatory
+
+  boilerplate_generation:
+    label: "Bulk file scaffolding"
+    cognitive_class: mechanical
+    examples:
+      - "CRUD endpoints"
+      - "test stubs"
+      - "template files"
+      - "migration scripts"
+      - "route handlers"
+      - "model definitions"
+      - "component scaffolding"
+    required_phase_affinity:
+      BUILD: 0.6
+    verification: cross_agent_mandatory
+
+  research:
+    label: "Knowledge gathering and synthesis"
+    cognitive_class: strategic
+    examples:
+      - "API evaluation"
+      - "pricing research"
+      - "competitor analysis"
+      - "documentation review"
+      - "technology survey"
+      - "compliance requirements"
+    required_phase_affinity:
+      FRAME: 0.7
+    verification: self_sufficient
+
+  mechanical_refactoring:
+    label: "Convention-conformant bulk edits"
+    cognitive_class: mechanical
+    examples:
+      - "naming convention conversion"
+      - "import reordering"
+      - "type annotation addition"
+      - "linter fixes"
+      - "format normalization"
+      - "dead code removal"
+    required_sensitivity:
+      can_push_git: true
+    verification: cross_agent_mandatory
+
+  audit:
+    label: "Cross-verification of prior work"
+    cognitive_class: strategic
+    examples:
+      - "type boundary check"
+      - "convention compliance"
+      - "dependency audit"
+      - "security review"
+      - "test coverage analysis"
+      - "schema consistency check"
+    verification: independent
+
+  content_generation:
+    label: "Documentation, README, essay writing"
+    cognitive_class: tactical
+    examples:
+      - "README"
+      - "CHANGELOG"
+      - "API docs"
+      - "blog posts"
+      - "tutorials"
+      - "release notes"
+    required_phase_affinity:
+      BUILD: 0.5
+    verification: self_sufficient
+
+  testing:
+    label: "Test writing and validation"
+    cognitive_class: tactical
+    examples:
+      - "unit tests"
+      - "integration tests"
+      - "e2e tests"
+      - "test fixtures"
+      - "snapshot tests"
+    required_phase_affinity:
+      PROVE: 0.6
+    required_sensitivity:
+      can_run_shell: true
+    verification: self_sufficient
+
+  debugging:
+    label: "Bug investigation and fix"
+    cognitive_class: strategic
+    examples:
+      - "stack trace analysis"
+      - "runtime error diagnosis"
+      - "type mismatch debugging"
+      - "performance profiling"
+      - "race condition detection"
+    required_sensitivity:
+      can_run_shell: true
+    verification: cross_agent_mandatory
+
+# Cognitive class hierarchy (used for max_cognitive_class filtering):
+#   strategic > tactical > mechanical
+# An agent with max_cognitive_class: tactical can do tactical + mechanical work
+# but not strategic work.
+cognitive_class_hierarchy:
+  strategic: 3
+  tactical: 2
+  mechanical: 1
+
+# Verification policies:
+#   self_sufficient: Agent's own verification is accepted
+#   cross_agent_mandatory: A different agent must verify the output
+#   independent: The verifying agent must not have been the builder

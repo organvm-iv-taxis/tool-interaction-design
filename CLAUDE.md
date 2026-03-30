@@ -61,6 +61,41 @@ The `conductor/` package is the core OS. Key modules:
 
 The MCP server (`mcp_server.py`) exposes conductor capabilities as tools for real-time AI assistant integration.
 
+## Dispatch Protocol
+
+Before starting BUILD-phase work, call `conductor_fleet_dispatch` with a description
+of the task. If the recommended agent is NOT Claude:
+1. Call `conductor_fleet_guardrailed_handoff` to generate an envelope
+2. Present the envelope markdown to the user
+3. Tell the user which agent to hand it to and what repo to run it in
+4. Do NOT do the work yourself — reserve your tokens for strategic work
+
+This is not optional. The system is designed for force multiplication: Claude handles
+architecture, audit, governance, and cross-verification. Mechanical and tactical work
+goes to the bench (Codex for scaffolding, Gemini for content/research velocity,
+OpenCode for well-scoped infrastructure).
+
+### Verification on Return
+
+When preflight shows a pending verification (`[VERIFY]` in the runway briefing):
+1. Run `git diff` to see what the dispatched agent changed
+2. Call `conductor_fleet_cross_verify` with the changed files
+3. If violations found, fix them before continuing
+4. If passed, the active handoff is cleared automatically and you proceed
+
+### Work Type Quick Reference
+
+| Work Type | Cognitive Class | Claude? | Dispatch to? |
+|-----------|----------------|---------|-------------|
+| architecture | strategic | YES | — |
+| debugging | strategic | YES | — |
+| audit | strategic | YES | — |
+| research | strategic | YES | Perplexity for web research |
+| testing | tactical | YES | Codex for test stubs |
+| content_generation | tactical | Consider | Gemini for drafting |
+| boilerplate_generation | mechanical | NO | Codex or Gemini |
+| mechanical_refactoring | mechanical | NO | Codex or OpenCode |
+
 ## Session Start Protocol
 
 Before beginning any work session, run `conductor patch` to see system state:
@@ -231,7 +266,7 @@ CI rulesets per organ, workflow validators, PR/issue templates — produced by `
 ### Governance
 - *Standard ORGANVM governance applies*
 
-*Last synced: 2026-03-25T22:27:14Z*
+*Last synced: 2026-03-26T19:39:27Z*
 
 ## Session Review Protocol
 
@@ -332,42 +367,11 @@ Cross-organ links: 591 | Top tags: `mcp`, `python`, `bash`, `pytest`, `fastapi`
 Run: `organvm atoms pipeline --write && organvm atoms fanout --write`
 
 
-## Entity Identity (Ontologia)
-
-**UID:** `ent_repo_01KKKX3RVP4WSRWJA1A4D59R73` | **Matched by:** primary_name
-
-Resolve: `organvm ontologia resolve tool-interaction-design` | History: `organvm ontologia history ent_repo_01KKKX3RVP4WSRWJA1A4D59R73`
-
-
-## Live System Variables (Ontologia)
-
-| Variable | Value | Scope | Updated |
-|----------|-------|-------|---------|
-| `active_repos` | 64 | global | 2026-03-25 |
-| `archived_repos` | 54 | global | 2026-03-25 |
-| `ci_workflows` | 106 | global | 2026-03-25 |
-| `code_files` | 0 | global | 2026-03-25 |
-| `dependency_edges` | 60 | global | 2026-03-25 |
-| `operational_organs` | 8 | global | 2026-03-25 |
-| `published_essays` | 29 | global | 2026-03-25 |
-| `repos_with_tests` | 0 | global | 2026-03-25 |
-| `sprints_completed` | 33 | global | 2026-03-25 |
-| `test_files` | 0 | global | 2026-03-25 |
-| `total_organs` | 8 | global | 2026-03-25 |
-| `total_repos` | 127 | global | 2026-03-25 |
-| `total_words_formatted` | 0 | global | 2026-03-25 |
-| `total_words_numeric` | 0 | global | 2026-03-25 |
-| `total_words_short` | 0K+ | global | 2026-03-25 |
-
-Metrics: 9 registered | Observations: 15536 recorded
-Resolve: `organvm ontologia status` | Refresh: `organvm refresh`
-
-
 ## System Density (auto-generated)
 
-AMMOI: 56% | Edges: 41 | Tensions: 33 | Clusters: 5 | Adv: 7 | Events(24h): 23754
-Structure: 8 organs / 127 repos / 1654 components (depth 17) | Inference: 98% | Organs: META-ORGANVM:64%, ORGAN-I:55%, ORGAN-II:47%, ORGAN-III:55% +4 more
-Last pulse: 2026-03-25T22:27:04 | Δ24h: +3.5% | Δ7d: n/a
+AMMOI: 56% | Edges: 41 | Tensions: 0 | Clusters: 0 | Adv: 8 | Events(24h): 24029
+Structure: 8 organs / 127 repos / 1654 components (depth 17) | Inference: 0% | Organs: META-ORGANVM:64%, ORGAN-I:55%, ORGAN-II:47%, ORGAN-III:55% +4 more
+Last pulse: 2026-03-26T19:39:26 | Δ24h: +3.6% | Δ7d: n/a
 
 
 ## Dialect Identity (Trivium)

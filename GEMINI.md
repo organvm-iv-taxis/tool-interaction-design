@@ -83,7 +83,7 @@ The system manages repositories across 8 organs: **I: Theoria**, **II: Poiesis**
 ### Governance
 - *Standard ORGANVM governance applies*
 
-*Last synced: 2026-03-25T22:27:14Z*
+*Last synced: 2026-03-26T19:39:27Z*
 
 ## Session Review Protocol
 
@@ -184,42 +184,11 @@ Cross-organ links: 591 | Top tags: `mcp`, `python`, `bash`, `pytest`, `fastapi`
 Run: `organvm atoms pipeline --write && organvm atoms fanout --write`
 
 
-## Entity Identity (Ontologia)
-
-**UID:** `ent_repo_01KKKX3RVP4WSRWJA1A4D59R73` | **Matched by:** primary_name
-
-Resolve: `organvm ontologia resolve tool-interaction-design` | History: `organvm ontologia history ent_repo_01KKKX3RVP4WSRWJA1A4D59R73`
-
-
-## Live System Variables (Ontologia)
-
-| Variable | Value | Scope | Updated |
-|----------|-------|-------|---------|
-| `active_repos` | 64 | global | 2026-03-25 |
-| `archived_repos` | 54 | global | 2026-03-25 |
-| `ci_workflows` | 106 | global | 2026-03-25 |
-| `code_files` | 0 | global | 2026-03-25 |
-| `dependency_edges` | 60 | global | 2026-03-25 |
-| `operational_organs` | 8 | global | 2026-03-25 |
-| `published_essays` | 29 | global | 2026-03-25 |
-| `repos_with_tests` | 0 | global | 2026-03-25 |
-| `sprints_completed` | 33 | global | 2026-03-25 |
-| `test_files` | 0 | global | 2026-03-25 |
-| `total_organs` | 8 | global | 2026-03-25 |
-| `total_repos` | 127 | global | 2026-03-25 |
-| `total_words_formatted` | 0 | global | 2026-03-25 |
-| `total_words_numeric` | 0 | global | 2026-03-25 |
-| `total_words_short` | 0K+ | global | 2026-03-25 |
-
-Metrics: 9 registered | Observations: 15536 recorded
-Resolve: `organvm ontologia status` | Refresh: `organvm refresh`
-
-
 ## System Density (auto-generated)
 
-AMMOI: 56% | Edges: 41 | Tensions: 33 | Clusters: 5 | Adv: 7 | Events(24h): 23754
-Structure: 8 organs / 127 repos / 1654 components (depth 17) | Inference: 98% | Organs: META-ORGANVM:64%, ORGAN-I:55%, ORGAN-II:47%, ORGAN-III:55% +4 more
-Last pulse: 2026-03-25T22:27:04 | Δ24h: +3.5% | Δ7d: n/a
+AMMOI: 56% | Edges: 41 | Tensions: 0 | Clusters: 0 | Adv: 8 | Events(24h): 24029
+Structure: 8 organs / 127 repos / 1654 components (depth 17) | Inference: 0% | Organs: META-ORGANVM:64%, ORGAN-I:55%, ORGAN-II:47%, ORGAN-III:55% +4 more
+Last pulse: 2026-03-26T19:39:26 | Δ24h: +3.6% | Δ7d: n/a
 
 
 ## Dialect Identity (Trivium)
@@ -231,3 +200,19 @@ Strongest translations: I (formal), V (structural), META (structural)
 Scan: `organvm trivium scan IV <OTHER>` | Matrix: `organvm trivium matrix` | Synthesize: `organvm trivium synthesize`
 
 <!-- ORGANVM:AUTO:END -->
+
+## Active Handoff Protocol
+
+If `.conductor/active-handoff.md` exists, **READ IT FIRST** before doing any work.
+It contains constraints, locked files, conventions, and completed work from the
+originating agent. You MUST honor all constraints listed there.
+
+Specifically:
+- **Locked Constraints**: Do not override these decisions under any circumstances
+- **Locked Files**: Do not modify these files
+- **Work Completed**: Do not repeat this work — it's already done
+- **Conventions**: Follow these naming/style conventions exactly
+- **Receiver Restrictions**: File patterns you must not touch
+
+If the handoff says "CROSS-VERIFICATION REQUIRED", your self-assessment will
+NOT be trusted. A different agent will verify your output against these constraints.

@@ -18,6 +18,10 @@ def handle(args, *, ontology, engine) -> None:
         _handle_recommend(args)
     elif cmd == "handoff":
         _handle_handoff(args)
+    elif cmd == "dispatch":
+        _handle_dispatch(args)
+    elif cmd == "verify":
+        _handle_verify(args)
 
 
 def _handle_status(args) -> None:
@@ -121,6 +125,102 @@ def _handle_recommend(args) -> None:
         marker = ">>>" if i == 0 else "   "
         print(f"  {marker} {router.explain(score)}")
         print()
+
+
+def _handle_dispatch(args) -> None:
+    from ..task_dispatcher import TaskDispatcher
+
+    dispatcher = TaskDispatcher()
+    phase = args.phase.upper() if hasattr(args, "phase") and args.phase else "BUILD"
+    work_type = args.work_type if hasattr(args, "work_type") and args.work_type else None
+    description = args.description if hasattr(args, "description") and args.description else ""
+
+    plan = dispatcher.plan(
+        description=description,
+        phase=phase,
+        work_type=work_type,
+    )
+
+    print(f"\n  DISPATCH PLAN")
+    print("  " + "-" * 60)
+    print(f"  Work type:     {plan.work_type}")
+    print(f"  Cognitive:     {plan.cognitive_class}")
+    print(f"  Verification:  {plan.verification_policy}")
+    print()
+
+    if plan.ranked_agents:
+        print(f"  QUALIFIED AGENTS (ranked)")
+        for i, score in enumerate(plan.ranked_agents):
+            marker = ">>>" if i == 0 else "   "
+            trust = ""
+            # Show guardrail info
+            from ..fleet import FleetRegistry
+            reg = FleetRegistry()
+            agent = reg.get(score.agent)
+            if agent and not agent.guardrails.self_audit_trusted:
+                trust = " [CROSS-VERIFY REQUIRED]"
+            print(f"  {marker} {score.display_name} (score: {score.score:.3f}){trust}")
+    else:
+        print("  No agents qualify for this work type.")
+
+    if plan.excluded_agents:
+        print()
+        print(f"  EXCLUDED AGENTS")
+        for excl in plan.excluded_agents:
+            print(f"      {excl['agent']}: {excl['reason']}")
+
+    print()
+
+
+def _handle_verify(args) -> None:
+    from ..cross_verify import CrossVerifier
+    from ..fleet_handoff import GuardrailedHandoffBrief
+
+    changed_files = args.changed_files if hasattr(args, "changed_files") and args.changed_files else []
+    diff = args.diff if hasattr(args, "diff") and args.diff else ""
+
+    # Load the most recent handoff if available
+    from ..constants import STATE_DIR
+    import json as _json
+
+    handoff_log = STATE_DIR / "handoff-log.jsonl"
+    if not handoff_log.exists():
+        print("  No handoff log found. Run 'fleet handoff' first.")
+        return
+
+    lines = handoff_log.read_text().strip().splitlines()
+    if not lines:
+        print("  Handoff log is empty.")
+        return
+
+    last = _json.loads(lines[-1])
+
+    # Try to load as guardrailed, fall back to basic
+    if "constraints_locked" in last:
+        brief = GuardrailedHandoffBrief.from_dict(last)
+    else:
+        print("  Last handoff is not guardrailed. Nothing to verify.")
+        return
+
+    verifier = CrossVerifier()
+    report = verifier.verify(
+        handoff=brief,
+        changed_files=changed_files,
+        diff_content=diff,
+    )
+
+    print(f"\n  VERIFICATION REPORT")
+    print("  " + "-" * 60)
+    print(f"  Status: {'PASSED' if report.passed else 'FAILED'}")
+    print(f"  {report.summary}")
+
+    if report.violations:
+        print()
+        for v in report.violations:
+            icon = "ERROR" if v.severity == "error" else "WARN"
+            print(f"  [{icon}] {v.rule}: {v.detail}")
+
+    print()
 
 
 def _handle_handoff(args) -> None:

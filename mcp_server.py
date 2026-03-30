@@ -1013,6 +1013,178 @@ def fleet_recommend(phase: str, task_tags: list | None = None, sensitivity: dict
     })
 
 
+def fleet_dispatch(description: str, phase: str = "BUILD", work_type: str | None = None) -> str:
+    from conductor.task_dispatcher import TaskDispatcher
+    from conductor.fleet import FleetRegistry
+
+    dispatcher = TaskDispatcher()
+    plan = dispatcher.plan(
+        description=description,
+        phase=phase.upper(),
+        work_type=work_type,
+    )
+
+    registry = FleetRegistry()
+    ranked = []
+    for s in plan.ranked_agents:
+        agent = registry.get(s.agent)
+        entry = {
+            "agent": s.agent,
+            "display_name": s.display_name,
+            "score": s.score,
+            "self_audit_trusted": agent.guardrails.self_audit_trusted if agent else True,
+            "max_files_before_checkpoint": agent.guardrails.max_files_before_checkpoint if agent else 50,
+        }
+        if agent and agent.restrictions.never_touch:
+            entry["never_touch"] = list(agent.restrictions.never_touch)
+        ranked.append(entry)
+
+    result = {
+        "work_type": plan.work_type,
+        "cognitive_class": plan.cognitive_class,
+        "verification_policy": plan.verification_policy,
+        "recommended_agent": plan.recommended,
+        "ranked_agents": ranked,
+        "excluded_agents": plan.excluded_agents,
+    }
+
+    # Add dispatch guidance
+    if plan.recommended and plan.recommended != "claude":
+        result["dispatch_guidance"] = (
+            f"This work should be dispatched to {plan.recommended}. "
+            f"Generate a guardrailed handoff with conductor_fleet_guardrailed_handoff, "
+            f"then present it to the user for handoff."
+        )
+    elif plan.recommended == "claude":
+        result["dispatch_guidance"] = (
+            "This work stays with Claude. Proceed directly."
+        )
+    else:
+        result["dispatch_guidance"] = "No agent qualifies. Review work type classification."
+
+    return _encode_mcp_payload(result)
+
+
+def fleet_guardrailed_handoff(
+    to_agent: str,
+    summary: str,
+    work_type: str = "",
+    constraints_locked: list | None = None,
+    files_locked: list | None = None,
+    work_completed: list | None = None,
+    conventions: dict | None = None,
+) -> str:
+    from conductor.fleet import FleetRegistry
+    from conductor.fleet_handoff import GuardrailedHandoffBrief, format_markdown, log_handoff
+    from conductor.session import SessionEngine
+
+    registry = FleetRegistry()
+    receiver = registry.get(to_agent)
+
+    # Build receiver restrictions from fleet.yaml
+    receiver_restrictions: dict = {}
+    verification_required = False
+    if receiver:
+        receiver_restrictions = {
+            "restrictions": {
+                "never_touch": list(receiver.restrictions.never_touch),
+                "never_decide": list(receiver.restrictions.never_decide),
+                "max_cognitive_class": receiver.restrictions.max_cognitive_class,
+            },
+            "guardrails": {
+                "self_audit_trusted": receiver.guardrails.self_audit_trusted,
+                "max_files_before_checkpoint": receiver.guardrails.max_files_before_checkpoint,
+            },
+        }
+        if not receiver.guardrails.self_audit_trusted:
+            verification_required = True
+
+    # Try to get session context
+    engine = SessionEngine()
+    session = engine._load_session()
+    session_id = session.session_id if session else "no-session"
+    phase = session.current_phase if session else "BUILD"
+    organ = session.organ if session else "UNKNOWN"
+    repo = session.repo if session else "unknown"
+    scope = session.scope if session else ""
+    from_agent = session.agent if session else "claude"
+    warnings = list(session.warnings) if session and hasattr(session, "warnings") else []
+
+    brief = GuardrailedHandoffBrief(
+        from_agent=from_agent,
+        to_agent=to_agent,
+        session_id=session_id,
+        phase=phase,
+        organ=organ,
+        repo=repo,
+        scope=scope,
+        summary=summary,
+        constraints_locked=constraints_locked or [],
+        files_locked=files_locked or [],
+        work_completed=work_completed or [],
+        conventions=conventions or {},
+        work_type=work_type,
+        verification_required=verification_required,
+        receiver_restrictions=receiver_restrictions,
+        warnings=warnings,
+    )
+
+    log_handoff(brief)
+    md = format_markdown(brief)
+
+    # Write active handoff for receiving agent to read
+    from conductor.fleet_handoff import write_active_handoff
+    from conductor.constants import BASE
+    active_path = write_active_handoff(brief, BASE)
+
+    return _encode_mcp_payload({
+        "handoff_markdown": md,
+        "to_agent": to_agent,
+        "verification_required": verification_required,
+        "active_handoff_path": str(active_path),
+        "envelope": brief.to_dict(),
+    })
+
+
+def fleet_cross_verify(changed_files: list, diff_content: str = "") -> str:
+    import json as _json
+    from conductor.constants import STATE_DIR
+    from conductor.cross_verify import CrossVerifier
+    from conductor.fleet_handoff import GuardrailedHandoffBrief
+
+    handoff_log = STATE_DIR / "handoff-log.jsonl"
+    if not handoff_log.exists():
+        return _encode_mcp_payload({"error": "No handoff log found. Generate a handoff first."})
+
+    lines = handoff_log.read_text().strip().splitlines()
+    if not lines:
+        return _encode_mcp_payload({"error": "Handoff log is empty."})
+
+    last = _json.loads(lines[-1])
+    if "constraints_locked" not in last:
+        return _encode_mcp_payload({"error": "Last handoff is not guardrailed. Nothing to verify."})
+
+    brief = GuardrailedHandoffBrief.from_dict(last)
+    verifier = CrossVerifier()
+    report = verifier.verify(
+        handoff=brief,
+        changed_files=changed_files,
+        diff_content=diff_content,
+        verifier_agent="claude",
+    )
+
+    # Auto-clear active handoff on verification pass
+    if report.passed:
+        from conductor.fleet_handoff import clear_active_handoff
+        from conductor.constants import BASE
+        cleared = clear_active_handoff(BASE)
+        result = report.to_dict()
+        result["active_handoff_cleared"] = cleared
+        return _encode_mcp_payload(result)
+
+    return _encode_mcp_payload(report.to_dict())
+
+
 def retro_session(session_id: str | None = None) -> str:
     """Generate a per-session retrospective and inject feedback into system loops."""
     from conductor.sprint_ledger import alchemize_ledger, build_ledger
@@ -1387,6 +1559,98 @@ TOOLS = [
             "required": ["phase"],
         },
     ),
+    Tool(
+        name="conductor_fleet_dispatch",
+        description=(
+            "Classify cognitive work and route to the best-fit agent. "
+            "Use BEFORE starting any non-trivial work to check if it should be dispatched to a worker bee "
+            "(Gemini for velocity, Codex for scaffolding) or kept on Claude (architecture, audit, strategy). "
+            "Returns ranked agents with exclusion reasons. "
+            "If the recommended agent is NOT Claude, generate a guardrailed handoff instead of doing the work yourself."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string",
+                    "description": "Natural language description of the work to be done",
+                },
+                "phase": {
+                    "type": "string",
+                    "description": "Conductor phase: FRAME, SHAPE, BUILD, or PROVE (default: BUILD)",
+                },
+                "work_type": {
+                    "type": "string",
+                    "description": (
+                        "Explicit work type override. If omitted, auto-classified from description. "
+                        "Options: architecture, boilerplate_generation, research, mechanical_refactoring, "
+                        "audit, content_generation, testing, debugging"
+                    ),
+                },
+            },
+            "required": ["description"],
+        },
+    ),
+    Tool(
+        name="conductor_fleet_guardrailed_handoff",
+        description=(
+            "Generate a guardrailed handoff envelope when dispatching work to another agent. "
+            "The envelope carries locked constraints, locked files, completed work, conventions, "
+            "and receiver restrictions. It also sets verification_required=true if the receiver's "
+            "self-audit is untrusted. Output this as markdown for the user to hand to the receiving agent."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "to_agent": {"type": "string", "description": "Target agent (gemini, codex, opencode, goose)"},
+                "summary": {"type": "string", "description": "What work is being handed off"},
+                "work_type": {"type": "string", "description": "Classified work type"},
+                "constraints_locked": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Constraints the receiver MUST NOT override (e.g., 'snake_case for all DB columns')",
+                },
+                "files_locked": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Files the receiver MUST NOT modify",
+                },
+                "work_completed": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Work already done — receiver should NOT repeat this",
+                },
+                "conventions": {
+                    "type": "object",
+                    "description": "Active conventions (e.g., {orm_naming: snake_case, imports: named})",
+                },
+            },
+            "required": ["to_agent", "summary"],
+        },
+    ),
+    Tool(
+        name="conductor_fleet_cross_verify",
+        description=(
+            "Verify that another agent's output conforms to the guardrailed handoff constraints. "
+            "Use AFTER receiving work back from a dispatched agent, especially one with self_audit_trusted=false. "
+            "Checks: locked file violations, never-touch pattern matches, convention drift."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "changed_files": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Files the receiving agent modified",
+                },
+                "diff_content": {
+                    "type": "string",
+                    "description": "Unified diff content for convention checking (optional)",
+                },
+            },
+            "required": ["changed_files"],
+        },
+    ),
     # Sprint ledger / retro session
     Tool(
         name="conductor_retro_session",
@@ -1444,6 +1708,24 @@ DISPATCH = {
         (args or {}).get("task_tags"),
         (args or {}).get("sensitivity"),
         int((args or {}).get("context_size", 0)),
+    ),
+    "conductor_fleet_dispatch": lambda args: fleet_dispatch(
+        (args or {})["description"],
+        (args or {}).get("phase", "BUILD"),
+        (args or {}).get("work_type"),
+    ),
+    "conductor_fleet_guardrailed_handoff": lambda args: fleet_guardrailed_handoff(
+        (args or {})["to_agent"],
+        (args or {})["summary"],
+        (args or {}).get("work_type", ""),
+        (args or {}).get("constraints_locked"),
+        (args or {}).get("files_locked"),
+        (args or {}).get("work_completed"),
+        (args or {}).get("conventions"),
+    ),
+    "conductor_fleet_cross_verify": lambda args: fleet_cross_verify(
+        (args or {})["changed_files"],
+        (args or {}).get("diff_content", ""),
     ),
     # Sprint ledger
     "conductor_retro_session": lambda args: retro_session((args or {}).get("session_id")),

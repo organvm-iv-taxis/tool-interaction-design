@@ -69,6 +69,17 @@ class PreflightResult:
     session_phase: str | None = None
     error: str | None = None
 
+    # Dispatch guidance
+    dispatch_work_type: str | None = None
+    dispatch_recommended_agent: str | None = None
+    dispatch_guidance: str | None = None
+
+    # Pending verification
+    pending_verification: bool = False
+    pending_handoff_from: str | None = None
+    pending_handoff_to: str | None = None
+    pending_handoff_work_type: str | None = None
+
     # Gate warnings
     gate_warnings: list[str] = field(default_factory=list)
 
@@ -209,6 +220,45 @@ def _get_fleet_recommendation(
     return None, 0.0
 
 
+def _get_dispatch_guidance(
+    scope: str, phase: str = "BUILD"
+) -> tuple[str | None, str | None, str | None]:
+    """Classify work scope and return dispatch guidance if non-Claude agent is best.
+
+    Returns: (work_type, recommended_agent_display_name, guidance_message)
+    """
+    try:
+        from .task_dispatcher import TaskDispatcher
+
+        dispatcher = TaskDispatcher()
+        plan = dispatcher.plan(description=scope, phase=phase)
+        if plan.work_type == "unclassified":
+            return None, None, None
+        recommended = plan.recommended
+        if recommended and recommended != "claude":
+            display = plan.ranked_agents[0].display_name if plan.ranked_agents else recommended
+            msg = (
+                f"Work classified as {plan.work_type} ({plan.cognitive_class}). "
+                f"Recommended agent: {display}. "
+                f"Consider dispatching with conductor_fleet_guardrailed_handoff."
+            )
+            return plan.work_type, display, msg
+        return plan.work_type, None, None
+    except Exception:
+        return None, None, None
+
+
+def _check_pending_verification(cwd: Path | str) -> dict[str, str] | None:
+    """Check if there's an unverified active handoff waiting for cross-verification."""
+    try:
+        from .fleet_handoff import read_active_handoff
+
+        repo_path = Path(cwd) if not isinstance(cwd, Path) else cwd
+        return read_active_handoff(repo_path)
+    except Exception:
+        return None
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -275,13 +325,37 @@ def run_preflight(
     elif auto_start and not organ:
         result.error = "Cannot auto-start: working directory is outside workspace"
 
-    # 6. Gate warnings
+    # 6. Check pending verification (unverified handoff from a previous dispatch)
+    pending = _check_pending_verification(cwd)
+    if pending:
+        result.pending_verification = True
+        result.pending_handoff_from = pending.get("from_agent")
+        result.pending_handoff_to = pending.get("to_agent")
+        result.pending_handoff_work_type = pending.get("work_type")
+        result.gate_warnings.append(
+            f"VERIFY: Pending handoff {pending.get('from_agent', '?')} → "
+            f"{pending.get('to_agent', '?')} ({pending.get('work_type', 'unknown')}). "
+            f"Cross-verify before proceeding."
+        )
+
+    # 7. Dispatch guidance (only when no pending verification — verify first)
+    if not result.pending_verification:
+        session = engine._load_session()
+        scope = session.scope if session else ""
+        phase = session.current_phase if session else "BUILD"
+        if scope and scope != "interactive":
+            wt, rec_agent, guidance = _get_dispatch_guidance(scope, phase)
+            result.dispatch_work_type = wt
+            result.dispatch_recommended_agent = rec_agent
+            result.dispatch_guidance = guidance
+
+    # 8. Gate warnings
     if result.collisions:
         result.gate_warnings.append(
             f"COLLISION: {len(result.collisions)} agent(s) already in this repo"
         )
 
-    # 7. Output
+    # 9. Output
     if not json_output:
         _print_briefing(result, agent)
 
@@ -326,6 +400,16 @@ def _print_briefing(result: PreflightResult, agent: str) -> None:
     # Fleet recommendation
     if result.fleet_recommendation:
         print(f"\nRecommendation:    Best agent: {result.fleet_recommendation} (score: {result.fleet_score})")
+
+    # Pending verification (Gap 3)
+    if result.pending_verification:
+        print(f"\n[VERIFY] Pending handoff: {result.pending_handoff_from} → {result.pending_handoff_to}"
+              f" ({result.pending_handoff_work_type or 'unknown'})")
+        print(f"[VERIFY] Cross-verification required. Run: conductor_fleet_cross_verify")
+
+    # Dispatch guidance (Gap 1)
+    if result.dispatch_guidance:
+        print(f"\n[DISPATCH] {result.dispatch_guidance}")
 
     # Session result
     if result.session_started:

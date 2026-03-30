@@ -392,4 +392,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_fleet_handoff.add_argument("to_agent", help="Target agent name (e.g., gemini, codex)")
     p_fleet_handoff.add_argument("--summary", help="Optional handoff summary")
 
+    p_fleet_dispatch = fleet_sub.add_parser("dispatch", help="Classify work and route to best agent")
+    p_fleet_dispatch.add_argument("--work-type", dest="work_type", help="Explicit work type (architecture, boilerplate_generation, research, etc.)")
+    p_fleet_dispatch.add_argument("--phase", default="BUILD", help="Conductor phase (default: BUILD)")
+    p_fleet_dispatch.add_argument("--description", default="", help="Natural language work description for auto-classification")
+
+    p_fleet_verify = fleet_sub.add_parser("verify", help="Cross-verify agent output against handoff constraints")
+    p_fleet_verify.add_argument("--changed-files", dest="changed_files", nargs="*", default=[], help="Files modified by the receiving agent")
+    p_fleet_verify.add_argument("--diff", default="", help="Unified diff content for convention checking")
+
     return parser

@@ -64,6 +64,40 @@ class AgentSensitivity:
 
 
 @dataclass(frozen=True)
+class AgentRestrictions:
+    """Hard constraints on what an agent must not do."""
+
+    never_touch: tuple[str, ...] = ()
+    never_decide: tuple[str, ...] = ()
+    max_cognitive_class: str = "strategic"
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> AgentRestrictions:
+        return cls(
+            never_touch=tuple(d.get("never_touch", [])),
+            never_decide=tuple(d.get("never_decide", [])),
+            max_cognitive_class=str(d.get("max_cognitive_class", "strategic")),
+        )
+
+
+@dataclass(frozen=True)
+class AgentGuardrails:
+    """Operational guardrails for agent behavior."""
+
+    self_audit_trusted: bool = True
+    max_files_before_checkpoint: int = 50
+    handoff_envelope_required: bool = False
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> AgentGuardrails:
+        return cls(
+            self_audit_trusted=bool(d.get("self_audit_trusted", True)),
+            max_files_before_checkpoint=int(d.get("max_files_before_checkpoint", 50)),
+            handoff_envelope_required=bool(d.get("handoff_envelope_required", False)),
+        )
+
+
+@dataclass(frozen=True)
 class AgentSubscription:
     """Subscription tier and billing details."""
 
@@ -91,6 +125,8 @@ class FleetAgent:
     capabilities: AgentCapabilities
     phase_affinity: dict[str, float]
     sensitivity: AgentSensitivity
+    restrictions: AgentRestrictions
+    guardrails: AgentGuardrails
     active: bool
 
     @classmethod
@@ -103,6 +139,8 @@ class FleetAgent:
             capabilities=AgentCapabilities.from_dict(d.get("capabilities", {})),
             phase_affinity=dict(d.get("phase_affinity", {})),
             sensitivity=AgentSensitivity.from_dict(d.get("sensitivity", {})),
+            restrictions=AgentRestrictions.from_dict(d.get("restrictions", {})),
+            guardrails=AgentGuardrails.from_dict(d.get("guardrails", {})),
             active=bool(d.get("active", False)),
         )
 

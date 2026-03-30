@@ -36,6 +36,18 @@ try:
     if phase in ('FRAME', 'SHAPE') and any(kw in prompt for kw in impl_keywords):
         print(f'[GATE] You are in {phase} phase. Transition to BUILD before implementing.')
 
+    # Dispatch detection: suggest dispatch for mechanical work
+    dispatch_keywords = ['scaffold', 'boilerplate', 'stub', 'template', 'bulk edit', 'migrate naming',
+                         'crud endpoint', 'rename all', 'convert all', 'format all']
+    if phase == 'BUILD' and any(kw in prompt for kw in dispatch_keywords):
+        print('[DISPATCH] This may be dispatchable work. Check: conductor_fleet_dispatch')
+
+    # Pending verification check
+    handoff_path = '$CONDUCTOR_BASE/.conductor/active-handoff.md'
+    import os
+    if os.path.exists(handoff_path):
+        print('[VERIFY] Active handoff pending cross-verification. Verify before starting new work.')
+
     # Directive prefix detection: ingest:, research:, capture:, distill:
     directive_prefixes = {
         'ingest:': 'INGEST',

@@ -23,6 +23,14 @@ agents:
       can_see_secrets: true
       can_push_git: true
       can_run_shell: true
+    restrictions:
+      never_touch: []
+      never_decide: []
+      max_cognitive_class: strategic
+    guardrails:
+      self_audit_trusted: true
+      max_files_before_checkpoint: 50
+      handoff_envelope_required: false
     active: true
 
   gemini:
@@ -46,6 +54,26 @@ agents:
       can_see_secrets: false
       can_push_git: false
       can_run_shell: true
+    restrictions:
+      never_touch:
+        - "package.json"
+        - "*.config.ts"
+        - "*.config.js"
+        - "*.config.mjs"
+        - "drizzle.config.*"
+        - "astro.config.*"
+        - ".env*"
+        - "seed.yaml"
+        - "pyproject.toml"
+      never_decide:
+        - architecture
+        - dependency_selection
+        - schema_design
+      max_cognitive_class: mechanical
+    guardrails:
+      self_audit_trusted: false
+      max_files_before_checkpoint: 20
+      handoff_envelope_required: false
     active: true
 
   codex:
@@ -69,6 +97,14 @@ agents:
       can_see_secrets: true
       can_push_git: true
       can_run_shell: true
+    restrictions:
+      never_touch: []
+      never_decide: []
+      max_cognitive_class: tactical
+    guardrails:
+      self_audit_trusted: true
+      max_files_before_checkpoint: 30
+      handoff_envelope_required: true
     active: true
 
   goose:
@@ -91,6 +127,14 @@ agents:
       can_see_secrets: true
       can_push_git: true
       can_run_shell: true
+    restrictions:
+      never_touch: []
+      never_decide: []
+      max_cognitive_class: tactical
+    guardrails:
+      self_audit_trusted: false
+      max_files_before_checkpoint: 20
+      handoff_envelope_required: false
     active: false
 
   kimi:
@@ -113,6 +157,14 @@ agents:
       can_see_secrets: false
       can_push_git: false
       can_run_shell: false
+    restrictions:
+      never_touch: []
+      never_decide: []
+      max_cognitive_class: mechanical
+    guardrails:
+      self_audit_trusted: false
+      max_files_before_checkpoint: 15
+      handoff_envelope_required: false
     active: false
 
   opencode:
@@ -135,4 +187,12 @@ agents:
       can_see_secrets: true
       can_push_git: true
       can_run_shell: true
+    restrictions:
+      never_touch: []
+      never_decide: []
+      max_cognitive_class: tactical
+    guardrails:
+      self_audit_trusted: false
+      max_files_before_checkpoint: 20
+      handoff_envelope_required: false
     active: false
