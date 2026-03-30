@@ -10,6 +10,7 @@ produces:
   - conductor-session-lifecycle
   - tool-interaction-ontology
   - agent-coordination-protocol
+  - cognitive-service-dispatch
 
 consumes:
   - orchestration-artifact
