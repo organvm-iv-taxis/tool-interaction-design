@@ -13,6 +13,15 @@ from typing import Any, Callable, Optional
 
 import yaml
 
+# ISOTOPE DISSOLUTION: Gate nervous--orchestrate G1
+# Prefer canonical engine registry loader; fall back to inline json.loads.
+try:
+    from organvm_engine.registry.loader import load_registry as _engine_load_registry
+
+    _HAS_ENGINE_REGISTRY = True
+except ImportError:
+    _HAS_ENGINE_REGISTRY = False
+
 from .constants import (
     GENERATED_DIR,
     GOVERNANCE_PATH,
@@ -248,7 +257,10 @@ class GovernanceRuntime:
 
         if self._registry_path.exists():
             try:
-                raw_registry = json.loads(self._registry_path.read_text())
+                if _HAS_ENGINE_REGISTRY:
+                    raw_registry = _engine_load_registry(self._registry_path)
+                else:
+                    raw_registry = json.loads(self._registry_path.read_text())
                 schema_issues = validate_document("registry", raw_registry)
                 if schema_issues:
                     summary = "; ".join(

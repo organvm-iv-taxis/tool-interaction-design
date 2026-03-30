@@ -52,19 +52,26 @@ REGISTRY_PATH = CORPUS_DIR / "registry-v2.json"
 GOVERNANCE_PATH = CORPUS_DIR / "governance-rules.json"
 
 # ---------------------------------------------------------------------------
-# Organ mapping (inline to avoid hard dependency on organvm-engine)
+# Organ mapping — prefer canonical engine source, inline fallback for standalone
+# ISOTOPE DISSOLUTION: Gate skeletal--define G2
 # ---------------------------------------------------------------------------
 
-ORGANS: dict[str, dict[str, str]] = {
-    "I":    {"dir": "organvm-i-theoria",   "registry_key": "ORGAN-I",      "org": "ivviiviivvi"},
-    "II":   {"dir": "organvm-ii-poiesis",  "registry_key": "ORGAN-II",     "org": "omni-dromenon-machina"},
-    "III":  {"dir": "organvm-iii-ergon",    "registry_key": "ORGAN-III",    "org": "labores-profani-crux"},
-    "IV":   {"dir": "organvm-iv-taxis",     "registry_key": "ORGAN-IV",     "org": "organvm-iv-taxis"},
-    "V":    {"dir": "organvm-v-logos",      "registry_key": "ORGAN-V",      "org": "organvm-v-logos"},
-    "VI":   {"dir": "organvm-vi-koinonia",  "registry_key": "ORGAN-VI",     "org": "organvm-vi-koinonia"},
-    "VII":  {"dir": "organvm-vii-kerygma",  "registry_key": "ORGAN-VII",    "org": "organvm-vii-kerygma"},
-    "META": {"dir": "meta-organvm",         "registry_key": "META-ORGANVM", "org": "meta-organvm"},
-}
+try:
+    from organvm_engine.organ_config import get_organ_map as _engine_get_organ_map
+
+    ORGANS: dict[str, dict[str, str]] = _engine_get_organ_map()
+except ImportError:
+    # Standalone fallback — no organvm-engine installed
+    ORGANS: dict[str, dict[str, str]] = {  # type: ignore[no-redef]
+        "I":    {"dir": "organvm-i-theoria",   "registry_key": "ORGAN-I",      "org": "ivviiviivvi"},
+        "II":   {"dir": "organvm-ii-poiesis",  "registry_key": "ORGAN-II",     "org": "omni-dromenon-machina"},
+        "III":  {"dir": "organvm-iii-ergon",    "registry_key": "ORGAN-III",    "org": "labores-profani-crux"},
+        "IV":   {"dir": "organvm-iv-taxis",     "registry_key": "ORGAN-IV",     "org": "organvm-iv-taxis"},
+        "V":    {"dir": "organvm-v-logos",      "registry_key": "ORGAN-V",      "org": "organvm-v-logos"},
+        "VI":   {"dir": "organvm-vi-koinonia",  "registry_key": "ORGAN-VI",     "org": "organvm-vi-koinonia"},
+        "VII":  {"dir": "organvm-vii-kerygma",  "registry_key": "ORGAN-VII",    "org": "organvm-vii-kerygma"},
+        "META": {"dir": "meta-organvm",         "registry_key": "META-ORGANVM", "org": "meta-organvm"},
+    }
 
 # ---------------------------------------------------------------------------
 # Phase configuration (defaults — overridable via .conductor.yaml)
