@@ -42,6 +42,14 @@ FLEET_YAML = Path(__file__).parent / "fleet.yaml"
 FLEET_USAGE_DIR = STATE_DIR / "fleet-usage"
 HANDOFF_LOG = STATE_DIR / "handoff-log.jsonl"
 
+# Contribution tracking paths
+DISPATCH_LEDGER_DIR = STATE_DIR / "dispatch-ledger"
+TIMECARD_DIR = STATE_DIR / "timecards"
+RETURN_QUEUE_DIR = STATE_DIR / "return-queue"
+SCORECARD_DIR = STATE_DIR / "scorecards"
+PROMPT_PATCHES_DIR = STATE_DIR / "prompt-patches"
+CONTAINER_DIR = STATE_DIR / "containers"
+
 # Workspace paths (mirror organvm-engine conventions)
 WORKSPACE = Path(os.environ.get("ORGANVM_WORKSPACE_DIR", str(Path.home() / "Workspace")))
 CORPUS_DIR = Path(os.environ.get(
