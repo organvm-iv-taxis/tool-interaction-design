@@ -28,3 +28,4 @@ exports/
 .ci-corpus/
 .codex/
 .pytest_cache/
+uv.lock
