@@ -44,11 +44,12 @@ class RouteScore:
 
 
 # Scoring weights
-W_PHASE_AFFINITY = 0.30
+W_PHASE_AFFINITY = 0.25
 W_STRENGTH_MATCH = 0.20
-W_UTILIZATION_PRESSURE = 0.20
+W_UTILIZATION_PRESSURE = 0.15
 W_CONTEXT_FIT = 0.15
-W_COST_EFFICIENCY = 0.15
+W_COST_EFFICIENCY = 0.10
+W_HISTORICAL_SURVIVAL = 0.15
 
 
 class FleetRouter:
@@ -71,6 +72,7 @@ class FleetRouter:
         sensitivity_required: dict[str, bool] | None = None,
         context_size: int = 0,
         work_type: str | None = None,
+        scorecards: dict[str, Any] | None = None,
     ) -> list[RouteScore]:
         """Return agents scored and ranked for the given task context.
 
@@ -145,12 +147,27 @@ class FleetRouter:
             cost_score = self._cost_efficiency(agent)
             breakdown["cost_efficiency"] = cost_score
 
+            # 6. Historical survival (from scorecard data)
+            survival_score = 0.5  # default neutral
+            if scorecards and agent.name in scorecards:
+                sc = scorecards[agent.name]
+                if work_type and hasattr(sc, "by_work_type") and work_type in sc.by_work_type:
+                    wt_sc = sc.by_work_type[work_type]
+                    clean = wt_sc.get("outcomes", {}).get("clean", 0)
+                    total_wt = wt_sc["dispatches"]
+                    survival_score = clean / total_wt if total_wt > 0 else 0.5
+                elif hasattr(sc, "dispatches_total") and sc.dispatches_total > 0:
+                    clean_total = sc.outcomes.get("clean", 0)
+                    survival_score = clean_total / sc.dispatches_total
+            breakdown["historical_survival"] = round(survival_score * W_HISTORICAL_SURVIVAL, 4)
+
             total = (
                 W_PHASE_AFFINITY * affinity
                 + W_STRENGTH_MATCH * strength_score
                 + W_UTILIZATION_PRESSURE * pressure
                 + W_CONTEXT_FIT * context_fit
                 + W_COST_EFFICIENCY * cost_score
+                + W_HISTORICAL_SURVIVAL * survival_score
             )
             breakdown["total"] = round(total, 3)
 
