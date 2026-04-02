@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "dispatch-receipt-v1",
+  "title": "Dispatch Receipt",
+  "description": "Atomic tracking unit for fleet dispatch operations. One receipt per dispatch event.",
+  "type": "object",
+  "required": [
+    "dispatch_id",
+    "timestamp",
+    "agent",
+    "work_type",
+    "cognitive_class",
+    "phase",
+    "organ",
+    "repo",
+    "description",
+    "status"
+  ],
+  "properties": {
+    "dispatch_id": {
+      "type": "string",
+      "description": "Unique identifier for this dispatch event (UUID or timestamp-based)"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp of dispatch initiation"
+    },
+    "agent": {
+      "type": "string",
+      "description": "Fleet agent name (key in fleet.yaml agents map)"
+    },
+    "work_type": {
+      "type": "string",
+      "description": "Classified work type from work_types.yaml"
+    },
+    "cognitive_class": {
+      "type": "string",
+      "enum": ["strategic", "tactical", "mechanical"],
+      "description": "Cognitive class of the classified work type"
+    },
+    "phase": {
+      "type": "string",
+      "enum": ["FRAME", "SHAPE", "BUILD", "PROVE"],
+      "description": "Conductor session phase at time of dispatch"
+    },
+    "organ": {
+      "type": "string",
+      "description": "Target organ (I through VII, META, PERSONAL)"
+    },
+    "repo": {
+      "type": "string",
+      "description": "Target repository name"
+    },
+    "description": {
+      "type": "string",
+      "description": "Natural language work description as classified"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["dispatched", "completed", "failed", "timeout", "rejected"],
+      "description": "Final status of the dispatch"
+    },
+    "verification_policy": {
+      "type": "string",
+      "enum": ["self_sufficient", "cross_agent_mandatory", "independent"],
+      "description": "Required verification level from work_types.yaml"
+    },
+    "verifier_agent": {
+      "type": "string",
+      "description": "Agent that performed cross-verification (if applicable)"
+    },
+    "verification_result": {
+      "type": "string",
+      "enum": ["passed", "failed", "pending", "not_required"],
+      "description": "Result of cross-verification"
+    },
+    "damage_modes_discovered": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Novel failure patterns observed during this dispatch"
+    },
+    "duration_minutes": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Wall-clock time from dispatch to completion/failure"
+    },
+    "files_changed": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of files modified by the dispatched agent"
+    },
+    "commit_sha": {
+      "type": "string",
+      "description": "Git commit SHA of the dispatched work (if committed)"
+    },
+    "handoff_envelope_id": {
+      "type": "string",
+      "description": "Reference to the HandoffBrief that initiated this dispatch"
+    }
+  },
+  "additionalProperties": false
+}
