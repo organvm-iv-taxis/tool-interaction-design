@@ -91,6 +91,21 @@ work_types:
       - "test coverage analysis"
       - "schema consistency check"
     verification: independent
+    preferred_agents: [codex, claude]
+    excluded_agents: [gemini]
+
+  irf_maintenance:
+    label: "IRF index updates and vacuum logging"
+    cognitive_class: tactical
+    examples:
+      - "IRF update"
+      - "vacuum logging"
+      - "completion logging"
+      - "priority change"
+      - "issue creation"
+    required_sensitivity:
+      can_push_git: true
+    verification: cross_agent_mandatory
     preferred_agents: [claude, codex]
     excluded_agents: [gemini]
 
