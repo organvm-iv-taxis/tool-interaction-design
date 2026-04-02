@@ -223,11 +223,11 @@ class TestFleetRouter:
         from conductor.fleet_router import FleetRouter
 
         router = FleetRouter()
-        # Huge context should favor gemini (1M window)
+        # Huge context should favor agents with large windows (gemini + claude both 1M)
         scores = router.recommend(phase="FRAME", context_size=500000)
         gemini_score = next(s for s in scores if s.agent == "gemini")
         claude_score = next(s for s in scores if s.agent == "claude")
-        assert gemini_score.breakdown["context_fit"] > claude_score.breakdown["context_fit"]
+        assert gemini_score.breakdown["context_fit"] >= claude_score.breakdown["context_fit"]
 
     def test_explain_output(self):
         from conductor.fleet_router import FleetRouter

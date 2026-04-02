@@ -4,6 +4,10 @@
 #
 # The TaskDispatcher uses this to hard-filter agents via fleet.yaml restrictions
 # (e.g., an agent with max_cognitive_class: mechanical cannot do strategic work).
+#
+# preferred_agents / excluded_agents are advisory hints for the FleetRouter.
+# They do not override hard filters (cognitive class, sensitivity) but bias
+# the scoring toward field-proven agents for each work type.
 
 work_types:
   architecture:
@@ -23,6 +27,8 @@ work_types:
     required_sensitivity:
       can_push_git: true
     verification: cross_agent_mandatory
+    preferred_agents: [claude]
+    excluded_agents: [gemini, opencode, kimi]
 
   boilerplate_generation:
     label: "Bulk file scaffolding"
@@ -38,6 +44,8 @@ work_types:
     required_phase_affinity:
       BUILD: 0.6
     verification: cross_agent_mandatory
+    preferred_agents: [codex, jules]
+    excluded_agents: []
 
   research:
     label: "Knowledge gathering and synthesis"
@@ -49,9 +57,12 @@ work_types:
       - "documentation review"
       - "technology survey"
       - "compliance requirements"
+      - "grant research"
     required_phase_affinity:
       FRAME: 0.7
     verification: self_sufficient
+    preferred_agents: [perplexity, gemini]
+    excluded_agents: [opencode]
 
   mechanical_refactoring:
     label: "Convention-conformant bulk edits"
@@ -66,6 +77,8 @@ work_types:
     required_sensitivity:
       can_push_git: true
     verification: cross_agent_mandatory
+    preferred_agents: [opencode, codex]
+    excluded_agents: []
 
   audit:
     label: "Cross-verification of prior work"
@@ -78,6 +91,8 @@ work_types:
       - "test coverage analysis"
       - "schema consistency check"
     verification: independent
+    preferred_agents: [claude, codex]
+    excluded_agents: [gemini]
 
   content_generation:
     label: "Documentation, README, essay writing"
@@ -92,6 +107,8 @@ work_types:
     required_phase_affinity:
       BUILD: 0.5
     verification: self_sufficient
+    preferred_agents: [gemini, codex]
+    excluded_agents: []
 
   testing:
     label: "Test writing and validation"
@@ -107,6 +124,8 @@ work_types:
     required_sensitivity:
       can_run_shell: true
     verification: self_sufficient
+    preferred_agents: [codex, claude]
+    excluded_agents: []
 
   debugging:
     label: "Bug investigation and fix"
@@ -120,6 +139,23 @@ work_types:
     required_sensitivity:
       can_run_shell: true
     verification: cross_agent_mandatory
+    preferred_agents: [claude]
+    excluded_agents: [gemini, opencode]
+
+  github_issue_remediation:
+    label: "Single-issue GitHub fixes via bot"
+    cognitive_class: tactical
+    examples:
+      - "CI workflow fix"
+      - "security patch"
+      - "regex optimization"
+      - "UX improvement PR"
+      - "dashboard enhancement"
+    required_sensitivity:
+      can_push_git: true
+    verification: cross_agent_mandatory
+    preferred_agents: [jules, codex]
+    excluded_agents: []
 
 # Cognitive class hierarchy (used for max_cognitive_class filtering):
 #   strategic > tactical > mechanical

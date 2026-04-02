@@ -37,8 +37,10 @@ WISDOM_DIR = Path(__file__).parent / "wisdom"
 # Multi-session support
 ACTIVE_SESSIONS_DIR = STATE_DIR / "active-sessions"
 
-# Fleet orchestration paths
-FLEET_YAML = Path(__file__).parent / "fleet.yaml"
+# Fleet orchestration paths — resolve from superproject root first, fall back to local
+_SUPERPROJECT_FLEET = Path(__file__).parent.parent.parent / "fleet.yaml"
+_LOCAL_FLEET = Path(__file__).parent / "fleet.yaml"
+FLEET_YAML = _SUPERPROJECT_FLEET if _SUPERPROJECT_FLEET.exists() else _LOCAL_FLEET
 FLEET_USAGE_DIR = STATE_DIR / "fleet-usage"
 HANDOFF_LOG = STATE_DIR / "handoff-log.jsonl"
 

@@ -8,8 +8,7 @@ from typing import Any
 
 import yaml
 
-
-FLEET_YAML = Path(__file__).parent / "fleet.yaml"
+from .constants import FLEET_YAML
 
 
 @dataclass(frozen=True)
@@ -128,9 +127,17 @@ class FleetAgent:
     restrictions: AgentRestrictions
     guardrails: AgentGuardrails
     active: bool
+    mode: str = "coding"
+    field_rating: int | None = None
+    best_for: tuple[str, ...] = ()
+    damage_modes: tuple[str, ...] = ()
+    prompt_fixes: tuple[str, ...] = ()
+    installed: bool = False
+    notes: str = ""
 
     @classmethod
     def from_dict(cls, name: str, d: dict[str, Any]) -> FleetAgent:
+        raw_rating = d.get("field_rating")
         return cls(
             name=name,
             display_name=str(d.get("display_name", name)),
@@ -142,6 +149,13 @@ class FleetAgent:
             restrictions=AgentRestrictions.from_dict(d.get("restrictions", {})),
             guardrails=AgentGuardrails.from_dict(d.get("guardrails", {})),
             active=bool(d.get("active", False)),
+            mode=str(d.get("mode", "coding")),
+            field_rating=int(raw_rating) if raw_rating is not None else None,
+            best_for=tuple(d.get("best_for", [])),
+            damage_modes=tuple(d.get("damage_modes", [])),
+            prompt_fixes=tuple(d.get("prompt_fixes", [])),
+            installed=bool(d.get("installed", False)),
+            notes=str(d.get("notes", "")),
         )
 
 

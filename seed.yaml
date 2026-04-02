@@ -11,6 +11,7 @@ produces:
   - tool-interaction-ontology
   - agent-coordination-protocol
   - cognitive-service-dispatch
+  - fleet-agent-registry
 
 consumes:
   - orchestration-artifact
