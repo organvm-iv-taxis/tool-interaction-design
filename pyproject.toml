@@ -10,8 +10,8 @@ requires-python = ">=3.11"
 dependencies = ["pyyaml>=6.0", "jsonschema>=4.0"]
 
 [project.optional-dependencies]
-dev = ["pytest>=7.0", "hypothesis>=6.0", "mypy>=1.10", "mcp>=0.1"]
-mcp = ["mcp>=0.1"]
+dev = ["pytest>=7.0", "hypothesis>=6.0", "mypy>=1.10", "mcp>=1.27.0"]
+mcp = ["mcp>=1.27.0"]
 # Install only the router + ontology layer (no conductor OS, no jsonschema):
 #   pip install conductor[router-only]
 # The router module requires only PyYAML.
