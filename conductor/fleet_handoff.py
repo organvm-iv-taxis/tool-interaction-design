@@ -291,6 +291,66 @@ def format_markdown(brief: HandoffBrief) -> str:
                     lines.append(f"- `{pat}`")
                 lines.append("")
 
+    # Seed envelope — black-hole geometry sections.
+    # Local import to avoid a circular dependency (seed.py imports from this module).
+    try:
+        from .seed import SeedEnvelope  # noqa: WPS433 — runtime import is intentional
+    except ImportError:  # pragma: no cover — seed module always present in repo
+        SeedEnvelope = None  # type: ignore[assignment]
+
+    if SeedEnvelope is not None and isinstance(brief, SeedEnvelope):
+        if brief.vacuum_coordinates:
+            lines.append("## Vacuum Coordinates")
+            lines.append("")
+            for key, val in brief.vacuum_coordinates.items():
+                if val:
+                    lines.append(f"- **{key}:** {val}")
+            lines.append("")
+
+        if brief.signal_entailments:
+            lines.append("## Gravity Signature (signal-closure entailments)")
+            lines.append("")
+            for entailment in brief.signal_entailments:
+                lines.append(f"- {entailment}")
+            lines.append("")
+
+        # Current State is REQUIRED — its presence is the peer-readability test.
+        lines.append("## Current State")
+        lines.append("")
+        lines.append(brief.current_state or "(empty — peer-readability test will fail)")
+        lines.append("")
+
+        if brief.growth_signals:
+            lines.append("## Growth Signals (append-only)")
+            lines.append("")
+            for sig in brief.growth_signals:
+                ts = sig.get("timestamp", "")
+                agent = sig.get("agent", "")
+                work_type = sig.get("work_type", "")
+                summary = sig.get("summary", "")
+                files = sig.get("files_changed", "")
+                lines.append(f"- **{ts}** — `{agent}` ({work_type}): {summary}")
+                if files:
+                    lines.append(f"  - files: {files}")
+            lines.append("")
+
+        if brief.vacuum_restore_points:
+            lines.append("## Vacuum Restore Points (append-only)")
+            lines.append("")
+            for rp in brief.vacuum_restore_points:
+                ts = rp.get("timestamp", "")
+                phase = rp.get("phase", "")
+                agent = rp.get("agent", "")
+                note = rp.get("note", "")
+                lines.append(f"- **{ts}** [{phase}] `{agent}` — {note}")
+                drift = rp.get("drift_reverted", "")
+                added = rp.get("constraints_added", "")
+                if drift:
+                    lines.append(f"  - drift reverted: {drift}")
+                if added:
+                    lines.append(f"  - constraints added: {added}")
+            lines.append("")
+
     return "\n".join(lines)
 
 

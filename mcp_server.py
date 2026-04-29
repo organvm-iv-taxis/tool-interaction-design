@@ -1185,6 +1185,121 @@ def fleet_cross_verify(changed_files: list, diff_content: str = "") -> str:
     return _encode_mcp_payload(report.to_dict())
 
 
+def seed_plant(
+    name: str,
+    intent: str,
+    session_id: str,
+    organ: str,
+    repo: str,
+    scope: str,
+    irf_id: str = "",
+    constraints_locked: list | None = None,
+    files_locked: list | None = None,
+    conventions: dict | None = None,
+    signal_entailments: list | None = None,
+    allow_implementation_language: bool = False,
+) -> str:
+    """Plant a named vacuum at the singularity of a session.
+
+    Governed by SOP--session-as-seed. Rejects implementation language by default.
+    Writes the envelope to .conductor/active-handoff.md in the calling repo.
+    """
+    from pathlib import Path
+
+    from conductor.fleet_handoff import format_markdown
+    from conductor.seed import SeedValidationError, plant_seed, write_seed_envelope
+
+    try:
+        envelope = plant_seed(
+            name=name,
+            intent=intent,
+            session_id=session_id,
+            organ=organ,
+            repo=repo,
+            scope=scope,
+            irf_id=irf_id,
+            constraints_locked=constraints_locked,
+            files_locked=files_locked,
+            conventions=conventions,
+            signal_entailments=signal_entailments,
+            allow_implementation_language=allow_implementation_language,
+        )
+    except SeedValidationError as exc:
+        return _encode_mcp_payload({"error": f"seed_validation_failed: {exc}"})
+
+    repo_path = Path.cwd()
+    out_path = write_seed_envelope(envelope, repo_path)
+    md = format_markdown(envelope)
+
+    return _encode_mcp_payload({
+        "status": "planted",
+        "envelope_path": str(out_path),
+        "envelope_markdown": md,
+        "envelope": envelope.to_dict(),
+    })
+
+
+def seed_re_plant(
+    completing_phase: str,
+    completing_agent: str,
+    cross_verify_passed: bool,
+    drift_reverted: list | None = None,
+    constraints_added: list | None = None,
+    note: str = "",
+) -> str:
+    """Restore the vacuum after an agent's pass — the re-emptying ritual.
+
+    Reads the active-handoff envelope, refuses if cross_verify_passed=False,
+    appends a Vacuum Restore Point, archives growth signals, refreshes current_state,
+    and re-writes the envelope.
+    """
+    from pathlib import Path
+
+    from conductor.fleet_handoff import format_markdown
+    from conductor.seed import (
+        SEED_SIDECAR_FILENAME,
+        SeedValidationError,
+        re_plant_seed,
+        read_seed_envelope,
+        write_seed_envelope,
+    )
+
+    repo_path = Path.cwd()
+    envelope = read_seed_envelope(repo_path)
+    if envelope is None:
+        return _encode_mcp_payload({
+            "error": (
+                f"no_seed_sidecar: No SeedEnvelope sidecar at "
+                f"{repo_path}/.conductor/{SEED_SIDECAR_FILENAME}. "
+                "Plant a seed first with conductor_seed_plant."
+            ),
+        })
+
+    try:
+        envelope = re_plant_seed(
+            envelope,
+            completing_phase=completing_phase,
+            completing_agent=completing_agent,
+            cross_verify_passed=cross_verify_passed,
+            drift_reverted=drift_reverted,
+            constraints_added=constraints_added,
+            note=note,
+        )
+    except SeedValidationError as exc:
+        return _encode_mcp_payload({"error": f"re_plant_blocked: {exc}"})
+
+    out_path = write_seed_envelope(envelope, repo_path)
+    md = format_markdown(envelope)
+
+    return _encode_mcp_payload({
+        "status": "re_planted",
+        "envelope_path": str(out_path),
+        "envelope_markdown": md,
+        "restore_point_count": len(envelope.vacuum_restore_points),
+        "growth_signal_count": len(envelope.growth_signals),
+    })
+
+
 def retro_session(session_id: str | None = None) -> str:
     """Generate a per-session retrospective and inject feedback into system loops."""
     from conductor.sprint_ledger import alchemize_ledger, build_ledger
@@ -1651,6 +1766,88 @@ TOOLS = [
             "required": ["changed_files"],
         },
     ),
+    # Session-as-seed (black-hole geometry)
+    Tool(
+        name="conductor_seed_plant",
+        description=(
+            "Plant a named vacuum at the singularity of a session. The seed is a black hole — "
+            "an absence with gravity that pulls agents of differing dispositions toward it. "
+            "Rejects implementation language in the intent (use declarative naming of the absence). "
+            "Writes .conductor/active-handoff.md as the canonical relay surface plus a JSON sidecar "
+            "for round-trip. Governed by SOP--session-as-seed."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Name of the vacuum (gives it coordinates)"},
+                "intent": {
+                    "type": "string",
+                    "description": (
+                        "Declarative naming of the absence — NOT an implementation directive. "
+                        "Implementation verbs (implement/build/create/scaffold/...) are rejected by default."
+                    ),
+                },
+                "session_id": {"type": "string", "description": "Active session ID"},
+                "organ": {"type": "string", "description": "Organ name (e.g., META-ORGANVM, ORGAN-IV)"},
+                "repo": {"type": "string", "description": "Repository name"},
+                "scope": {"type": "string", "description": "Atomized scope of the absence"},
+                "irf_id": {"type": "string", "description": "IRF entry ID for the named vacuum (optional but recommended)"},
+                "constraints_locked": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Constraints that define the event horizon (REQUIRED — gravity source)",
+                },
+                "files_locked": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Files that approaching agents MUST NOT modify",
+                },
+                "conventions": {
+                    "type": "object",
+                    "description": "Active conventions across the gravity well",
+                },
+                "signal_entailments": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Signal-closure entailments — what the system logically requires but has not produced",
+                },
+                "allow_implementation_language": {
+                    "type": "boolean",
+                    "description": "Override the implementation-language rejection (use sparingly)",
+                },
+            },
+            "required": ["name", "intent", "session_id", "organ", "repo", "scope", "constraints_locked"],
+        },
+    ),
+    Tool(
+        name="conductor_seed_re_plant",
+        description=(
+            "Restore the vacuum after an agent's pass — the re-emptying ritual between phases. "
+            "Reads the SeedEnvelope sidecar, refuses if cross_verify_passed=False, appends a "
+            "Vacuum Restore Point, archives growth signals, refreshes current_state, re-writes the envelope. "
+            "Required between every agent transition (code → research → content → infrastructure)."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "completing_phase": {"type": "string", "description": "The phase the completing agent finished (e.g., CODE, RESEARCH, CONTENT)"},
+                "completing_agent": {"type": "string", "description": "The agent whose pass just completed (codex, gemini, opencode, claude, ...)"},
+                "cross_verify_passed": {"type": "boolean", "description": "Whether conductor_fleet_cross_verify passed for this pass"},
+                "drift_reverted": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Items reverted as drift outside locked constraints",
+                },
+                "constraints_added": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "New constraints accepted by the conductor and locked into the envelope",
+                },
+                "note": {"type": "string", "description": "Optional note describing the re-plant"},
+            },
+            "required": ["completing_phase", "completing_agent", "cross_verify_passed"],
+        },
+    ),
     # Sprint ledger / retro session
     Tool(
         name="conductor_retro_session",
@@ -1726,6 +1923,29 @@ DISPATCH = {
     "conductor_fleet_cross_verify": lambda args: fleet_cross_verify(
         (args or {})["changed_files"],
         (args or {}).get("diff_content", ""),
+    ),
+    # Session-as-seed (black-hole geometry)
+    "conductor_seed_plant": lambda args: seed_plant(
+        (args or {})["name"],
+        (args or {})["intent"],
+        (args or {})["session_id"],
+        (args or {})["organ"],
+        (args or {})["repo"],
+        (args or {})["scope"],
+        (args or {}).get("irf_id", ""),
+        (args or {}).get("constraints_locked"),
+        (args or {}).get("files_locked"),
+        (args or {}).get("conventions"),
+        (args or {}).get("signal_entailments"),
+        bool((args or {}).get("allow_implementation_language", False)),
+    ),
+    "conductor_seed_re_plant": lambda args: seed_re_plant(
+        (args or {})["completing_phase"],
+        (args or {})["completing_agent"],
+        bool((args or {})["cross_verify_passed"]),
+        (args or {}).get("drift_reverted"),
+        (args or {}).get("constraints_added"),
+        (args or {}).get("note", ""),
     ),
     # Sprint ledger
     "conductor_retro_session": lambda args: retro_session((args or {}).get("session_id")),
